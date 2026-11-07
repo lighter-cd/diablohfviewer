@@ -71,3 +71,8 @@
 ## 2026-11-07 17:59:56
 - 细化阶段 2 计划文档：在 ARCHITECTURE.md 新增 §10「前端引用后端（阶段 2 查看器）」，含后端需补的 3 项（sprite.decode 加 width:"auto"、新增 sprite.list、可选 TRN 上色）、前端 web/ TS+Canvas 目录结构与工作顺序；并修正 §6 WS 契约中 rgba_base64 实为原始 RGBA（非 PNG data URL）的说明、§4 工具表补 sprite.list 与 auto-width。PROJECT.md 阶段 2 改写为「Web 查看器经 WS 调后端」交付形态与后端优先子步骤。
 - 涉及: docs/ARCHITECTURE.md, docs/PROJECT.md
+
+## 2026-11-07 18:08:20
+- 实现 sprite.decode 支持 width:"auto"：将 render_sprite 的帧宽自动查表逻辑抽成共享模块 src/decoders/sprite_width.{h,cpp}（plrgfx→sprites.tsv、monsters→monstdat.tsv、missiles→missile_sprites.tsv、objects→objdat.tsv、towners→towners.tsv；items 无表仍手填），render_sprite 与 sprite.decode 共用；sprite.decode 新增 width:"auto"（及可选 devilutionx_root）参数并改 input_schema。out/unit_tests.cpp 新增 testSpriteWidth（类型码映射 + 真实表 autoWidth，缺 DevilutionX 则 SKIP）；README §1/§5 构建命令补 sprite_width.cpp。mcp-server 重新 configure 以重新 GLOB 新 .cpp 并链接通过。
+- 涉及: src/decoders/sprite_width.h, src/decoders/sprite_width.cpp, src/tools/sprite_tools.cpp, mpq-info/render_sprite.cpp, out/unit_tests.cpp, README.md
+- 验证：unit/core/integration 三套件全 PASS；mcp-server --stdio 经 tools/call sprite.decode width:"auto" 对 plrgfx\warrior\wlu\wluas.cl2 自动取宽 96 并解出 80 帧。

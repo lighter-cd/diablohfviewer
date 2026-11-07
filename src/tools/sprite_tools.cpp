@@ -13,6 +13,9 @@
 #include "decoders/cel.h"
 #include "decoders/cl2.h"
 #include "decoders/pcx.h"
+#include "decoders/sprite_width.h"
+
+#include <filesystem>
 
 #include <algorithm>
 #include <cstdint>
@@ -161,21 +164,41 @@ mcp::ToolResult toolSpriteDecode(const mcp::json& params)
     std::vector<uint8_t> embeddedPal;
     bool havePal = false;
 
+    // Resolve width for CL2/CEL. Supports an explicit integer or the string
+    // "auto" (look up from DevilutionX data tables by the sprite path).
+    int spriteWidth = 0;
+    bool useAutoWidth = false;
+    if (params.contains("width")) {
+        const auto& w = params["width"];
+        if (w.is_string())
+            useAutoWidth = (w.get<std::string>() == "auto");
+        else if (w.is_number_integer())
+            spriteWidth = w.get<int>();
+    }
+    if (useAutoWidth) {
+        std::filesystem::path devRoot =
+            (params.contains("devilutionx_root") && params["devilutionx_root"].is_string())
+                ? std::filesystem::path(params["devilutionx_root"].get<std::string>())
+                : std::filesystem::path("D:/work/xt/diablo/DevilutionX");
+        std::string dbg;
+        spriteWidth = decoders::sprite_width::autoWidth(name, devRoot, dbg);
+        if (spriteWidth <= 0)
+            throw std::runtime_error("auto width failed: " + dbg);
+    }
+
     if (endsWith(lower, ".clx")) {
         format = "clx";
         clxBytes = buf;
     } else if (endsWith(lower, ".cl2")) {
         format = "cl2";
-        int width = params.value("width", 0);
-        if (width <= 0)
-            throw std::runtime_error("cl2 requires a positive integer 'width'");
-        clxBytes = decoders::cl2ToClx(buf.data(), buf.size(), static_cast<uint16_t>(width));
+        if (spriteWidth <= 0)
+            throw std::runtime_error("cl2 requires a positive integer 'width' or width:\"auto\"");
+        clxBytes = decoders::cl2ToClx(buf.data(), buf.size(), static_cast<uint16_t>(spriteWidth));
     } else if (endsWith(lower, ".cel")) {
         format = "cel";
-        int width = params.value("width", 0);
-        if (width <= 0)
-            throw std::runtime_error("cel requires a positive integer 'width'");
-        clxBytes = decoders::celToClx(buf.data(), buf.size(), static_cast<uint16_t>(width));
+        if (spriteWidth <= 0)
+            throw std::runtime_error("cel requires a positive integer 'width' or width:\"auto\"");
+        clxBytes = decoders::celToClx(buf.data(), buf.size(), static_cast<uint16_t>(spriteWidth));
     } else if (endsWith(lower, ".pcx")) {
         format = "pcx";
         decoders::DecodedFrame fr;
@@ -274,7 +297,10 @@ void registerSpriteTools(ToolRegistry& reg)
                               { "description", "in-archive sprite name, e.g. data\\health.clx" } } },
                       { "palette_name", json{ { "type", "string" } } },
                       { "palette_b64", json{ { "type", "string" } } },
-                      { "width", json{ { "type", "integer" }, { "description", "required for .cel/.cl2" } } },
+                      { "width", json{ { "type", "string" },
+                                        { "description", "required for .cel/.cl2; an integer (e.g. 96) or the string \"auto\" to look up from DevilutionX data tables by sprite path" } } },
+                      { "devilutionx_root", json{ { "type", "string" },
+                                                   { "description", "DevilutionX source root for width:\"auto\" (default D:/work/xt/diablo/DevilutionX)" } } },
                       { "frame", json{ { "type", "integer" } } } } },
               { "required", json::array({ "archive", "name" }) } },
         toolSpriteDecode });

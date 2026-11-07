@@ -77,6 +77,7 @@ build-mcp/mcp-server.exe --stdio --ws 18765      # 同时启用
 g++ -I src -std=c++17 out/unit_tests.cpp \
     src/decoders/clx.cpp src/decoders/cel.cpp src/decoders/cl2.cpp \
     src/decoders/pcx.cpp src/decoders/palette.cpp src/decoders/png.cpp \
+    src/decoders/sprite_width.cpp \
     -o out/unit_tests.exe && out/unit_tests.exe
 ```
 覆盖：CLX 解码、CEL→CLX / CL2→CLX 往返、PCX 解码、调色板加载、base64 编解码往返。
@@ -172,7 +173,7 @@ out/recover_phase0.exe [devilutionx_root] [mpq_root]
 
 ```bash
 g++ -I 3rdparty -I 3rdparty/StormLib/src -I src -std=c++17 -static \
-    mpq-info/render_sprite.cpp \
+    mpq-info/render_sprite.cpp src/decoders/sprite_width.cpp \
     src/decoders/clx.cpp src/decoders/cl2.cpp src/decoders/cel.cpp \
     src/decoders/pcx.cpp src/decoders/palette.cpp src/decoders/png.cpp \
     -o out/render_sprite.exe

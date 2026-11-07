@@ -21,6 +21,7 @@
 #include "decoders/endian_util.h"
 #include "decoders/palette.h"
 #include "decoders/png.h"
+#include "decoders/sprite_width.h"
 #include "tools/base64.h"
 
 #include <cstdio>
@@ -28,6 +29,8 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <filesystem>
+#include <system_error>
 
 using namespace decoders;
 namespace base64 = mcp::base64;
@@ -398,6 +401,56 @@ static void testPngWrite()
     printf("PNG write: PASS\n");
 }
 
+// ---------------------------------------------------------------------------
+// decoders/sprite_width: type-code mapping + auto frame-width lookup
+// ---------------------------------------------------------------------------
+static void testSpriteWidth()
+{
+    bool ok = true;
+
+    // 1) pure type-code -> column mapping (verbatim from DevilutionX player.cpp)
+    auto expectCol = [&](const std::string& type, char w, const std::string& exp) {
+        std::string c;
+        if (!decoders::sprite_width::playerTypeToColumn(type, w, c) || c != exp) {
+            allOk = false; ok = false;
+            printf("  playerTypeToColumn(%s,%c) expected '%s' got '%s'\n",
+                   type.c_str(), w, exp.c_str(), c.c_str());
+        }
+    };
+    expectCol("as", 'l', "stand");
+    expectCol("st", 'l', "stand");
+    expectCol("aw", 'l', "walk");
+    expectCol("wl", 'l', "walk");
+    expectCol("at", 'n', "attack");
+    expectCol("at", 'b', "bow");   // weapon 'b' = Bow -> bow width
+    expectCol("ht", 'l', "swHit");
+    expectCol("lm", 'l', "lightning");
+    expectCol("fm", 'l', "fire");
+    expectCol("qm", 'l', "magic");
+    expectCol("dt", 'l', "death");
+    expectCol("bl", 'l', "block");
+    { std::string c; if (decoders::sprite_width::playerTypeToColumn("zz", 'l', c)) { allOk = false; ok = false; } }
+
+    // 2) autoWidth against real DevilutionX data tables (SKIP if not present)
+    std::filesystem::path dev("D:/work/xt/diablo/DevilutionX");
+    std::error_code ec;
+    bool haveDev = std::filesystem::exists(
+        dev / "assets" / "txtdata" / "classes" / "warrior" / "sprites.tsv", ec);
+    if (haveDev) {
+        std::string dbg;
+        int w = decoders::sprite_width::autoWidth("plrgfx\\warrior\\wlu\\wluas.cl2", dev, dbg);
+        if (w != 96) { allOk = false; ok = false; printf("  autoWidth warrior stand expected 96 got %d (%s)\n", w, dbg.c_str()); }
+        int wm = decoders::sprite_width::autoWidth("monsters\\acid\\acida.cl2", dev, dbg);
+        if (wm <= 0) { allOk = false; ok = false; printf("  autoWidth monster expected >0 got %d (%s)\n", wm, dbg.c_str()); }
+        int wi = decoders::sprite_width::autoWidth("items\\armor2.cel", dev, dbg);
+        if (wi != -1) { allOk = false; ok = false; printf("  autoWidth items should fail (no width table)\n"); }
+    } else {
+        printf("  (sprite_width autoWidth: SKIP, DevilutionX not found at %s)\n", dev.string().c_str());
+    }
+
+    printf("sprite_width: %s\n", ok ? "PASS" : "FAIL");
+}
+
 int main()
 {
     printf("=== DiabloHFConverter unit tests ===\n");
@@ -408,6 +461,7 @@ int main()
     testPalette();
     testBase64();
     testPngWrite();
+    testSpriteWidth();
     printf("=== %s ===\n", allOk ? "ALL PASS" : "FAILURES PRESENT");
     return allOk ? 0 : 1;
 }
