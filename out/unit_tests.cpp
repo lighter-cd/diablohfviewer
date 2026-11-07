@@ -3,12 +3,13 @@
 // Covers:
 //   - decoders: CLX list decode, CEL->CLX and CL2->CLX round trips, PCX decode
 //   - decoders/palette: loadPalette + paletteToRGBA
+//   - decoders/png: writePNG -> re-read and verify (round trip)
 //   - tools/base64: RFC4648 encode/decode round trip
 //
 // Build & run (MinGW-w64, from repo root):
 //   g++ -I src -std=c++17 out/unit_tests.cpp \
 //       src/decoders/clx.cpp src/decoders/cel.cpp src/decoders/cl2.cpp \
-//       src/decoders/pcx.cpp src/decoders/palette.cpp \
+//       src/decoders/pcx.cpp src/decoders/palette.cpp src/decoders/png.cpp \
 //       -o out/unit_tests.exe && out/unit_tests.exe
 //
 // Exit code 0 = all pass, 1 = at least one failure.
@@ -19,10 +20,12 @@
 #include "decoders/pcx.h"
 #include "decoders/endian_util.h"
 #include "decoders/palette.h"
+#include "decoders/png.h"
 #include "tools/base64.h"
 
 #include <cstdio>
 #include <cstring>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -291,6 +294,110 @@ static void testBase64()
     printf("base64: %s\n", allOk ? "PASS" : "FAIL");
 }
 
+// ---------------------------------------------------------------------------
+// decoders/png: writePNG -> re-read the file and verify (round trip)
+// ---------------------------------------------------------------------------
+namespace {
+uint32_t testCrc32(const uint8_t* data, size_t len) {
+    static uint32_t tbl[256];
+    static bool init = false;
+    if (!init) {
+        for (uint32_t n = 0; n < 256; ++n) {
+            uint32_t c = n;
+            for (int k = 0; k < 8; ++k) c = (c & 1) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
+            tbl[n] = c;
+        }
+        init = true;
+    }
+    uint32_t c = 0xFFFFFFFFu;
+    for (size_t i = 0; i < len; ++i) c = tbl[(c ^ data[i]) & 0xFF] ^ (c >> 8);
+    return c ^ 0xFFFFFFFFu;
+}
+
+// Inflate a zlib stream made only of stored (BTYPE=00) blocks.
+bool inflateStored(const std::vector<uint8_t>& z, std::vector<uint8_t>& out) {
+    if (z.size() < 2) return false;          // skip zlib header
+    size_t p = 2;
+    while (p < z.size()) {
+        uint8_t b = z[p++];
+        bool bfinal = (b & 1) != 0;
+        int btype = (b >> 1) & 3;
+        if (btype != 0) return false;        // only stored supported
+        if (p + 4 > z.size()) return false;
+        uint16_t len = z[p] | (z[p + 1] << 8);
+        uint16_t nlen = z[p + 2] | (z[p + 3] << 8);
+        p += 4;
+        if ((len ^ nlen) != 0xFFFF) return false;
+        if (p + len > z.size()) return false;
+        out.insert(out.end(), z.begin() + p, z.begin() + p + len);
+        p += len;
+        if (bfinal) break;
+    }
+    return true;
+}
+} // namespace
+
+static void testPngWrite()
+{
+    const uint16_t W = 4, H = 3;
+    std::vector<uint8_t> rgba(static_cast<size_t>(W) * H * 4);
+    for (uint16_t y = 0; y < H; ++y)
+        for (uint16_t x = 0; x < W; ++x) {
+            size_t o = (static_cast<size_t>(y) * W + x) * 4;
+            rgba[o] = static_cast<uint8_t>(x * 20);
+            rgba[o + 1] = static_cast<uint8_t>(y * 30);
+            rgba[o + 2] = static_cast<uint8_t>((x + y) * 10);
+            rgba[o + 3] = 255;
+        }
+
+    const char* path = "out/__png_test.png";
+    if (!writePNG(path, W, H, rgba)) { printf("PNG write: FAIL (writePNG false)\n"); allOk = false; return; }
+
+    std::ifstream f(path, std::ios::binary);
+    std::vector<uint8_t> png((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+
+    static const uint8_t sig[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+    if (png.size() < 8 || memcmp(png.data(), sig, 8) != 0) { printf("PNG write: FAIL signature\n"); allOk = false; return; }
+
+    uint32_t ihdrW = 0, ihdrH = 0; bool haveIend = false;
+    std::vector<uint8_t> idat;
+    size_t p = 8;
+    while (p + 8 <= png.size()) {
+        uint32_t len = (png[p] << 24) | (png[p + 1] << 16) | (png[p + 2] << 8) | png[p + 3];
+        std::string type(reinterpret_cast<const char*>(&png[p + 4]), 4);
+        const uint8_t* data = &png[p + 8];
+        uint32_t crc = (png[p + 8 + len] << 24) | (png[p + 9 + len] << 16) |
+                       (png[p + 10 + len] << 8) | png[p + 11 + len];
+        if (testCrc32(&png[p + 4], 4 + len) != crc) { printf("PNG write: FAIL chunk CRC\n"); allOk = false; return; }
+        if (type == "IHDR") {
+            if (len < 13) { printf("PNG write: FAIL IHDR len\n"); allOk = false; return; }
+            ihdrW = (data[0] << 24) | (data[1] << 16) | (data[2] << 8) | data[3];
+            ihdrH = (data[4] << 24) | (data[5] << 16) | (data[6] << 8) | data[7];
+        } else if (type == "IDAT") {
+            idat.insert(idat.end(), data, data + len);
+        } else if (type == "IEND") {
+            haveIend = true;
+        }
+        p += 12 + len;
+    }
+    if (!haveIend) { printf("PNG write: FAIL no IEND\n"); allOk = false; return; }
+    if (ihdrW != W || ihdrH != H) { printf("PNG write: FAIL dimensions\n"); allOk = false; return; }
+
+    std::vector<uint8_t> raw;
+    if (!inflateStored(idat, raw)) { printf("PNG write: FAIL inflate\n"); allOk = false; return; }
+    std::vector<uint8_t> px;
+    size_t stride = static_cast<size_t>(W) * 4;
+    for (uint16_t y = 0; y < H; ++y) {
+        size_t rowStart = static_cast<size_t>(y) * (1 + stride);
+        if (raw.size() < rowStart + 1 + stride) { printf("PNG write: FAIL raw size\n"); allOk = false; return; }
+        if (raw[rowStart] != 0) { printf("PNG write: FAIL filter byte\n"); allOk = false; return; }
+        px.insert(px.end(), raw.begin() + rowStart + 1, raw.begin() + rowStart + 1 + stride);
+    }
+    if (px != rgba) { printf("PNG write: FAIL pixel mismatch\n"); allOk = false; return; }
+
+    printf("PNG write: PASS\n");
+}
+
 int main()
 {
     printf("=== DiabloHFConverter unit tests ===\n");
@@ -300,6 +407,7 @@ int main()
     testPcxDecode();
     testPalette();
     testBase64();
+    testPngWrite();
     printf("=== %s ===\n", allOk ? "ALL PASS" : "FAILURES PRESENT");
     return allOk ? 0 : 1;
 }

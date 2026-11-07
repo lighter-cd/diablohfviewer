@@ -76,7 +76,7 @@ build-mcp/mcp-server.exe --stdio --ws 18765      # 同时启用
 ```bash
 g++ -I src -std=c++17 out/unit_tests.cpp \
     src/decoders/clx.cpp src/decoders/cel.cpp src/decoders/cl2.cpp \
-    src/decoders/pcx.cpp src/decoders/palette.cpp \
+    src/decoders/pcx.cpp src/decoders/palette.cpp src/decoders/png.cpp \
     -o out/unit_tests.exe && out/unit_tests.exe
 ```
 覆盖：CLX 解码、CEL→CLX / CL2→CLX 往返、PCX 解码、调色板加载、base64 编解码往返。
@@ -157,6 +157,35 @@ out/recover_phase0.exe [devilutionx_root] [mpq_root]
 
   - 源码路径：`mpq-info/batch_extract.cpp`；产物：`out/extracted/`（运行产物，不入库）。
   - 已验证可一次性抽取全部 2,080 个文件，0 失败。
+
+### 5. 精灵渲染为 PNG（使用 src/decoders）
+
+`mpq-info/render_sprite.cpp` 把 `out/extracted/` 里已抽取的精灵（CL2/CEL）经解码管线
+渲染成 PNG：`CL2/CEL → CLX`（`cl2ToClx`/`celToClx`）→ `RGBA` 帧（`decodeClx`）→
+`PNG`（`src/decoders/png.cpp`，自带**无依赖 zlib** 的存储块编码器，无需 `-lz`）。
+
+> 注意：CL2/CEL 文件**不存储帧宽**，需按 DevilutionX 动画表传入 `width`
+> （如 warrior Stand=96、Attack/Death=128，详见各 `sprites.tsv` 的 `stand`/`attack`…列；
+> 怪物/导弹/物品/物件/NPC 各有对应宽度）。调色板用任意 256 色 `.pal` 即可出形，
+> 选对游戏调色板则颜色正确。
+
+```bash
+g++ -I 3rdparty -I 3rdparty/StormLib/src -I src -std=c++17 \
+    mpq-info/render_sprite.cpp \
+    src/decoders/clx.cpp src/decoders/cl2.cpp src/decoders/cel.cpp \
+    src/decoders/pcx.cpp src/decoders/palette.cpp src/decoders/png.cpp \
+    -o out/render_sprite.exe
+out/render_sprite.exe \
+    out/extracted/DIABDAT/plrgfx/warrior/wlu/wluas.cl2 \
+    out/extracted/devilutionx/ui_art/diablo.pal 96 \
+    out/render/warrior_stand.png
+# 用法: render_sprite <sprite> <palette.pal> <width> [out.png] [frameIndex]
+```
+
+- 源码路径：`mpq-info/render_sprite.cpp` + `src/decoders/png.cpp`；PNG 编码器含于单元测试
+  （writePNG → 回读校验 round-trip）。
+- 已验证：`plrgfx\warrior\wlu\wluas.cl2` 渲染为 96×96 战士立姿精灵（含盾牌），
+  80 帧（8 方向 × 10）均可解码无错位。
 
 ## 开发文档
 

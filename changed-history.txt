@@ -47,3 +47,7 @@
 ## 2026-11-07 15:24:52
 - 新增 mpq-info/batch_extract.cpp：读取 recovered.json（含每个验证名对应的 MPQ 路径），批量 extractToFile 到 out/extracted/<档案>/<原名>，一次性抽取全部 2,080 个已验证文件（0 失败）；同步在 README §4 增加使用说明。运行产物 out/extracted 不入库。
 - 涉及: mpq-info/batch_extract.cpp, README.md
+
+## 2026-11-07 15:48:32
+- 新增 src/decoders/png.cpp + png.h：无依赖 zlib 的自带 PNG 写入器（存储块 deflate + adler32/crc32），将 DecodedFrame 的 RGBA 输出为 PNG；并新增 mpq-info/render_sprite.cpp，串联 CL2/CEL→CLX→RGBA→PNG，把 out/extracted 中已抽取精灵渲染为 PNG（需按 DevilutionX 动画表传入帧宽，如 warrior Stand=96）。验证：warrior 立姿渲染为 96×96 战士精灵（80 帧=8 方向×10 均可解码无错位）。PNG 编码器含 round-trip 单元测试；README §1 构建命令与 §5 使用说明同步更新。
+- 涉及: src/decoders/png.cpp, src/decoders/png.h, mpq-info/render_sprite.cpp, README.md, out/unit_tests.cpp, .gitignore

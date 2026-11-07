@@ -29,6 +29,8 @@ out/*.png
 out/*.bmp
 # base64 / 预览等运行输出文本
 out/*.txt
+# 从 mpq 中提取出的文件
+out/extracted/
 
 # ---------- MPQ 文件名恢复的生成产出（字典源文件保留） ----------
 # recovered.json / recovered/ 可由 mcp-server 的 mpq.recover 重建。
