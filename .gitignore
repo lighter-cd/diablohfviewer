@@ -1,0 +1,62 @@
+# ============================================================
+# DiabloHFConverter — Git 忽略列表
+# 只忽略「构建中间产物」与「运行产物」；源码、文档、参考数据均入库。
+# ============================================================
+
+# ---------- CMake 构建目录（mcp-server 产物） ----------
+build-mcp/
+build/
+cmake-build-*/
+
+# ---------- CMake 生成文件（若散落根目录） ----------
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# ---------- StormLib（vendored，独立 git 仓库）构建产物 ----------
+# 由 3rdparty/StormLib/build.sh 生成，重新运行即可重建。
+3rdparty/StormLib/build/
+
+# ---------- 运行产物 out/（构建/运行生成物，不入库） ----------
+# 手写单元自测源码 out/decode_test.cpp（.cpp，不被下列模式匹配）保持入库；
+# 手写 JSON 夹具/结果也保留，仅忽略真正由编译/解码产生的产物。
+# 编译出的测试可执行件（decode_test.exe 等）
+out/*.exe
+# 解码出的精灵图片
+out/*.png
+out/*.bmp
+# base64 / 预览等运行输出文本
+out/*.txt
+
+# ---------- MPQ 文件名恢复的生成产出（字典源文件保留） ----------
+# recovered.json / recovered/ 可由 mcp-server 的 mpq.recover 重建。
+mpq-info/dict/recovered.json
+mpq-info/dict/recovered/
+
+# ---------- 编译中间文件 ----------
+*.o
+*.obj
+*.exe
+# 注：mcp-server.exe 位于 build-mcp/ 已整体忽略；
+#     libStormLib.a 位于 3rdparty/StormLib/build/ 已整体忽略，
+#     故此处不必再列 *.a。
+
+# ---------- 编辑器 / IDE / OS 噪声 ----------
+.vscode/
+.idea/
+.vs/
+*.swp
+*.swo
+*~
+Thumbs.db
+Desktop.ini
+
+# ---------- 日志 ----------
+*.log
+
+# ---------- 疑似外来文件（来自其他项目，不应入库） ----------
+# 内容指向 packages/tools-996 / 996pc / Qdrant / mir2 等无关项目，
+# 与本项目无关；确认无用后可径直删除此文件。
+changed-history.txt

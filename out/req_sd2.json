@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"sprite.decode","arguments":{"archive":"D:/work/xt/diablo/DevilutionX-Hell Fire/devilutionx.mpq","name":"gendata\cut2w.clx"}}}

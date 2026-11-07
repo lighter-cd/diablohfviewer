@@ -1,0 +1,1 @@
+{"error":{"code":-32000,"data":{"error":"no palette supplied and none found (pass palette_name or palette_b64); tried gendata\\cut2w.pal"},"message":"tool execution failed"},"id":1,"jsonrpc":"2.0"}
