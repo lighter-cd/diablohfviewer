@@ -121,7 +121,7 @@ main { display: flex; height: calc(100vh - 52px); }
 canvas { background: transparent; image-rendering: pixelated; }
 
 /* Character viewer pane */
-.char-pane {
+.char-pane, .monster-pane {
   width: 320px;
   flex: 0 0 320px;
   display: flex;
@@ -130,7 +130,7 @@ canvas { background: transparent; image-rendering: pixelated; }
   border-right: 1px solid #3a3a42;
   padding: 10px 12px;
 }
-.char-pane[hidden] { display: none; }
+.char-pane[hidden], .monster-pane[hidden] { display: none; }
 .char-bar {
   padding: 8px 10px; margin: -10px -12px 10px;
   background: #2a2a32; border-bottom: 1px solid #3a3a42;

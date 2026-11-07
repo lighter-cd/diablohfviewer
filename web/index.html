@@ -39,6 +39,7 @@
       <span class="tb-label">浏览模式</span>
       <label><input type="radio" name="mode" value="catalog" checked> 目录浏览</label>
       <label><input type="radio" name="mode" value="character"> 角色查看器</label>
+      <label><input type="radio" name="mode" value="monster"> 怪物 / NPC 查看器</label>
     </div>
   </header>
 
@@ -74,6 +75,31 @@
         </label>
       </div>
       <div class="char-hint">选职业/动作后自动列出该职业真实存在的盔甲与武器组合；切换即解码并播放。</div>
+    </aside>
+
+    <aside class="monster-pane" id="monsterPane" hidden>
+      <div class="char-bar">怪物 / NPC 查看器（数据表枚举：monstdat.tsv / towners.tsv）</div>
+      <div class="char-controls">
+        <label>类型
+          <select id="monsterType">
+            <option value="monster">怪物 (Monster)</option>
+            <option value="npc">NPC (Towner)</option>
+          </select>
+        </label>
+        <label>MPQ
+          <select id="monsterArchive"></select>
+        </label>
+        <label id="monsterSelWrap">怪物
+          <select id="monsterSel"></select>
+        </label>
+        <label id="monsterAnimWrap">动作
+          <select id="monsterAnim"></select>
+        </label>
+        <label id="npcSelWrap" hidden>NPC
+          <select id="npcSel"></select>
+        </label>
+      </div>
+      <div class="char-hint">怪物按 monstdat 的动画字母枚举（Stand/Walk/Attack/Hit/Death/Special）；NPC 为单方向 .cel 精灵。选择即解码并播放，方向数取自解码返回的 directions。</div>
     </aside>
 
     <section class="stage">

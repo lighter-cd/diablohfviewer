@@ -386,6 +386,25 @@ build-mcp/mcp-server.exe --stdio --ws 18765      # 同时
    - **前端**：`web/` 新增「应用 TRN」开关 + TRN 预设下拉（职业默认 / infra 红外视觉 /
      stone 石化），默认关闭（原调色板模式）；开启即传 `apply_trn:true`，meta 行显示 `TRN: <name>`。
 
+4. **（阶段 3）怪物 / NPC 目录合成**（已实现，2026-11-07）
+   - 怪物（`monsters\`）与 NPC（`towners\`）精灵**没有 MPQ listfile**，无法像其它家族那样靠
+     哈希恢复真实名。故 `sprite.list` 在 `family:"monsters"` / `"towners"` 时**改从 DevilutionX
+     数据表合成目录**：
+     - 怪物：`monstdat.tsv` 的 `assetsSuffix` + `frames[6]`（逗号分隔的
+       Stand/Walk/Attack/GotHit/Death/Special 每方向帧数），配合固定 `Animletter="nwahds"`
+       （`n/w/a/h/d/s`）→ 每条 `monsters\{assetsSuffix}{L}.cl2`，带 `anim` 友好名、
+       `frames_per_dir` 与自动查表宽度（`monstdat.tsv` 的 `width` 列）。
+     - NPC：`towners.tsv` 的 `animPath`（已是 `towners\...` 全路径）+ `animWidth` →
+       `towners\{animPath}.cel`（单方向）；另硬编码 `towners\animals\cow.cel`（不在 TSV 内）。
+   - 合成条目复用 `recovered.json` 精灵条目的字段形状（`name/family/class/type/width`，
+     外加 `anim`/`frames_per_dir`），`archive_path` 留空——由前端怪物查看器的 **MPQ 下拉框**
+     指定实际解码用的 MPQ（怪物/NPC 真实存在于 DIABDAT.MPQ 等）。
+   - `sprite.decode` 对怪物额外返回 **`directions`** 字段 = `帧数 / monstdat 每方向帧数`
+     （如僵尸 Stand：88 帧 ÷ 11 = 8 方向），前端据此自动切分方向，无需手填。
+   - 已加入 `integration_tests.cpp`（`testSpriteListSynthesis` 断言合成含
+     `monsters\zombie\zombien.cl2` 且 `frames_per_dir==11`；`testSpriteDecodeMonster`
+     对真实 MPQ 断言 `directions==8` / `frame_count==88`）。
+
 ### 10.3 前端目录结构（JS ES Module + Canvas，零构建，无 Node 运行服务）
 
 > 阶段 2 脚手架已落地（见 `web/`）。实现要点：**纯 JavaScript ES Module**，浏览器
@@ -444,9 +463,12 @@ Archive 输入框——点选精灵即可直接解码，无需用户手填路径
    - 装备/特效**不做 alpha 合成**（D1 把武器/护甲 bake 进文件名前缀，组合浏览=枚举文件名）；
      技能特效（`lm`/`fm`/`qm`）作为可浏览动画纳入动作下拉。
    - 改动 `web/index.html` + `web/src/main.js` + `web/styles.css`，**后端无改动**。
-6. 查看器能力复用（阶段 3 目标）：
+6. 查看器能力复用（阶段 3 目标，已实现）：
    - 怪物/NPC 查看器复用同一 `sprite.list` + `sprite.decode` 链路，仅家族不同；
-     怪物方向数非固定 8，可在「方向数」控件手动调整。
+     新增「怪物 / NPC 查看器」浏览模式（`web/index.html` 第三单选 + `monsterPane` 面板）：
+     选 MPQ（来自目录归档的 `archive_path`）→ 选怪物 → 选动作（Stand/Walk/Attack/…）即解码播放。
+   - 怪物方向数由 `sprite.decode` 返回的 `directions` 字段**自动**切分（不再手填）；
+     NPC 为单方向 `.cel`。两者自动查表宽度（`monstdat.tsv` / `towners.tsv`）。
    - TRN 上色（见 §10.2.3，已实现）：`sprite.decode` 加 `apply_trn` 接入职业 TRN 与
      每精灵 TRN；前端「应用 TRN」开关可切换原调色板模式 / TRN 模式，meta 行显示应用状态。
 

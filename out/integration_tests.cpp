@@ -279,6 +279,45 @@ static void testSpriteList() {
     printf("sprite_tools (list): %s\n", allOk ? "PASS" : "FAIL");
 }
 
+// Monster / NPC catalog synthesis from the DevilutionX data tables. No MPQ is
+// needed (it reads monstdat.tsv / towners.tsv under the DevilutionX root, not
+// the game archives), so it runs even without game assets.
+static void testSpriteListSynthesis() {
+    ToolRegistry reg;
+    tools::registerSpriteTools(reg);
+    auto call = [&](const std::string& tool, const json& args) -> json {
+        auto resp = handleRequest(reg, json{
+            {"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/call"},
+            {"params", json{{"name", tool}, {"arguments", args}}}});
+        CHECK(resp.has_value(), ("tools/call " + tool + " returns response").c_str());
+        CHECK(!resp->contains("error"), ("tools/call " + tool + " no error").c_str());
+        return (*resp)["result"];
+    };
+
+    json mon = call("sprite.list", json{{"family", "monsters"}});
+    CHECK(mon.value("count", 0) > 0, "monster catalog synthesized (count > 0)");
+    bool hasZombie = false;
+    for (auto& s : mon["sprites"]) {
+        if (s.value("name", "") == "monsters\\zombie\\zombien.cl2") {
+            hasZombie = true;
+            CHECK(s.value("anim", "") == "Stand", "zombie Stand anim label == Stand");
+            CHECK(s.value("frames_per_dir", 0) == 11, "zombie Stand frames_per_dir == 11");
+            CHECK(s.value("width", 0) > 0, "zombie Stand width resolved > 0");
+        }
+    }
+    CHECK(hasZombie, "monster catalog includes monsters\\zombie\\zombien.cl2");
+
+    json twn = call("sprite.list", json{{"family", "towners"}});
+    CHECK(twn.value("count", 0) > 0, "towner catalog synthesized (count > 0)");
+    bool hasCow = false;
+    for (auto& s : twn["sprites"])
+        if (s.value("name", "") == "towners\\animals\\cow.cel")
+            hasCow = true;
+    CHECK(hasCow, "towner catalog includes hardcoded cow (towners\\animals\\cow.cel)");
+
+    printf("sprite_tools (synthesis): %s\n", allOk ? "PASS" : "FAIL");
+}
+
 // sprite.decode needs a real MPQ; gated by the caller. We probe the MPQ for a
 // real CLX sprite + a real palette name so the test is fixture-independent. CLX
 // carries its own dimensions, so no 'width' is needed. The CEL/CL2 width:"auto"
@@ -417,10 +456,85 @@ static void testSpriteDecodeTrn(const std::string& mpq) {
     printf("sprite_tools (trn): %s\n", allOk ? "PASS" : "FAIL");
 }
 
+// Monster direction count: sprite.decode returns `directions` = frame_count /
+// frames-per-dir (frames-per-dir looked up from monstdat.tsv by the sprite's
+// animation letter). Verified against the well-known zombie Stand animation
+// (11 frames/dir * 8 dirs = 88 frames -> directions 8).
+//
+// The repo's default devilutionx.mpq does not ship Diablo-1 monster CL2s, so
+// this test locates an MPQ that actually contains the zombie sprite (DIABDAT or
+// a user-supplied DHFC_TEST_MPQ) and SKIPs cleanly otherwise.
+static std::string findMonsterMpq() {
+    std::vector<std::string> cands;
+    if (const char* e = std::getenv("DHFC_TEST_MPQ"))
+        cands.push_back(e);
+    cands.push_back("/d/work/xt/diablo/DevilutionX-Hell Fire/devilutionx.mpq");
+    cands.push_back("/d/work/xt/diablo/DevilutionX-Hell Fire/DIABDAT.MPQ");
+    for (auto& c : cands) {
+        std::ifstream f(engine::Archive::normalizePath(c));
+        if (!f.good())
+            continue;
+        engine::Archive a;
+        if (a.open(c) && a.verify("monsters\\zombie\\zombien.cl2"))
+            return c;
+    }
+    return "";
+}
+
+static void testSpriteDecodeMonster() {
+    std::string mpq = findMonsterMpq();
+    if (mpq.empty()) {
+        printf("  (skipped monster dirs; no MPQ with monsters\\zombie\\zombien.cl2)\n");
+        printf("sprite_tools (monster dirs): %s\n", allOk ? "PASS" : "FAIL");
+        return;
+    }
+
+    ToolRegistry reg;
+    tools::registerMpqTools(reg);
+    tools::registerSpriteTools(reg);
+    auto call = [&](const std::string& tool, const json& args) -> json {
+        auto resp = handleRequest(reg, json{
+            {"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/call"},
+            {"params", json{{"name", tool}, {"arguments", args}}}});
+        CHECK(resp.has_value(), ("tools/call " + tool + " returns response").c_str());
+        CHECK(!resp->contains("error"), ("tools/call " + tool + " no error").c_str());
+        return (*resp)["result"];
+    };
+
+    // A palette is required to decode; reuse a known .pal from the MPQ.
+    static const char* palCands[] = {
+        "gendata\\cut2.pal", "levels\\l1data\\l1.pal", "plrgfx\\plrgfx1.pal"};
+    std::string palName;
+    for (const char* p : palCands) {
+        json v = call("mpq.verify", json{{"archive", mpq}, {"name", std::string(p)}});
+        if (v.value("exists", false)) { palName = p; break; }
+    }
+    CHECK(!palName.empty(), "monster fixture has a .pal for decoding");
+    if (palName.empty()) {
+        printf("sprite_tools (monster dirs): %s\n", allOk ? "PASS" : "FAIL");
+        return;
+    }
+
+    json dec = call("sprite.decode",
+                    json{{"archive", mpq},
+                         {"name", "monsters\\zombie\\zombien.cl2"},
+                         {"width", "auto"},
+                         {"palette_name", palName}});
+    CHECK(dec.value("format", std::string()) == "cl2", "zombie decode format == cl2");
+    // zombien = Stand animation: 11 frames/dir * 8 dirs = 88 frames.
+    CHECK(dec.value("frame_count", 0) == 88, "zombie Stand frame_count == 88");
+    CHECK(dec.value("directions", 0) == 8, "zombie Stand directions == 8");
+    CHECK(dec.value("frame_count", 0) % dec.value("directions", 1) == 0,
+          "frame_count divisible by directions");
+
+    printf("sprite_tools (monster dirs): %s\n", allOk ? "PASS" : "FAIL");
+}
+
 int main() {
     printf("=== DiabloHFConverter integration tests (engine + mpq_tools + sprite_tools) ===\n");
     testNormalize();
     testSpriteList();
+    testSpriteListSynthesis();
 
     std::string mpq = "/d/work/xt/diablo/DevilutionX-Hell Fire/devilutionx.mpq";
     if (const char* e = std::getenv("DHFC_TEST_MPQ"))
@@ -441,6 +555,7 @@ int main() {
     testMpqTools(mpq);
     testSpriteDecode(mpq);
     testSpriteDecodeTrn(mpq);
+    testSpriteDecodeMonster();
     printf("=== %s ===\n", allOk ? "ALL PASS" : "FAILURES PRESENT");
     return allOk ? 0 : 1;
 }

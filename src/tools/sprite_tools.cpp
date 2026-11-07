@@ -19,6 +19,7 @@
 #include <fstream>
 
 #include <algorithm>
+#include <set>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -109,6 +110,11 @@ std::vector<uint8_t> applyTrn(const std::vector<uint8_t>& pal,
 // the decode falls back to palette-only — faithful to the game, where player
 // tinting is a no-op for the base classes.
 std::string resolveTrnName(const mcp::json& params, const std::string& spriteName);
+
+// For a monster sprite, return the direction count (totalFrames / framesPerDir
+// from monstdat.tsv). Returns 0 when unknown (frontend falls back to 8).
+int monsterDirectionCount(const std::string& spriteName,
+                          const std::filesystem::path& devRoot);
 
 // Build a 768-byte RGB palette from raw bytes (768, 1024=RGBA, or >=768).
 std::vector<uint8_t> paletteFromBytes(const std::vector<uint8_t>& raw)
@@ -234,6 +240,12 @@ mcp::ToolResult toolSpriteDecode(const mcp::json& params)
     // "auto" (look up from DevilutionX data tables by the sprite path).
     int spriteWidth = 0;
     bool useAutoWidth = false;
+    // devRoot is needed both for autoWidth and for monster direction count, so
+    // declare it at function scope and (re)assign it here.
+    std::filesystem::path devRoot =
+        (params.contains("devilutionx_root") && params["devilutionx_root"].is_string())
+            ? std::filesystem::path(params["devilutionx_root"].get<std::string>())
+            : std::filesystem::path("D:/work/xt/diablo/DevilutionX");
     if (params.contains("width")) {
         const auto& w = params["width"];
         if (w.is_string())
@@ -242,10 +254,6 @@ mcp::ToolResult toolSpriteDecode(const mcp::json& params)
             spriteWidth = w.get<int>();
     }
     if (useAutoWidth) {
-        std::filesystem::path devRoot =
-            (params.contains("devilutionx_root") && params["devilutionx_root"].is_string())
-                ? std::filesystem::path(params["devilutionx_root"].get<std::string>())
-                : std::filesystem::path("D:/work/xt/diablo/DevilutionX");
         std::string dbg;
         spriteWidth = decoders::sprite_width::autoWidth(name, devRoot, dbg);
         if (spriteWidth <= 0)
@@ -348,12 +356,25 @@ mcp::ToolResult toolSpriteDecode(const mcp::json& params)
         }
     }
 
+    // For monster sprites, report the direction count so the viewer can split the
+    // flat frame list correctly. directionCount = totalFrames / framesPerDir,
+    // where framesPerDir comes from monstdat.tsv frames[6] for the sprite's
+    // animation letter. 0 means "unknown" (frontend falls back to 8).
+    int directions = 0;
+    {
+        int fpd = monsterDirectionCount(name, devRoot); // frames-per-dir, 0 if not a monster
+        if (fpd > 0 && !frames.empty())
+            directions = static_cast<int>(std::lround(
+                static_cast<double>(frames.size()) / static_cast<double>(fpd)));
+    }
+
     mcp::ToolResult r;
     r.value = mcp::json{ { "name", name },
                          { "format", format },
                          { "width", totalW },
                          { "height", totalH },
                          { "frame_count", static_cast<int>(frames.size()) },
+                         { "directions", directions },
                          { "palette_resolved", havePal },
                          { "trn_applied", trnApplied },
                          { "trn_name", trnNameResolved },
@@ -452,6 +473,17 @@ static SpriteInfo classifySprite(const std::string& name, bool& isSpriteExt) {
     return r;
 }
 
+int monsterDirectionCount(const std::string& spriteName,
+                         const std::filesystem::path& devRoot)
+{
+    bool isSpriteExt = false;
+    SpriteInfo si = classifySprite(spriteName, isSpriteExt);
+    if (si.family != "monsters" || si.cls.empty())
+        return 0;
+    std::string dbg;
+    return decoders::sprite_width::monsterFramesPerDir(spriteName, devRoot, dbg);
+}
+
 std::string resolveTrnName(const mcp::json& params, const std::string& spriteName)
 {
     if (!params.value("apply_trn", false))
@@ -468,9 +500,185 @@ std::string resolveTrnName(const mcp::json& params, const std::string& spriteNam
     return "";
 }
 
+// ---- Monster / NPC catalog synthesis ---------------------------------------
+// Monster and NPC (towner) sprites have no MPQ listfile, so their real names
+// cannot be recovered by hash verification like the rest of the catalog. Instead
+// we derive them from the DevilutionX data tables (monstdat.tsv / towners.tsv),
+// which the game itself uses to locate the files. Each synthesized entry mirrors
+// the shape of a recovered.json sprite entry so the frontend reuses its existing
+// tree / decode pipeline.
+//
+// Monster path formula (DevilutionX monster.cpp + Animletter="nwahds"):
+//   monsters\{assetsSuffix}{L}.cl2   L in n/w/a/h/d/s  (Stand/Walk/Attack/
+//   GotHit/Death/Special). frames[6] in monstdat.tsv lists frames-per-direction
+//   per MonsterGraphic index, in the same order.
+// Towner path formula (towners.cpp): towners\{animPath}.cel (animPath already
+// includes the towners\ prefix). The cow is a hardcoded special case.
+
+namespace {
+
+std::vector<std::string> splitTsvRow(const std::string& s) {
+    std::vector<std::string> out;
+    std::string cur;
+    for (char c : s) {
+        if (c == '\t' || c == '\r' || c == '\n') {
+            out.push_back(cur);
+            cur.clear();
+        } else {
+            cur.push_back(c);
+        }
+    }
+    out.push_back(cur);
+    return out;
+}
+
+int tsvCol(const std::vector<std::string>& header, const std::string& name) {
+    for (size_t i = 0; i < header.size(); i++)
+        if (header[i] == name)
+            return (int)i;
+    return -1;
+}
+
+// Build the monster catalog from monstdat.tsv (base + Hellfire mod).
+mcp::json synthesizeMonsters(const std::filesystem::path& devRoot) {
+    static const char letters[6] = {'n', 'w', 'a', 'h', 'd', 's'};
+    static const char* animNames[6] = {"Stand", "Walk", "Attack", "GotHit",
+                                       "Death", "Special"};
+    mcp::json out = mcp::json::array();
+    std::set<std::string> seen;
+    const std::vector<std::filesystem::path> files = {
+        devRoot / "assets" / "txtdata" / "monsters" / "monstdat.tsv",
+        devRoot / "mods" / "hf" / "txtdata" / "monsters" / "monstdat.tsv"};
+    for (const auto& f : files) {
+        std::ifstream in(f);
+        if (!in)
+            continue;
+        std::string line;
+        if (!std::getline(in, line))
+            continue;
+        auto header = splitTsvRow(line);
+        int ciSuffix = tsvCol(header, "assetsSuffix");
+        int ciFrames = tsvCol(header, "frames[6]");
+        if (ciSuffix < 0 || ciFrames < 0)
+            continue;
+        while (std::getline(in, line)) {
+            if (line.empty())
+                continue;
+            auto parts = splitTsvRow(line);
+            if ((int)parts.size() <= ciFrames)
+                continue;
+            std::string suffix = parts[ciSuffix];
+            if (suffix.empty())
+                continue;
+            // frames[6] is comma-separated: Stand,Walk,Attack,GotHit,Death,Special.
+            std::vector<std::string> fr;
+            std::string cur;
+            for (char c : parts[ciFrames]) {
+                if (c == ',') {
+                    fr.push_back(cur);
+                    cur.clear();
+                } else {
+                    cur.push_back(c);
+                }
+            }
+            fr.push_back(cur);
+            for (int i = 0; i < 6 && i < (int)fr.size(); i++) {
+                int fpd = std::atoi(fr[i].c_str());
+                if (fpd <= 0)
+                    continue;
+                char L = letters[i];
+                std::string name = "monsters\\" + suffix + std::string(1, L) + ".cl2";
+                if (!seen.insert(name).second)
+                    continue; // already emitted (e.g. base + hf duplicate)
+                std::string dbg;
+                int w = decoders::sprite_width::autoWidth(name, devRoot, dbg);
+                out.push_back(mcp::json{
+                    {"name", name},
+                    {"family", "monsters"},
+                    {"class", suffix},
+                    {"type", std::string(1, L)},
+                    {"anim", animNames[i]},
+                    {"frames_per_dir", fpd},
+                    {"width", w > 0 ? w : 0}});
+            }
+        }
+    }
+    return out;
+}
+
+// Build the NPC (towner) catalog from towners.tsv, plus the hardcoded cow.
+mcp::json synthesizeTowners(const std::filesystem::path& devRoot) {
+    mcp::json out = mcp::json::array();
+    std::set<std::string> seen;
+    const std::vector<std::filesystem::path> files = {
+        devRoot / "assets" / "txtdata" / "towners" / "towners.tsv",
+        devRoot / "mods" / "hf" / "txtdata" / "towners" / "towners.tsv"};
+    for (const auto& f : files) {
+        std::ifstream in(f);
+        if (!in)
+            continue;
+        std::string line;
+        if (!std::getline(in, line))
+            continue;
+        auto header = splitTsvRow(line);
+        int ciPath = tsvCol(header, "animPath");
+        int ciW = tsvCol(header, "animWidth");
+        int ciName = tsvCol(header, "name");
+        if (ciPath < 0)
+            continue;
+        while (std::getline(in, line)) {
+            if (line.empty())
+                continue;
+            auto parts = splitTsvRow(line);
+            if ((int)parts.size() <= ciPath)
+                continue;
+            std::string path = parts[ciPath];
+            if (path.empty())
+                continue;
+            int w = (ciW >= 0 && (int)parts.size() > ciW)
+                        ? std::atoi(parts[ciW].c_str())
+                        : 0;
+            std::string name = path + ".cel";
+            if (!seen.insert(name).second)
+                continue;
+            std::string disp = (ciName >= 0 && (int)parts.size() > ciName)
+                                  ? parts[ciName]
+                                  : path;
+            out.push_back(mcp::json{
+                {"name", name},
+                {"family", "towners"},
+                {"class", disp},
+                {"type", ""},
+                {"anim", "Idle"},
+                {"frames_per_dir", 1},
+                {"width", w}});
+        }
+    }
+    // The cow is hardcoded in DevilutionX towners.cpp (towners/animals/cow.cel);
+    // it is not in towners.tsv, so add it explicitly. Width is not tabulated —
+    // autoWidth falls back, so leave width 0 and let the viewer pass width:"auto".
+    {
+        std::string name = "towners\\animals\\cow.cel";
+        if (seen.insert(name).second)
+            out.push_back(mcp::json{{"name", name},
+                                    {"family", "towners"},
+                                    {"class", "cow"},
+                                    {"type", ""},
+                                    {"anim", "Idle"},
+                                    {"frames_per_dir", 1},
+                                    {"width", 0}});
+    }
+    return out;
+}
+
+} // namespace
+
 // Enumerate real sprite names (from recovered.json) grouped by family / class /
 // type, with the auto-resolved frame width. Frontend uses this to build its
 // catalog tree; it then calls sprite.decode(name, width:"auto") per leaf.
+//
+// When family is "monsters" or "towners", the names are synthesized from the
+// DevilutionX data tables instead (those sprites have no MPQ listfile).
 mcp::ToolResult toolSpriteList(const mcp::json& params)
 {
     std::string dictPath = params.value("dict", "mpq-info/dict/recovered.json");
@@ -499,7 +707,17 @@ mcp::ToolResult toolSpriteList(const mcp::json& params)
     // kind: "sprite" (default) | "palette" | "all"
 
     mcp::json sprites = mcp::json::array();
-    if (dict.contains("archives") && dict["archives"].is_array()) {
+    if (famFilter == "monsters" || famFilter == "towners") {
+        // Monsters / towners have no MPQ listfile, so synthesize their catalog
+        // from the DevilutionX data tables instead of recovered.json.
+        mcp::json synth = (famFilter == "monsters") ? synthesizeMonsters(devRoot)
+                                                     : synthesizeTowners(devRoot);
+        for (auto& s : synth) {
+            if (!classFilter.empty() && s.value("class", "") != classFilter)
+                continue;
+            sprites.push_back(s);
+        }
+    } else if (dict.contains("archives") && dict["archives"].is_array()) {
         for (auto& arch : dict["archives"]) {
             std::string archName = arch.value("name", "");
             std::string archPath = arch.value("path", "");

@@ -42,6 +42,15 @@ bool playerTypeToColumn(const std::string& type, char weaponChar, std::string& c
 int autoWidth(const std::string& spritePath, const std::filesystem::path& devRoot,
               std::string& dbg);
 
+// For a monster sprite path (monsters\<suffix><L>.cl2, L in n/w/a/h/d/s), return
+// the frames-per-direction for its animation letter by looking up monstdat.tsv's
+// frames[6] column. The MonsterGraphic order (Stand, Walk, Attack, GotHit, Death,
+// Special) maps to n/w/a/h/d/s. Returns 0 if unknown or the tables are absent
+// (dbg holds a human-readable reason). Used by sprite.decode to report the
+// direction count (directionCount = totalFrames / framesPerDir).
+int monsterFramesPerDir(const std::string& spritePath,
+                        const std::filesystem::path& devRoot, std::string& dbg);
+
 } // namespace sprite_width
 } // namespace decoders
 

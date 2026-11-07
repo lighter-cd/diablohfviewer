@@ -431,9 +431,16 @@ DiabloHFConverter/
 - [x] 产出：按“职业 × 动作 × 装备 × 技能特效”组合的查看数据（浏览器内实时查看；非合成位图）。
 
 ### 阶段 3：怪物 / NPC 查看器（目标 3）
-- [ ] 枚举怪物/NPC 精灵与动画模式。
-- [ ] 怪物技能动作与特效叠加。
-- [ ] 产出：怪物/NPC 查看数据。
+- [x] 枚举怪物/NPC 精灵与动画模式：`sprite.list(family:"monsters"/"towners")` 由 DevilutionX 数据表
+      （`monstdat.tsv` / `towners.tsv`）**合成**目录——因怪物/NPC 无 MPQ listfile，无法靠哈希恢复，
+      故从数据表推导精灵名。怪物按动画字母 `n/w/a/h/d/s`（Stand/Walk/Attack/Hit/Death/Special，
+      来自 `frames[6]` 与 `Animletter="nwahds"`）枚举，每条带 `frames_per_dir` 与自动查表宽度；
+      NPC 为单方向 `.cel`（含硬编码的 `towners/animals/cow.cel`）。见 `web/` 新增「怪物 / NPC 查看器」
+      模式：选 MPQ → 选怪物 → 选动作即解码并播放，方向数取自解码返回的 `directions`。
+- [ ] 怪物技能动作与特效叠加：动画模式已枚举并按 8 方向播放；特效叠加层（如 `lm`/`fm` 类）**未**做
+      alpha 合成到怪物帧上，沿用「勿过度设计通用合成器」原则，仅作可浏览动画（与角色查看器一致）。
+- [x] 产出：怪物/NPC 查看数据（浏览器内实时查看；后端 `directions` 字段由 `monstdat.tsv` 的
+      `frames[6]` 切分方向，如僵尸 Stand=11 帧/方向 × 8 方向 = 88 帧 → `directions=8`）。
 
 ### 阶段 4：地图还原（目标 1）
 - [ ] 解码 TIL / MIN / DUN，移植 `levels/` 的拼接逻辑。

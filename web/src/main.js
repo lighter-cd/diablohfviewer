@@ -45,6 +45,14 @@ let lastSprite = null;      // last selected sprite (re-decode when palette chan
 let lastSprites = [];       // last sprite.list payload (re-group without re-fetch)
 let currentMode = "family"; // catalog grouping: "family" (combined) | "mpq" (by package)
 
+// Archive paths discovered from the catalog (each sprite carries archive_path).
+// The monster/NPC viewer lets the user pick which MPQ to decode from, since
+// monster/towner names are synthesized from data tables and carry no archive.
+let allArchives = [];
+
+// Monster catalog grouped by class: class -> [{ name, anim, fpd, type }].
+let monsterMap = null;
+
 // 8-direction animation state.
 let currentDirections = 1;  // number of directions the current sprite is split into
 let framesPerDir = 1;       // frames per direction (total / directions)
@@ -117,6 +125,13 @@ async function loadCatalog() {
     lastSprites = sprites;
     renderCurrentCatalog();
     setMeta(`catalog: ${res.count ?? sprites.length} sprites`);
+    // Collect the distinct archive paths so the monster/NPC viewer can offer an
+    // MPQ selector (synthesized monster/towner entries have no archive of their own).
+    allArchives = [];
+    for (const s of sprites) {
+      const p = s.archive_path;
+      if (p && !allArchives.includes(p)) allArchives.push(p);
+    }
     await loadPalettes();
     await loadCharacterData();   // build the class/action/armor/weapon index
   } catch (e) {
@@ -288,6 +303,124 @@ async function showCharacterSprite() {
   onSelectSprite({ name, archive_path: e.archivePath, family: "plrgfx", class: cp });
 }
 
+// ---- Monster / NPC viewer --------------------------------------------------
+
+function populateMonsterArchive() {
+  const sel = $("monsterArchive");
+  sel.innerHTML = "";
+  for (const a of allArchives) {
+    const o = document.createElement("option");
+    o.value = a;
+    o.textContent = basename(a);
+    o.title = a;
+    sel.appendChild(o);
+  }
+  if (allArchives.length === 0) {
+    const o = document.createElement("option");
+    o.value = "";
+    o.textContent = "（无可用 MPQ）";
+    sel.appendChild(o);
+  }
+}
+
+// Build the monster dropdown from sprite.list(family:"monsters"): group every
+// (monster, animation) entry by class, so the user first picks a monster and then
+// a specific animation (Stand/Walk/Attack/...).
+async function populateMonsters() {
+  const sel = $("monsterSel");
+  sel.innerHTML = "";
+  monsterMap = new Map();
+  try {
+    const res = await client.callTool("sprite.list", { family: "monsters" });
+    const sprites = (res && res.sprites) || [];
+    for (const s of sprites) {
+      const c = s.class || "?";
+      if (!monsterMap.has(c)) monsterMap.set(c, []);
+      monsterMap.get(c).push(s);
+    }
+  } catch (e) {
+    console.warn("monster list failed:", e.message);
+  }
+  for (const c of [...monsterMap.keys()].sort()) {
+    const o = document.createElement("option");
+    o.value = c;
+    o.textContent = c;
+    sel.appendChild(o);
+  }
+  fillMonsterAnims();
+}
+
+// Populate the animation dropdown for the currently selected monster class.
+function fillMonsterAnims() {
+  const cls = $("monsterSel").value;
+  const list = (monsterMap && monsterMap.get(cls)) || [];
+  const sel = $("monsterAnim");
+  sel.innerHTML = "";
+  for (const s of list) {
+    const o = document.createElement("option");
+    o.value = s.name;
+    o.textContent = `${s.anim || s.type} (${s.frames_per_dir || "?"} 帧/方向)`;
+    o.title = s.name;
+    sel.appendChild(o);
+  }
+}
+
+// Build the NPC (towner) dropdown from sprite.list(family:"towners").
+async function populateNPCs() {
+  const sel = $("npcSel");
+  sel.innerHTML = "";
+  try {
+    const res = await client.callTool("sprite.list", { family: "towners" });
+    const sprites = (res && res.sprites) || [];
+    for (const s of sprites) {
+      const o = document.createElement("option");
+      o.value = s.name;
+      o.textContent = `${s.class || basename(s.name)}  (${basename(s.name)})`;
+      o.title = s.name;
+      sel.appendChild(o);
+    }
+  } catch (e) {
+    console.warn("towner list failed:", e.message);
+  }
+}
+
+// Decode the selected monster (family monsters, directions from backend).
+function showMonsterSprite() {
+  const archive = $("monsterArchive").value;
+  const name = $("monsterAnim").value;
+  if (!name) return;
+  onSelectSprite({ name, archive_path: archive, family: "monsters", class: $("monsterSel").value });
+}
+
+// Decode the selected NPC (family towners, single direction).
+function showNpcSprite() {
+  const archive = $("monsterArchive").value;
+  const name = $("npcSel").value;
+  if (!name) return;
+  onSelectSprite({ name, archive_path: archive, family: "towners", class: "npc" });
+}
+
+// Enter the monster/NPC viewer: populate the MPQ + monster/NPC dropdowns, then
+// decode the first entry.
+async function showMonsterView() {
+  if (!allArchives.length) {
+    showError("尚无 MPQ 列表（请先在 目录浏览 模式加载目录）。");
+    return;
+  }
+  populateMonsterArchive();
+  const wantNpc = $("monsterType").value === "npc";
+  $("monsterSelWrap").hidden = wantNpc;
+  $("monsterAnimWrap").hidden = wantNpc;
+  $("npcSelWrap").hidden = !wantNpc;
+  if (wantNpc) {
+    await populateNPCs();
+    showNpcSprite();
+  } else {
+    await populateMonsters();
+    showMonsterSprite();
+  }
+}
+
 // ---- Decode + 8-direction playback -----------------------------------------
 
 async function onSelectSprite(sprite) {
@@ -356,7 +489,12 @@ async function onSelectSprite(sprite) {
 function applyDecoded(res, sprite) {
   currentFrames = res.frames;
   lastRes = res;
-  const dirs = (sprite && sprite.family === "plrgfx") ? 8 : 1;
+  // Prefer the direction count the backend computed (monsters report their real
+  // direction count from monstdat; player CL2 are fixed 8-direction). Fall back to
+  // the historical heuristic when the field is absent.
+  const dirs = (res && res.directions && res.directions > 0)
+    ? res.directions
+    : ((sprite && sprite.family === "plrgfx") ? 8 : 1);
   currentDir = 0;
   currentFin = 0;
   setDirections(dirs);
@@ -431,15 +569,19 @@ function wireControls() {
     }
   });
 
-  // Browse-mode toggle: Catalog pane vs Character pane.
+  // Browse-mode toggle: Catalog vs Character vs Monster/NPC panes.
   document.querySelectorAll('input[name="mode"]').forEach((r) => {
     r.addEventListener("change", (e) => {
       if (!e.target.checked) return;
       const character = e.target.value === "character";
-      $("catalogPane").hidden = character;
+      const monster = e.target.value === "monster";
+      $("catalogPane").hidden = character || monster;
       $("charPane").hidden = !character;
-      applyPaletteFilter(character); // character mode: level palettes only
+      $("monsterPane").hidden = !monster;
+      // Both character and monster modes want level palettes (correct colours).
+      applyPaletteFilter(character || monster);
       if (character) showCharacterSprite();
+      if (monster) showMonsterView();
     });
   });
 
@@ -500,6 +642,19 @@ function wireControls() {
       showCharacterSprite();
     });
   });
+
+  // Monster / NPC viewer controls.
+  $("monsterType").addEventListener("change", () => showMonsterView());
+  $("monsterArchive").addEventListener("change", () => {
+    if ($("monsterType").value === "npc") showNpcSprite();
+    else showMonsterSprite();
+  });
+  $("monsterSel").addEventListener("change", () => {
+    fillMonsterAnims();
+    showMonsterSprite();
+  });
+  $("monsterAnim").addEventListener("change", () => showMonsterSprite());
+  $("npcSel").addEventListener("change", () => showNpcSprite());
 }
 
 wireControls();

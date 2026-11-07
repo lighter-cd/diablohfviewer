@@ -274,5 +274,99 @@ int autoWidth(const std::string& spritePath, const std::filesystem::path& devRoo
     return -1;
 }
 
+int monsterFramesPerDir(const std::string& spritePath,
+                        const std::filesystem::path& devRoot, std::string& dbg) {
+    std::string p = spritePath;
+    for (char& c : p)
+        if (c == '\\')
+            c = '/';
+    auto splitSlash = [](const std::string& s) {
+        std::vector<std::string> out;
+        std::string cur;
+        for (char c : s) {
+            if (c == '/') {
+                out.push_back(cur);
+                cur.clear();
+            } else {
+                cur.push_back(c);
+            }
+        }
+        out.push_back(cur);
+        return out;
+    };
+    std::vector<std::string> comps = splitSlash(p);
+    int idx = -1;
+    for (size_t i = 0; i < comps.size(); i++)
+        if (comps[i] == "monsters") {
+            idx = (int)i;
+            break;
+        }
+    if (idx < 0) {
+        dbg = "not a monsters/ sprite path";
+        return 0;
+    }
+    // rel = assetsSuffix + trailing animation letter L (e.g. "zombie\\zombieN").
+    std::string rel;
+    for (int i = idx + 1; i < (int)comps.size(); i++) {
+        if (!rel.empty())
+            rel += '\\';
+        rel += comps[i];
+    }
+    size_t dot = rel.rfind('.');
+    if (dot != std::string::npos)
+        rel = rel.substr(0, dot);
+    if (rel.size() < 2) {
+        dbg = "monster name too short";
+        return 0;
+    }
+    std::string suffix = rel.substr(0, rel.size() - 1); // assetsSuffix
+    char L = rel.back();                                 // animation letter
+    // MonsterGraphic order: Stand, Walk, Attack, GotHit, Death, Special
+    // Animletter "nwahds" maps them to letters.
+    int animIndex = -1;
+    switch (L) {
+        case 'n': animIndex = 0; break;
+        case 'w': animIndex = 1; break;
+        case 'a': animIndex = 2; break;
+        case 'h': animIndex = 3; break;
+        case 'd': animIndex = 4; break;
+        case 's': animIndex = 5; break;
+        default: animIndex = -1; break;
+    }
+    if (animIndex < 0) {
+        dbg = "unknown monster anim letter '" + std::string(1, L) + "'";
+        return 0;
+    }
+    const std::vector<std::filesystem::path> monFiles = {
+        devRoot / "assets" / "txtdata" / "monsters" / "monstdat.tsv",
+        devRoot / "mods" / "hf" / "txtdata" / "monsters" / "monstdat.tsv",
+    };
+    for (const auto& f : monFiles) {
+        std::string frames = lookupInTsv(f, "assetsSuffix", suffix, "frames[6]");
+        if (frames.empty())
+            continue;
+        // frames[6] is comma-separated: stand,walk,attack,hit,death,special
+        std::vector<std::string> parts;
+        std::string cur;
+        for (char c : frames) {
+            if (c == ',') {
+                parts.push_back(cur);
+                cur.clear();
+            } else {
+                cur.push_back(c);
+            }
+        }
+        parts.push_back(cur);
+        if ((int)parts.size() > animIndex) {
+            int fpd = atoi(parts[animIndex].c_str());
+            dbg = "monster " + suffix + " anim '" + std::string(1, L) +
+                  "' framesPerDir=" + std::to_string(fpd);
+            return fpd;
+        }
+    }
+    dbg = "monster assetsSuffix '" + suffix + "' not found in monstdat";
+    return 0;
+}
+
 } // namespace sprite_width
 } // namespace decoders

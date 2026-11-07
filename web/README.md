@@ -4,9 +4,9 @@
 只通过 WebSocket 调用本地 `mcp-server` 暴露的 `sprite.*` / `palette.*` 工具，
 拿到 RGBA 帧后用 Canvas 绘制。
 
-> 阶段 2 的浏览器查看器：支持「选精灵 → 看单帧 / 8 方向播放」，并提供独立的
-> 「角色查看器」面板（职业 × 动作 × 盔甲/武器 组合浏览）。技能特效（`lm`/`fm`/`qm`）
-> 作为可浏览动画纳入；TRN 上色为后续增强。
+> 阶段 2/3 的浏览器查看器：支持「选精灵 → 看单帧 / 8 方向播放」，并提供「角色查看器」
+> （职业 × 动作 × 盔甲/武器）与「怪物 / NPC 查看器」（怪物按动画字母枚举 + NPC 单方向精灵）
+> 三种浏览模式。技能特效（`lm`/`fm`/`qm`）作为可浏览动画纳入；TRN 上色已实装为开关。
 
 ## 运行
 
@@ -27,6 +27,8 @@ python -m http.server 8000        # 或： npx serve .
 - **目录浏览**（默认）：左侧目录树由 `sprite.list` 构建；点任一精灵即调用 `sprite.decode`
   并绘制，用下方「方向 / 帧」滑块翻看，或点「▶ 播放」循环播放当前方向的动画。
 - **角色查看器**：见下方独立章节。
+- **怪物 / NPC 查看器**：见下方独立章节。怪物/NPC 没有 MPQ listfile，目录由后端按
+  DevilutionX 数据表（`monstdat.tsv` / `towners.tsv`）**合成**（`sprite.list(family:"monsters"/"towners")`）。
 
 目录树支持两种分组方式，可在左侧顶部「分组」处切换：
 
@@ -61,6 +63,25 @@ python -m http.server 8000        # 或： npx serve .
 切换任意一项即按公式 `plrgfx\{class}\{c}{a}{w}\{c}{a}{w}{type}.cl2` 拼路径并解码，
 再用上方 8 方向控件播放。装备/特效**不做 alpha 合成**——它们本就是独立精灵文件，
 「组合浏览」等价于枚举不同文件名（符合 D1 把武器/护甲 bake 进文件名前缀的设计）。
+
+### 怪物 / NPC 查看器（浏览模式）
+
+怪物（`monsters\`）与 NPC（`towners\`）精灵**没有 MPQ listfile**，后端无法靠哈希恢复其
+真实名，因此「怪物 / NPC 查看器」模式下的目录由后端从 DevilutionX 数据表**合成**：
+
+1. **类型**：怪物（Monster）/ NPC（Towner）二选一。
+2. **MPQ**：选解码所用的 MPQ 包（取自目录归档的 `archive_path`，怪物/NPC 真实存在于
+   `DIABDAT.MPQ` 等；合成条目本身不携带 `archive_path`）。
+3. **怪物**（选「怪物」时）：先选怪物（按 `monstdat.tsv` 的 `assetsSuffix` 分组，如
+   `zombie\zombie`），再选**动作**——按动画字母 `n/w/a/h/d/s` 枚举，友好名为
+   Stand / Walk / Attack / Hit / Death / Special（Special 仅当 `frames[6]` 末项 > 0 时存在），
+   下拉项附 `帧/方向` 数。切换即 `sprite.decode(name,width:"auto")` 并播放。
+4. **NPC**（选「NPC」时）：列出 `towners.tsv` 的 `animPath`（如铁匠 Griswold、医师 Pepin…）
+   及硬编码的 `towners\animals\cow.cel`，均为单方向 `.cel`，解码后逐帧/播放。
+
+怪物方向数不再手填：后端 `sprite.decode` 按 `monstdat` 的 `frames[6]` 切分并返回
+**`directions`** 字段（如僵尸 Stand：88 帧 ÷ 11 帧/方向 = 8 方向），前端据此自动切分；
+NPC 固定单方向。两者宽度均由后端自动查表（`monstdat.tsv` / `towners.tsv`）。
 
 ## 目录结构（纯静态，无 Node 运行服务）
 
@@ -105,8 +126,8 @@ web/
 - `sprite.list` 一并返回 `archive_path`（取自 recovered.json 的档案 `path`），`main.js`
   直接用它对 `sprite.decode` 解码——点选精灵即可直接解码，无需手填路径。
   （缺失时错误条会提示，便于排查 recovered.json 数据问题。）
-- 调色板下拉框在**角色查看器模式**下已预筛选为「关卡调色板」（`levels\*`/`nlevels\*`），
-  目录浏览模式下列出全部 `.pal`；这是保真折中——玩家精灵只有在关卡调色板下颜色才正确。
+- 调色板下拉框在**角色查看器 / 怪物查看器模式**下已预筛选为「关卡调色板」（`levels\*`/`nlevels\*`），
+  目录浏览模式下列出全部 `.pal`；这是保真折中——玩家/怪物精灵只有在关卡调色板下颜色才正确。
 - **TRN 上色已实现（开关切换）**：控制条新增「应用 TRN」复选框 + TRN 预设下拉
   （职业默认 / infra 红外视觉 / stone 石化），默认关闭（原调色板模式）。开启后 `sprite.decode`
   传 `apply_trn:true`，后端取 256 字节 TRN 重映射调色板后解码；meta 行显示 `TRN: <name>`。

@@ -453,6 +453,14 @@ static void testSpriteWidth()
         // DevilutionX quirk: MPQ folder "sorceror" maps to class dir "sorcerer".
         int ws = decoders::sprite_width::autoWidth("plrgfx\\sorceror\\sha\\shaas.cl2", dev, dbg);
         if (ws != 96) { allOk = false; ok = false; printf("  autoWidth sorceror(->sorcerer) stand expected 96 got %d (%s)\n", ws, dbg.c_str()); }
+        // monsterFramesPerDir: zombie stand 'n' -> frames[6] index 0 = 11.
+        int fpdN = decoders::sprite_width::monsterFramesPerDir("monsters\\zombie\\zombien.cl2", dev, dbg);
+        if (fpdN != 11) { allOk = false; ok = false; printf("  monsterFramesPerDir zombie n expected 11 got %d (%s)\n", fpdN, dbg.c_str()); }
+        // zombie walk 'w' -> index 1 = 24; death 'd' -> index 4 = 16.
+        int fpdW = decoders::sprite_width::monsterFramesPerDir("monsters\\zombie\\zombiew.cl2", dev, dbg);
+        if (fpdW != 24) { allOk = false; ok = false; printf("  monsterFramesPerDir zombie w expected 24 got %d (%s)\n", fpdW, dbg.c_str()); }
+        int fpdD = decoders::sprite_width::monsterFramesPerDir("monsters\\zombie\\zombied.cl2", dev, dbg);
+        if (fpdD != 16) { allOk = false; ok = false; printf("  monsterFramesPerDir zombie d expected 16 got %d (%s)\n", fpdD, dbg.c_str()); }
     } else {
         printf("  (sprite_width autoWidth: SKIP, DevilutionX not found at %s)\n", dev.string().c_str());
     }
