@@ -115,3 +115,8 @@
 - 重构前端左侧资源树：① 所有分支节点改为可展开/收起，且默认收起（点击节点标题切换，▶/▼ 指示）；② 新增「按 MPQ 包」分组方式（先按精灵所属 MPQ，再按档案内目录路径逐层展开），可在目录树顶部「分组」处与原有的「按类型合并」(family→class→type) 切换，切换仅用前端缓存的 sprite.list 结果重建树、无需重新请求后端；③ 新增「展开全部 / 收起全部」按钮。catalog.js 改为统一的节点映射（buildTree 支持 mode 参数）+ 通用可折叠渲染（renderCatalog / setAllExpanded）；main.js 增加 currentMode / lastSprites 状态与切换、展开/收起绑定；index.html 增加分组单选与按钮；styles.css 增加 .catalog-pane/.catalog-bar/.cat-head 样式。
 - 涉及: web/src/catalog.js, web/src/main.js, web/index.html, web/styles.css, web/README.md, docs/ARCHITECTURE.md
 - 验证：node 语法检查（catalog.js/main.js 为 ES module）通过；用临时 node 脚本对 buildTree 两种模式做结构断言（按类型：family→class→type→精灵；按 MPQ：MPQ→目录→精灵）均正确，验证后删除临时脚本；后端 unit/core/integration 三套件仍全 PASS（本轮无 C++ 改动）。浏览器内的实际渲染需静态服务器托管 web/ 后肉眼确认。
+
+## 2026-11-07 22:05:34
+- 让状态栏 meta 显示「当前帧」尺寸而非整张 sheet 尺寸：此前 meta 用的是 sprite.decode 返回的整表宽高（如 bluexfr.cl2 的 160×2432=19 帧总和），用户以为高度异常。改为在 showFrame 中按当前帧 currentFrames[idx] 的 f.width×f.height 刷新 meta（格式：<名> <格式> 帧 WxH <帧数> frames），拖动 Frame 滑块时逐帧更新；为此新增 lastRes 状态暂存上次解码结果供 meta 重建。仅前端 web/src/main.js 改动，无 C++ 改动。
+- 涉及: web/src/main.js
+- 验证：node --check（ES module 语法）通过；后端 unit/core/integration 三套件仍全 PASS（无 C++ 改动）。

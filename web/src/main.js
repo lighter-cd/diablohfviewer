@@ -17,6 +17,7 @@ const DECODABLE = new Set(["cl2", "cel", "clx", "pcx"]);
 
 const client = new McpClient();
 let currentFrames = null;   // last decode result frames, for the frame slider
+let lastRes = null;         // last decode result (format/width/height) for meta rebuild
 let lastSprite = null;      // last selected sprite (re-decode when palette changes)
 let lastSprites = [];       // last sprite.list payload (re-group without re-fetch)
 let currentMode = "family"; // catalog grouping: "family" (combined) | "mpq" (by package)
@@ -152,13 +153,14 @@ async function onSelectSprite(sprite) {
     }
     hideError();
     currentFrames = res.frames;
+    lastRes = res;
+    lastFrameIdx = 0;
     const max = currentFrames.length - 1;
     const slider = $("frame");
     slider.max = String(max);
     slider.value = "0";
     $("frameNo").textContent = "0 / " + max;
     showFrame(0);
-    setMeta(`${sprite.name}  ${res.format}  ${res.width}×${res.height}  ${currentFrames.length} frames`);
   } catch (e) {
     // Surface the real reason instead of failing silently (e.g. width auto failed,
     // extract failed, palette not found…).
@@ -173,6 +175,16 @@ function showFrame(idx) {
   drawFrame($("canvas"), f.rgba_base64, f.width, f.height);
   fitCanvas($("canvas"), 384);
   $("frameNo").textContent = idx + " / " + (currentFrames.length - 1);
+  updateMeta(idx);
+}
+
+// Meta line reflects the CURRENT frame's size (not the whole sheet), so the
+// user can see per-frame dimensions as they scrub the slider.
+function updateMeta(idx) {
+  if (!lastRes || !currentFrames || !lastSprite) return;
+  const f = currentFrames[idx];
+  if (!f) return;
+  setMeta(`${lastSprite.name}  ${lastRes.format}  帧 ${f.width}×${f.height}  ${currentFrames.length} frames`);
 }
 
 function wireControls() {
