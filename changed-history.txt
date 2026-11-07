@@ -63,3 +63,7 @@
 ## 2026-11-07 16:41:14
 - 提交此前遗留的 AGENTS.md 改动：在"文档同步"规则中补充一行"docs/PROJECT.md 中记载当前进度列表，完成的项目需要在其中标记为完成。"（明确完成后需在 PROJECT.md 勾除进度项）。
 - 涉及: AGENTS.md
+
+## 2026-11-07 17:33:53
+- 为 render_sprite 实现帧宽自动查表：<width> 传 `auto` 时按精灵路径判定家族（plrgfx/monsters/missiles/objects/towners），分别从 sprites.tsv/monstdat.tsv/missile_sprites.tsv/objdat.tsv/towners.tsv 取宽；items(CEL) 无宽度表仍手填。同步更新 README §5 与 docs/PROJECT.md 阶段1 说明。
+- 涉及: mpq-info/render_sprite.cpp, README.md, docs/PROJECT.md

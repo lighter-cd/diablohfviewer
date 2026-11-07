@@ -166,26 +166,36 @@ out/recover_phase0.exe [devilutionx_root] [mpq_root]
 
 > 注意：CL2/CEL 文件**不存储帧宽**，需按 DevilutionX 动画表传入 `width`
 > （如 warrior Stand=96、Attack/Death=128，详见各 `sprites.tsv` 的 `stand`/`attack`…列；
-> 怪物/导弹/物品/物件/NPC 各有对应宽度）。调色板用任意 256 色 `.pal` 即可出形，
-> 选对游戏调色板则颜色正确。
+> 怪物/导弹/物品/物件/NPC 各有对应宽度）。把 `<width>` 写成 `auto` 即可让工具按
+> 精灵路径自动查表取宽，无需手填；物品（CEL）无宽度表，仍需手填数字。调色板用任意
+> 256 色 `.pal` 即可出形，选对游戏调色板则颜色正确。
 
 ```bash
-g++ -I 3rdparty -I 3rdparty/StormLib/src -I src -std=c++17 \
+g++ -I 3rdparty -I 3rdparty/StormLib/src -I src -std=c++17 -static \
     mpq-info/render_sprite.cpp \
     src/decoders/clx.cpp src/decoders/cl2.cpp src/decoders/cel.cpp \
     src/decoders/pcx.cpp src/decoders/palette.cpp src/decoders/png.cpp \
     -o out/render_sprite.exe
+# 用法: render_sprite <sprite> <palette.pal> <width|auto> [out.png] [frameIndex] [devilutionx_root]
+# 自动查表（width 传 auto，默认 devilutionx_root = D:/work/xt/diablo/DevilutionX）
 out/render_sprite.exe \
     out/extracted/DIABDAT/plrgfx/warrior/wlu/wluas.cl2 \
-    out/extracted/devilutionx/ui_art/diablo.pal 96 \
+    out/extracted/devilutionx/ui_art/diablo.pal auto \
     out/render/warrior_stand.png
-# 用法: render_sprite <sprite> <palette.pal> <width> [out.png] [frameIndex]
+# 手动覆盖（数字宽度；如 Attack/Death 用 128）
+out/render_sprite.exe \
+    out/extracted/DIABDAT/plrgfx/warrior/wlu/wluat.cl2 \
+    out/extracted/devilutionx/ui_art/diablo.pal 128 \
+    out/render/warrior_attack.png 0
 ```
 
 - 源码路径：`mpq-info/render_sprite.cpp` + `src/decoders/png.cpp`；PNG 编码器含于单元测试
   （writePNG → 回读校验 round-trip）。
-- 已验证：`plrgfx\warrior\wlu\wluas.cl2` 渲染为 96×96 战士立姿精灵（含盾牌），
-  80 帧（8 方向 × 10）均可解码无错位。
+- 自动查表覆盖 5 类精灵：`plrgfx`（按 `sprites.tsv` 的 `stand`/`walk`/`attack`(含 `bow`)/`swHit`/`lightning`/`fire`/`magic`/`death`/`block` 列）、`monsters`（按 `monstdat.tsv` 的 `width`）、`missiles`（按 `missile_sprites.tsv` 的 `width`）、`objects`（按 `objdat.tsv` 的 `animWidth`）、`towners`（按 `towners.tsv` 的 `animWidth`）。`items` 无宽度表，需手填。
+- 已验证：`plrgfx\warrior\wlu\wluas.cl2` 自动查表取宽 96 渲染为 96×96 战士立姿精灵（含盾牌），
+  80 帧（8 方向 × 10）均可解码无错位；怪物 `monsters\acid\acida.cl2`（宽 128）、导弹
+  `missiles\arrows.cl2`（宽 96）、物件 `objects\armstand.cel`（宽 96）、NPC `towners\drunk\twndrunk.cel`
+  （宽 96）均经自动查表渲染成功。
 
 ## 开发文档
 

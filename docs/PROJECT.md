@@ -374,8 +374,13 @@ DiabloHFConverter/
       渲染为 96×96 战士立姿（80 帧 = 8 方向×10 均可解码无错位）。
   - **注意**：CL2/CEL 文件**不存储帧宽**，渲染时需按 DevilutionX 动画表传入 `width`
     （如 warrior Stand=96、Attack/Death=128，见各 `sprites.tsv` 的 `stand`/`attack`… 列；
-    怪物/导弹/物品/物件/NPC 各有对应宽度）。调色板用任意 256 色 `.pal` 即可出形，
-    选对游戏调色板则颜色正确。
+    怪物/导弹/物品/物件/NPC 各有对应宽度）。**`render_sprite` 已支持把 `<width>` 传 `auto` 自动查表**：
+    按精灵路径判定家族（`plrgfx`/`monsters`/`missiles`/`objects`/`towners`），分别从
+    `sprites.tsv`(`stand`/`walk`/`attack`(含武器为 `bow`)/`swHit`/`lightning`/`fire`/`magic`/`death`/`block`)、
+    `monstdat.tsv`(`width`)、`missile_sprites.tsv`(`width`)、`objdat.tsv`(`animWidth`)、
+    `towners.tsv`(`animWidth`) 取宽；`items`(CEL) 无宽度表，仍需手填。`towners/animals/cow.cel`
+    是 `towners.cpp` 硬编码特例，不在 TSV 中，自动查表会回退到手动宽度。
+  - 调色板用任意 256 色 `.pal` 即可出形，选对游戏调色板则颜色正确。
   - 单测：`out/unit_tests.cpp` 含 CLX/CEL/CL2 round-trip、PCX、palette、**PNG write round-trip**；
     构建与运行见仓库根 `README.md` §1（解码器单测）与 §5（精灵渲染）。
 
