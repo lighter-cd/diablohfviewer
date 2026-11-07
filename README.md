@@ -115,6 +115,29 @@ g++ -I 3rdparty/StormLib/src -I 3rdparty -I src -std=c++17 \
 
 > 每轮改动后请完整运行以上三个套件，确保全绿。
 
+### 4. 阶段 0 文件名恢复（研究/代码生成，需要真实 MPQ + DevilutionX 源码）
+
+`mpq-info/recover_phase0.cpp` 读取 DevilutionX 权威数据表，按运行时拼接公式
+（`plrgfx` / `monsters` / `missiles` 三类）批量生成候选文件名，与静态字典
+`mpq-info/dict/diablo1-harvest.txt` 合并后逐档案校验，重建
+`mpq-info/dict/recovered.json` 与 `recovered/*.txt`。
+
+```bash
+g++ -I 3rdparty -I 3rdparty/StormLib/src -I src -std=c++17 \
+    mpq-info/recover_phase0.cpp src/engine/archive.cpp \
+    3rdparty/StormLib/build/libStormLib.a \
+    -lws2_32 -lwininet -static-libgcc -static-libstdc++ \
+    -o out/recover_phase0.exe
+out/recover_phase0.exe [devilutionx_root] [mpq_root]
+```
+
+- 默认 `devilutionx_root = D:/work/xt/diablo/DevilutionX`，
+  `mpq_root = D:/work/xt/diablo/DevilutionX-Hell Fire`（均可用参数覆盖）。
+- 源码路径：`mpq-info/recover_phase0.cpp`；产出：`mpq-info/dict/recovered.json`
+  （汇总）与 `mpq-info/dict/recovered/<档案>.txt`（每行 `name<TAB>size`）。
+- 当前恢复 **1,859** 个真实文件名（DIABDAT 1125 / hfmonk 291 / spawn 216 /
+  hellfire 148 / devilutionx 63 / …）。扩展 items/objects/towners 等拼接名可继续提升覆盖率。
+
 ## 开发文档
 
 更详细的架构与阶段计划见 `docs/ARCHITECTURE.md` 与 `docs/PROJECT.md`。

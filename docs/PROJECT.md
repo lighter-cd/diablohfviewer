@@ -268,19 +268,29 @@ DiabloHFConverter/
       / 多压缩解压」全链路（抽出的 `gendata\cut2.pal` = 768 字节 = 256×3 调色板；
       `nlevels\l5data\l5.cel` = 1.3 MB 等均正确）。
 - [x] **文件名恢复**：机制已完成并验证——以 DevilutionX 源 harvest 的候选名 + 少量
-      手工补名组成字典，调用 C 引擎 `checklist` 逐档案校验（成功=名真实存在），
-      产出 `mpq-info/dict/recovered.json`。当前静态字面量字典已恢复 **196** 个真实文件名
-      （DIABDAT 81 / devilutionx 63 / spawn 30 / hellfire 16 / 其余零散）。
-  - **覆盖率提升路线（下一步）**：Diablo 1 大量文件名是运行时动态拼出来的
+      手工补名组成字典，调用 C 引擎逐档案校验（成功=名真实存在），产出
+      `mpq-info/dict/recovered.json` / `recovered/*.txt`。
+  - **覆盖率提升路线（已完成，2026-11-07）**：Diablo 1 大量文件名是运行时动态拼出来的
     （plrgfx / monsters / missiles / items / objects / towners），不在静态字面量中。
-    已在 DevilutionX 源码定位到拼接公式，可据此生成候选名继续提升覆盖率：
-    - `player.cpp:1506` → `plrgfx\{hero}\{prefix}\{prefix}{type}.clx`
-    - `monster.cpp:3221` + `Animletter="nwahds"` → `monsters\{spritePath}{L}.cl2`
-      （`spritePath` 来自 `txtdata/monsters/monstdat.tsv` 的 `assetsSuffix` 列）
-    - `tables/misdat.cpp:420` → `missiles\{name}.clx/.cl2`（注意：`misdat` 的 `name`
-      字段是法术名，未必等于精灵基名，需另查精灵基名表）
+    已在 DevilutionX 源码定位到拼接公式，并实现为代码生成器
+    **`mpq-info/recover_phase0.cpp`**：它读取 DevilutionX 权威数据表
+    （`assets/txtdata/classes/*/sprites.tsv`、`monstdat.tsv`、`missile_sprites.tsv` 及
+    Hellfire 的 `mods/hf/txtdata/...`），依据下列公式批量生成候选名，再与静态字典
+    `diablo1-harvest.txt` 合并，逐档案校验并重建 `recovered.json`：
+    - `player.cpp:1506` → `plrgfx\{classPath}\{c}{a}{w}\{c}{a}{w}{type}.cl2`
+      （`c`=职业首字母，`a`∈{l,m,h} 护甲，`w`∈{n,u,s,d,b,a,m,h,t} 武器，
+      `type`∈{as,st,aw,wl,at,ht,lm,fm,qm,dt,bl} 共 11 种动作；已确认原版精灵存为 **.cl2**）
+    - `monster.cpp:3221` + `Animletter="nwahds"` → `monsters\{assetsSuffix}{L}.cl2`
+      （`assetsSuffix` 来自 `monstdat.tsv`，`L`∈{n,w,a,h,d,s}，另含 `monsters\{trnFile}.trn`）
+    - `tables/misdat.cpp:420` → `missiles\{name}.cl2`（精灵基名取自 `missile_sprites.tsv`
+      的 `name` 列，非 `misdat` 的法术名）
+  - **效果**：真实文件名恢复数由静态字典的 **196** 提升至 **1,859**
+    （DIABDAT 1125 / hfmonk 291 / spawn 216 / hellfire 148 / devilutionx 63 / …）。
+    构建与运行见仓库根 `README.md` §测试 第 4 项。
   - 注：无 listfile 时 `list` 仅能给占位名（`FileNNNNNNN.xxx`），故文件名恢复依赖
     上述字典校验法；一旦覆盖率足够高，亦可把这些名作为 listfile 喂给 StormLib。
+  - **剩余空白（后续可选）**：items / objects / towners 等运行时拼接名尚未纳入候选生成，
+    仍可继续按同类公式扩展 `recover_phase0.cpp` 提升覆盖率。
 
 > **后端重构（已完成，2026-11-07）**：原 TS 编排层（`mpq-inspect.ts` /
 > `mpq-recover.ts`）已完整移植到 C/C++，目录已重构为 `src/` 后端 + `tools/ts-legacy/`
