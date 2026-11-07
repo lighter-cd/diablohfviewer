@@ -243,7 +243,6 @@ static void testSpriteList() {
         d << "] } ] }";
     }
     json lst = call("sprite.list", json{{"dict", dictPath}});
-    std::remove(dictPath.c_str());
 
     CHECK(lst.value("count", 0) == 3, "sprite.list enumerates 3 CL2/CEL (palette excluded)");
     int nWarrior = 0, nItems = 0;
@@ -264,6 +263,19 @@ static void testSpriteList() {
             hasPath = true;
     CHECK(hasPath, "sprite.list surfaces archive_path from recovered.json");
 
+    // kind:"palette" must enumerate only .pal files (here the gendata\cut2.pal).
+    json pal = call("sprite.list", json{{"dict", dictPath}, {"kind", "palette"}});
+    CHECK(pal.value("count", -1) == 1, "sprite.list kind:palette enumerates 1 .pal");
+    if (pal.value("count", 0) == 1) {
+        const auto& p = pal["sprites"][0];
+        CHECK(p.value("family", "") == "palette", "palette entry family == palette");
+        CHECK(p.value("name", "") == "gendata\\cut2.pal", "palette entry name matches");
+    }
+    // kind:"all" returns sprites + palettes together.
+    json all = call("sprite.list", json{{"dict", dictPath}, {"kind", "all"}});
+    CHECK(all.value("count", -1) == 4, "sprite.list kind:all enumerates 3 sprites + 1 palette");
+
+    std::remove(dictPath.c_str());
     printf("sprite_tools (list): %s\n", allOk ? "PASS" : "FAIL");
 }
 

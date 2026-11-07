@@ -29,13 +29,13 @@ python -m http.server 8000        # 或： npx serve .
 
 ```
 web/
-├── index.html        # 入口：连接栏 + 目录树 + Canvas + 控制条
+├── index.html        # 入口：连接栏 + 目录树 + 当前资源名 + 错误条 + Canvas + 控制条
 ├── styles.css        # 极简暗色样式
 ├── src/
 │   ├── client.js     # McpClient：WS + JSON-RPC（id 配对，并发安全）
 │   ├── catalog.js    # sprite.list 结果 → 嵌套树 → 可点击 DOM 树
 │   ├── viewer.js     # rgba_base64 → ImageData → putImageData（最近邻放大）
-│   └── main.js       # 编排：connect → sprite.list → 点击 → sprite.decode → 绘制
+│   └── main.js       # 编排：connect → sprite.list(+kind:palette 填下拉框) → 点击 → sprite.decode → 绘制
 └── README.md
 ```
 
@@ -46,11 +46,21 @@ web/
 - `sprite.decode` 返回 `frames:[{index,width,height,rgba_base64}]`，
   `rgba_base64` 为**原始 RGBA8**（`w*h*4` 字节），不是 PNG data URL。
 - `width:"auto"` 由后端按精灵路径自动查 DevilutionX 数据表取帧宽。
+- `sprite.list` 支持 `kind`：`sprite`（默认，CL2/CEL）/ `palette`（仅 `.pal`）/ `all`。
+  前端用 `kind:"palette"` 拉取档案内全部调色板填入下拉框。
+
+## 交互细节
+
+- **当前资源路径**：点选精灵后，主视窗顶部醒目显示其完整 in-archive 路径（`currentName`）。
+- **调色板下拉框**：连接后由 `sprite.list(kind:"palette")` 填充档案内全部 `.pal`；切换即对该
+  精灵重新解码（无需手填路径）。不同家族精灵适用不同调色板，可手动切换观察。
+- **错误显式提示**：遇到暂不支持的格式、缺 `archive_path`、或解码失败，主视窗会以红色错误条
+  （`errorBanner`）明确提示原因，而不会静默无反应。
 
 ## 已知限制（后续打磨）
 
 - `sprite.list` 一并返回 `archive_path`（取自 recovered.json 的档案 `path`），`main.js`
-  直接用它对 `sprite.decode` 解码，界面已无 Archive 输入框——点选精灵即可直接解码，
-  无需手填路径。（缺失时会在状态栏报错，便于排查 recovered.json 数据问题。）
-- Palette 目前仍由界面输入（默认 `gendata\cut2.pal`）；不同家族精灵适用不同调色板，
-  后续可随目录树自动选择。
+  直接用它对 `sprite.decode` 解码——点选精灵即可直接解码，无需手填路径。
+  （缺失时错误条会提示，便于排查 recovered.json 数据问题。）
+- 调色板下拉框列出整个档案的全部 `.pal`，未按家族预筛选；后续可随选中精灵的家族自动优选。
+- 暂只做"选精灵 → 看单帧"（Frame 滑块翻帧）；8 方向播放 / 装备组合浏览 / TRN 上色待加。

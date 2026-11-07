@@ -118,7 +118,10 @@ MPQ 路径取环境变量 `DHFC_TEST_MPQ`，缺省为本地 DevilutionX 安装�
 g++ -I 3rdparty/StormLib/src -I 3rdparty -I src -std=c++17 \
     out/integration_tests.cpp \
     src/engine/archive.cpp src/tools/registry.cpp \
-    src/tools/mpq_tools.cpp src/mcp/jsonrpc.cpp \
+    src/tools/mpq_tools.cpp src/tools/sprite_tools.cpp \
+    src/decoders/palette.cpp src/decoders/clx.cpp src/decoders/cel.cpp \
+    src/decoders/cl2.cpp src/decoders/pcx.cpp src/decoders/sprite_width.cpp \
+    src/mcp/jsonrpc.cpp \
     3rdparty/StormLib/build/libStormLib.a \
     -lws2_32 -lwininet -static-libgcc -static-libstdc++ \
     -o out/integration_tests.exe && out/integration_tests.exe

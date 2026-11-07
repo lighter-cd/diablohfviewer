@@ -94,4 +94,9 @@
 
 ## 2026-11-07 19:52:58
 - 清理 web 前端的 Archive 输入框：sprite.list 已稳定返回 archive_path，前端不再需要手动填 MPQ 路径。从 index.html 删除 Archive <input>，main.js 的 onSelectSprite 改为直接使用 sprite.archive_path（缺失时状态栏报错），去掉对界面输入框的回退。同步更新 web/README.md 与 docs/ARCHITECTURE.md §10.3 的相关说明（去掉"回退到 Archive 输入框"措辞）。本轮仅前端与文档，无 C++ 改动，三套件测试仍全 PASS。
+
+## 2026-11-07 20:26:29
+- 前端三项交互改进（点击资源树）：① sprite.list 新增 kind 参数（sprite/palette/all）并把 .pal 识别为 family:"palette"，使前端可拉取调色板清单；② 前端 main.js 改为调色板下拉框（sprite.list kind:"palette" 填充全名，选中即解码），主视窗以金色大字显示当前资源完整路径（index.html #currentName + styles.css），并以红色错误条显式提示三种失败：不支持的格式（.cl2/.cel/.clx/.pcx 之外）、缺 archive_path、解码失败（原静默改为可见）；③ web/index.html、web/styles.css、web/src/main.js、docs/ARCHITECTURE §4/§10、web/README.md 同步。修复 integration_tests.cpp 中 testSpriteList 引用未定义 dictPath2 的编译错误（改用 dictPath 并补 {"kind":"palette"}），并同步 README §测试集成构建命令补全 sprite_tools.cpp + 各解码器。
+- 涉及: src/tools/sprite_tools.cpp, out/integration_tests.cpp, README.md, web/index.html, web/styles.css, web/src/main.js, web/README.md, docs/ARCHITECTURE.md
+- 验证：unit/core/integration 三套件全 PASS；sprite.list kind:"palette" 对真实 recovered.json 返回 27 个 .pal，kind:"all" 含精灵+调色板。
 - 涉及: web/index.html, web/src/main.js, web/README.md, docs/ARCHITECTURE.md

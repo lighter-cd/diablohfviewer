@@ -263,10 +263,11 @@ mcp::ToolResult toolSpriteDecode(const mcp::json& params)
     return r;
 }
 
-// Classify an in-archive sprite name into family / class / type, and report
-// whether it is a sprite we enumerate (CL2 / CEL only). Used by sprite.list.
+// Classify an in-archive name into family / class / type, and report whether it
+// is something we enumerate: CL2 / CEL sprites, or .pal palette files. Used by
+// sprite.list (the `kind` filter decides which of these to emit).
 struct SpriteInfo {
-    std::string family; // plrgfx / monsters / missiles / items / objects / towners
+    std::string family; // plrgfx / monsters / missiles / items / objects / towners / palette
     std::string cls;    // class path, assetsSuffix, missile/item/object name, etc.
     std::string type;   // 2-char player type code (as/at/...), or monster L letter
     bool        sprite = false;
@@ -282,9 +283,14 @@ static SpriteInfo classifySprite(const std::string& name, bool& isSpriteExt) {
     if (dot == std::string::npos)
         return r;
     std::string ext = p.substr(dot + 1);
-    if (ext != "cl2" && ext != "cel")
-        return r; // only sprite formats are enumerated
+    if (ext != "cl2" && ext != "cel" && ext != "pal")
+        return r; // only sprite / palette formats are enumerated
     isSpriteExt = true;
+    if (ext == "pal") {            // palette file: tagged so the dropdown can list it
+        r.family = "palette";
+        r.sprite = true;
+        return r;
+    }
 
     std::vector<std::string> comps;
     std::string cur;
@@ -373,6 +379,10 @@ mcp::ToolResult toolSpriteList(const mcp::json& params)
     std::string classFilter =
         (params.contains("class") && params["class"].is_string())
             ? params["class"].get<std::string>() : "";
+    std::string kind =
+        (params.contains("kind") && params["kind"].is_string())
+            ? params["kind"].get<std::string>() : "sprite";
+    // kind: "sprite" (default) | "palette" | "all"
 
     mcp::json sprites = mcp::json::array();
     if (dict.contains("archives") && dict["archives"].is_array()) {
@@ -387,16 +397,21 @@ mcp::ToolResult toolSpriteList(const mcp::json& params)
                 std::string name = e["name"].get<std::string>();
                 bool isSpriteExt = false;
                 SpriteInfo si = classifySprite(name, isSpriteExt);
-                if (!isSpriteExt) // only enumerate CL2/CEL sprites
+                if (!isSpriteExt) // only enumerate CL2/CEL sprites and .pal palettes
                     continue;
+                bool isPal = (si.family == "palette");
+                if (kind == "sprite" && isPal) continue;
+                if (kind == "palette" && !isPal) continue;
                 if (!famFilter.empty() && si.family != famFilter)
                     continue;
                 if (!classFilter.empty() && si.cls != classFilter)
                     continue;
                 int w = 0;
-                std::string dbg;
-                int aw = decoders::sprite_width::autoWidth(name, devRoot, dbg);
-                if (aw > 0) w = aw;
+                if (!isPal) {
+                    std::string dbg;
+                    int aw = decoders::sprite_width::autoWidth(name, devRoot, dbg);
+                    if (aw > 0) w = aw;
+                }
                 sprites.push_back(mcp::json{
                     { "name", name },
                     { "archive", archName },
@@ -463,8 +478,9 @@ void registerSpriteTools(ToolRegistry& reg)
         "Enumerate real sprite names recovered from MPQs (no listfile; recovered via "
         "StormLib one-way-hash verify). Each entry is classified into family / class / "
         "type and carries the auto-resolved frame width (0 if no table). Filter with "
-        "'family' / 'class'. The frontend builds its catalog tree from this and then "
-        "calls sprite.decode(name, width:\"auto\") per leaf.",
+        "'family' / 'class'. Use kind='palette' to list the archive's .pal palettes "
+        "(for the decode palette dropdown). The frontend builds its catalog tree from "
+        "this and then calls sprite.decode(name, width:\"auto\") per leaf.",
         json{ { "type", "object" },
               { "properties",
                 json{ { "dict",
@@ -478,7 +494,10 @@ void registerSpriteTools(ToolRegistry& reg)
                               { "description", "filter by family: plrgfx / monsters / missiles / items / objects / towners (empty = all)" } } },
                       { "class",
                         json{ { "type", "string" },
-                              { "description", "filter by class (classPath, assetsSuffix, or sprite name; empty = all)" } } } } },
+                              { "description", "filter by class (classPath, assetsSuffix, or sprite name; empty = all)" } } },
+                      { "kind",
+                        json{ { "type", "string" },
+                              { "description", "what to enumerate: 'sprite' (default, CL2/CEL) | 'palette' (.pal files) | 'all'" } } } } },
               { "required", json::array({}) } },
         toolSpriteList });
 }

@@ -36,9 +36,14 @@
     </aside>
 
     <section class="stage">
+      <div class="current">
+        <span class="current-label">当前资源：</span>
+        <span id="currentName" class="current-name">（未选择）</span>
+      </div>
+      <div id="errorBanner" class="error-banner" hidden></div>
       <div class="controls">
-        <label>Palette
-          <input id="palette" value="gendata\cut2.pal" size="20" />
+        <label>调色板
+          <select id="palette"></select>
         </label>
         <label>Frame
           <input id="frame" type="range" min="0" max="0" value="0" />

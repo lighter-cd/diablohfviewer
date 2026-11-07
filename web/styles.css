@@ -55,6 +55,25 @@ main { display: flex; height: calc(100vh - 52px); }
 .meta { margin-left: auto; color: #b9b9c2; font-size: 12px; }
 .meta.err { color: #f0a0a0; }
 
+.current { padding: 6px 2px 8px; border-bottom: 1px solid #3a3a42; }
+.current-label { color: #b9b9c2; font-size: 13px; }
+.current-name {
+  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14px;
+  color: #ffd479; word-break: break-all;
+}
+
+.error-banner {
+  margin: 8px 0; padding: 10px 12px; border-radius: 6px;
+  background: #4a1f1f; border: 1px solid #a14a4a; color: #ffc9c9;
+  font-size: 13px; line-height: 1.5;
+}
+.error-banner[hidden] { display: none; }
+
+#palette {
+  background: #15151a; color: #e6e6e6; border: 1px solid #3a3a42;
+  border-radius: 4px; padding: 3px 6px; max-width: 320px;
+}
+
 .canvas-wrap {
   flex: 1; display: flex; align-items: center; justify-content: center;
   background:

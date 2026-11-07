@@ -143,7 +143,7 @@ public:
 | `mpq.dump`     | `{archive,name,max_bytes?}` | `{name,size,preview_hex}`（前 N 字节十六进制预览；移植 mpqextract `dump`） | 0 |
 | `palette.load` | `{archive,name}` | `{name,count,colors:[[r,g,b]×256],rgba_base64}` | ✅ |
 | `sprite.decode`| `{archive,name,palette?,frame?,width?}` | `{name,format,width,height,frame_count,palette_resolved,frames:[{index,width,height,rgba_base64}]}`（`.clx` 直解；`.cel`/`.cl2` 经 `celToClx`/`cl2ToClx` 转 CLX 后解；`.pcx` 走内置解码。格式由扩展名自动探测。`width` 为 `.cel`/`.cl2` 必需，支持 `width:"auto"` 按路径自动查表） | ✅ |
-| `sprite.list`  | `{dict?,devilutionx_root?,family?,class?}` | `{count,sprites:[{name,archive,archive_path,family,class,type,width}]}`（从 `recovered.json` + DevilutionX 数据表枚举**真实存在的**精灵名并分类 family/class/type、带自动帧宽，供前端建目录树；`archive_path` 直接取自 recovered.json 的档案 `path`，前端无需再手动填 MPQ 路径；无 listfile 时 `mpq.list` 给的是占位名，故需此工具） | ✅ |
+| `sprite.list`  | `{dict?,devilutionx_root?,family?,class?,kind?}` | `{count,sprites:[{name,archive,archive_path,family,class,type,width}]}`（从 `recovered.json` + DevilutionX 数据表枚举**真实存在的**精灵名并分类 family/class/type、带自动帧宽，供前端建目录树；`archive_path` 直接取自 recovered.json 的档案 `path`，前端无需再手动填 MPQ 路径；`kind` 默认 `sprite`（CL2/CEL），可传 `palette` 仅列 `.pal` 调色板、`all` 两者都列，用于前端调色板下拉框；无 listfile 时 `mpq.list` 给的是占位名，故需此工具） | ✅ |
 | `map.build`    | `{archive,dun,...}` | `{tiles:[...],width,height}` | 4 |
 
 > **PCX 已并入 `sprite.decode`**（按 `.pcx` 扩展名自动路由），不再单独设 `pcx.decode` 工具。
@@ -356,9 +356,11 @@ build-mcp/mcp-server.exe --stdio --ws 18765      # 同时
    - `mpq.list` 在无 listfile 时只给占位名 `FileNNNNNNN.xxx`，前端无法据此浏览。
    - `sprite.list` 读 `mpq-info/dict/recovered.json` + DevilutionX 数据表，枚举
      **真实存在**的精灵名，并按 family/class/type 归类，返回
-     `{count,sprites:[{name,archive,family,class,type,width}]}`（width 为自动帧宽，items 为 0）。
+     `{count,sprites:[{name,archive,archive_path,family,class,type,width}]}`（width 为自动帧宽，items 为 0）。
+   - 支持 `kind`：`sprite`（默认，CL2/CEL）/ `palette`（仅 `.pal`）/ `all`；前端用
+     `kind:"palette"` 拉取档案内全部调色板，填入下拉框，用户选取而非手填路径。
    - 前端据此建"职业 × 护甲 × 武器 × 动作"目录树，点击即 `sprite.decode`。
-   - 已加入 `integration_tests.cpp`（合成 recovered.json 断言分类正确）。
+   - 已加入 `integration_tests.cpp`（合成 recovered.json 断言 sprite/palette/all 分类正确）。
 3. **（可选，保真度）TRN 上色**（待做）
    - `sprite.decode` 现只解析基Palette，未应用职业 TRN（`plrgfx/<class>.trn`，`GetClassTRN`）
      与每精灵 TRN（`GetPlayerGraphicTRN`）。
@@ -373,13 +375,13 @@ build-mcp/mcp-server.exe --stdio --ws 18765      # 同时
 
 ```
 web/                              # 浏览器前端（不读 MPQ/文件，仅 WebSocket 调后端）
-├── index.html                    # 入口：连接栏 + 目录树(<ul>) + Canvas + 控制条
+├── index.html                    # 入口：连接栏 + 目录树(<ul>) + 当前资源名 + 错误条 + Canvas + 控制条
 ├── styles.css                   # 极简暗色样式
 ├── src/
 │   ├── client.js                 # McpClient：WS + JSON-RPC（id 配对，并发安全）
 │   ├── catalog.js                # sprite.list 结果 → family→class→type 树 → 可点击 DOM
 │   ├── viewer.js                 # rgba_base64 → atob→ImageData→putImageData（最近邻放大）
-│   └── main.js                   # 编排：connect → sprite.list → 点击 → sprite.decode → 绘制
+│   └── main.js                   # 编排：connect → sprite.list(+kind:palette 填下拉框) → 点击 → sprite.decode → 绘制
 └── README.md                     # 开发者说明 + 运行步骤 + 与后端契约
 ```
 
@@ -390,6 +392,10 @@ web/                              # 浏览器前端（不读 MPQ/文件，仅 We
   WebSocket 从 http 页连 `ws://localhost` 不受 mixed-content 限制。
 - 绘制用 Canvas 2D `ImageData`（rgba_base64 即原始像素，最灵活）；如后续要 3D/滤镜
   再考虑 WebGL，但不在阶段 2 范围。
+- 交互细节（skeleton 已实现）：① 主视窗顶部**醒目显示当前资源完整路径**（`currentName`）；
+  ② 调色板改为**下拉框**，由 `sprite.list(kind:"palette")` 拉取档案内全部 `.pal` 填充，
+  切换即对该精灵重新解码；③ 任何失败（暂不支持的格式 / 缺 archive_path / 解码报错）都通过
+  **错误条（errorBanner）显式提示**，而非静默。
 
 **契约说明**：`sprite.list` 每条精灵除 `archive`（档案名，如 `DIABDAT.MPQ`）外，
 还返回 `archive_path`（recovered.json 里该档案的 `path` 字段，即可直用于
