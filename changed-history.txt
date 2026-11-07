@@ -59,3 +59,7 @@
 ## 2026-11-07 16:38:44
 - 提交此前遗留的 .gitignore 改动：新增 out/render/ 忽略项（与既有 out/extracted/ 一致，render_sprite 渲染产物不入库）。AGENTS.md 另有一处未暂存改动（一行规则澄清），不在本轮范围内，未纳入。
 - 涉及: .gitignore
+
+## 2026-11-07 16:41:14
+- 提交此前遗留的 AGENTS.md 改动：在"文档同步"规则中补充一行"docs/PROJECT.md 中记载当前进度列表，完成的项目需要在其中标记为完成。"（明确完成后需在 PROJECT.md 勾除进度项）。
+- 涉及: AGENTS.md
