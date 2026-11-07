@@ -39,3 +39,7 @@
 ## 2026-11-07 15:04:37
 - 重写 docs/PROJECT.md 阶段0 的“剩余空白（后续可选）”含糊段落，改为进度评估（明确 100% 非必须）+ 各标准项进度表 + 后续建议；并同步修正 TRN 计数（~115→111 行/85 唯一名）保持一致。
 - 涉及: docs/PROJECT.md
+
+## 2026-11-07 15:06:29
+- 清理 mpq-info/dict/recovered/ 下 safeName 修复前残留的 12 个 *.mpq.txt 重复文件（现仅余 13 个 canonical *.txt，每档案一个）；同步将 PROJECT.md 中“已排除”措辞改为“已清理”。recovered.json 不受影响（其按真实 MPQ 名引用档案）。
+- 涉及: mpq-info/dict/recovered/*.mpq.txt, docs/PROJECT.md

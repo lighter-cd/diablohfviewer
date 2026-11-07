@@ -333,7 +333,7 @@ DiabloHFConverter/
     | 静态字典补充（关卡/视频/音频等） | ✅ 完成 | 余下名（.dun 52/.pal 27/.smk 11/.wav 10/.cel 228…） | `diablo1-harvest.txt` |
     | 后端重构（TS→C/C++ mcp-server） | ✅ 完成 | stdio + WS 双传输 | — |
 
-    > 逐档案 canonical 计数（已排除 `safeName` 修复前残留的 `*.mpq.txt` 重复文件）：
+    > 逐档案 canonical 计数（`safeName` 修复前残留的 `*.mpq.txt` 重复文件已清理，现仅余 13 个 canonical `*.txt`）：
     > DIABDAT **1224** / spawn **315** / hfmonk **291** / hellfire **171** / devilutionx **63** /
     > hfopt1 9 / hfopt2 2 / hfmusic 2 / hfvoice 1 / pl 1 / ru 1 / **fonts 0** / **es 0**；
     > 合计 **2080**，唯一名 **1750**。
