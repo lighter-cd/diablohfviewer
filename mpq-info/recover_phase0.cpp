@@ -197,6 +197,28 @@ static void genMissiles(std::set<std::string>& out,
     }
 }
 
+// Item drop / HUD sprites: Source/items.cpp:2428 -> items\{ItemDropNames[i]},
+// loaded via LoadCel (CEL format). The names are a fixed game constant
+// (Source/items.cpp:230, 44 entries), so they are embedded here rather than
+// read from a TSV. Empirically verified: the stored extension is .cel.
+static void genItems(std::set<std::string>& out) {
+    static const char* kItemDropNames[] = {
+        "armor2",   "axe",      "fbttle",   "bow",       "goldflip", "helmut",
+        "mace",     "shield",   "swrdflip", "rock",      "cleaver",  "staff",
+        "ring",     "crownf",   "larmor",   "wshield",   "scroll",   "fplatear",
+        "fbook",    "food",     "fbttlebb", "fbttledy",  "fbttleor", "fbttlebr",
+        "fbttlebl", "fbttleby", "fbttlewh", "fbttledb",  "fear",     "fbrain",
+        "fmush",    "innsign",  "bldstn",   "fanvil",    "flazstaf", "bombs1",
+        "halfps1",  "wholeps1", "runes1",   "teddys1",   "cows1",    "donkys1",
+        "mooses1"};
+    for (const char* n : kItemDropNames)
+        out.insert("items\\" + std::string(n) + ".cel");
+    // Static item HUD sprites (also CEL format): durability icons + automap.
+    static const char* kItemExtras[] = {"duricons", "map\\mapztown"};
+    for (const char* e : kItemExtras)
+        out.insert("items\\" + std::string(e) + ".cel");
+}
+
 // Merge the static harvest dictionary (one candidate per line) into `out`.
 static void mergeHarvest(std::set<std::string>& out, const fs::path& harvest) {
     std::ifstream f(harvest);
@@ -259,6 +281,9 @@ int main(int argc, char** argv) {
         devRoot / "mods" / "hf" / "txtdata" / "missiles" / "missile_sprites.tsv",
     };
     genMissiles(candidates, misFiles);
+
+    // Item drop / HUD sprites (fixed game constant from items.cpp).
+    genItems(candidates);
 
     // --- Merge static harvest dictionary ---
     mergeHarvest(candidates, dictDir / "diablo1-harvest.txt");

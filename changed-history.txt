@@ -15,3 +15,7 @@
 ## 2026-11-07 13:42:21
 - 完成阶段 0 覆盖率提升路线：新增 mpq-info/recover_phase0.cpp，按 DevilutionX 运行时拼接公式（plrgfx/monsters/missiles 三类）生成候选文件名并与静态字典 diablo1-harvest.txt 合并，逐档案校验重建 recovered.json，真实文件名恢复数由 196 提升至 1859；同步更新 PROJECT.md 与 README.md。
 - 涉及: mpq-info/recover_phase0.cpp, docs/PROJECT.md, README.md
+
+## 2026-11-07 13:55:02
+- 扩展 recover_phase0.cpp 支持 items：按 items.cpp:2428 公式生成 items\{ItemDropNames[i]}.cel 候选（44 项固定常量 + duricons/map\mapztown 两个 HUD 精灵，已确认存为 .cel），真实文件名恢复数由 1859 提升至 1940；同步更新 PROJECT.md 与 README.md。
+- 涉及: mpq-info/recover_phase0.cpp, docs/PROJECT.md, README.md
