@@ -135,3 +135,8 @@
 - 修复法师（sorceror）精灵全部解码失败：根因是 autoWidth 按 MPQ 路径 token 拼宽度表路径 `classes/sorceror/sprites.tsv`，但 DevilutionX 的**职业数据目录实为 `sorcerer`（带 e）**，而 MPQ 内精灵目录是 `sorceror`（带 o），导致找不到宽度表、抛 "auto width failed" 被包成 "tool execution failed"。在 src/decoders/sprite_width.cpp 的 plrgfx 分支加别名映射 sorceror→sorcerer（其余职业目录与 MPQ 名 1:1 无需映射）。out/unit_tests.cpp 新增回归用例（autoWidth("plrgfx\\sorceror\\sha\\shaas.cl2") 期望 96）。重新构建 mcp-server 并重启 WS 桥（18765）。
 - 涉及: src/decoders/sprite_width.cpp, out/unit_tests.cpp, out/unit_tests.exe, out/core_tests.exe, out/integration_tests.exe
 - 验证：重建并重跑 unit/core/integration 三套件全 PASS（sprite_width 含新 sorceror 用例）；WS 端到端确认 plrgfx\sorceror\sha\shaas.cl2 现可解码 64 帧（8 方向×8 帧/方向）。
+
+## 2026-11-07 23:15:17
+- 角色查看器调色板保真 + TRN 上色原理落地文档：① 前端 web/src/main.js 在「角色查看器」模式下把调色板下拉框预筛选为「关卡调色板」（levels\*/nlevels\*），目录浏览模式仍列全部 .pal——玩家精灵只在关卡调色板下颜色才正确（此前实测 l1/l2/l3/l5 关卡调色板可正确着色，cut*/diablo.pal 等会偏色）；新增 allPalettes/isLevelPalette/applyPaletteFilter，模式切换即重新应用筛选并保留原选择。② 把 TRN 上色原理（取自 DevilutionX 逆向，2026-11-07 已确认）写入 docs/PROJECT.md 阶段2 可选保真项、docs/ARCHITECTURE.md §10.2.3、web/README.md 已知限制：TRN 为 256 字节调色板索引重映射表（ClxApplyTrans），两级——每精灵 TRN <spritePath>.trn（GetPlayerGraphicTRN，MPQ 内命中 0，无实际效果）与职业 TRN plrgfx/<class>.trn（GetClassTRN，真正生效层），LoadPlrGFX 顺序为 先每精灵后职业；当前 sprite.decode 完全不应用 TRN，仅用选中 .pal 上色，落地方案为加 apply_trn 参数取职业 TRN。本轮延后实施，先文档化供评估。
+- 涉及: web/src/main.js, docs/PROJECT.md, docs/ARCHITECTURE.md, web/README.md
+- 验证：node --check（main.js ES module 语法）通过；后端 unit/core/integration 三套件全 PASS（无 C++ 改动）。

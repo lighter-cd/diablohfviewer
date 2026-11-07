@@ -365,11 +365,19 @@ build-mcp/mcp-server.exe --stdio --ws 18765      # 同时
      `kind:"palette"` 拉取档案内全部调色板，填入下拉框，用户选取而非手填路径。
    - 前端据此建"职业 × 护甲 × 武器 × 动作"目录树，点击即 `sprite.decode`。
    - 已加入 `integration_tests.cpp`（合成 recovered.json 断言 sprite/palette/all 分类正确）。
-3. **（可选，保真度）TRN 上色**（待做）
-   - `sprite.decode` 现只解析基Palette，未应用职业 TRN（`plrgfx/<class>.trn`，`GetClassTRN`）
-     与每精灵 TRN（`GetPlayerGraphicTRN`）。
-   - 可加参数 `apply_trn:true`，从 MPQ 取对应 `.trn`（256 字节色彩变换表）后作用于帧
-     再返回。第一版前端可先只用 `diablo.pal` 跑通链路，TRN 作为保真增强后续补。
+3. **（可选，保真度）TRN 上色**（原理已逆向，2026-11-07 确认；待决定是否落地）
+   - TRN = **256 字节调色板索引重映射表**，经 `ClxApplyTrans` 把每帧每个像素索引 `i`
+     替换为 `trn[i]` 改变上色；`sprite.decode` 当前**完全不应用 TRN**，直接选中 `.pal` 上色。
+   - **两类 TRN（取自 `Source/player.cpp` `LoadPlrGFX`）**：
+     1. **每精灵 TRN（先应用）**：`GetPlayerGraphicTRN(pszName)` → `<spritePath>.trn`
+        （`plrgfx\{class}\{prefix}\{prefix}{type}.trn`）。候选名校验命中为 **0**，恒 `nullopt`，
+        对玩家精灵无实际效果。
+     2. **职业 TRN（后应用）**：`GetClassTRN(player)` → `plrgfx\<class>.trn`
+        （如 `plrgfx\warrior.trn`，来自 `sprites.tsv` 的 `trn` 字段）。真正生效层。
+     - 应用顺序固定：**先 `ClxApplyTrans(graphicTRN)` 再 `ClxApplyTrans(classTRN)`**。
+   - **落地方案（若实施）**：`sprite.decode` 增加 `apply_trn:true`，后端按 `plrgfx\<class>.trn`
+     取职业 TRN 作用到 RGBA 帧再返回；每精灵 TRN 因 MPQ 内不存在可跳过。前端角色模式可默认开启。
+   - 第一版前端可先只用 `diablo.pal` / `levels\*\*.pal` 跑通链路，TRN 作为保真增强后续补。
 
 ### 10.3 前端目录结构（JS ES Module + Canvas，零构建，无 Node 运行服务）
 

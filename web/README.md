@@ -105,8 +105,12 @@ web/
 - `sprite.list` 一并返回 `archive_path`（取自 recovered.json 的档案 `path`），`main.js`
   直接用它对 `sprite.decode` 解码——点选精灵即可直接解码，无需手填路径。
   （缺失时错误条会提示，便于排查 recovered.json 数据问题。）
-- 调色板下拉框列出整个档案的全部 `.pal`，未按家族预筛选；后续可随选中精灵的家族自动优选。
-- **TRN 上色未做**：当前始终用选中的 `.pal`（如 `diablo.pal`）上色；后续可接入职业 TRN
-  （`plrgfx/<class>.trn`）与每精灵 TRN（`GetPlayerGraphicTRN`）提升颜色正确度。
+- 调色板下拉框在**角色查看器模式**下已预筛选为「关卡调色板」（`levels\*`/`nlevels\*`），
+  目录浏览模式下列出全部 `.pal`；这是保真折中——玩家精灵只有在关卡调色板下颜色才正确。
+- **TRN 上色未做（原理已逆向，待决定是否实施）**：当前始终用选中的 `.pal`（如
+  `diablo.pal` / `levels\*`）上色。TRN 是 256 字节调色板索引重映射表（`ClxApplyTrans`），
+  分两级——**每精灵 TRN** `<spritePath>.trn`（`GetPlayerGraphicTRN`，MPQ 内命中为 0，无实际效果）
+  与**职业 TRN** `plrgfx/<class>.trn`（`GetClassTRN`，真正生效层）；`LoadPlrGFX` 顺序为
+  先每精灵后职业。若落地，`sprite.decode` 加 `apply_trn:true` 取职业 TRN 作用到帧再返回。
 - 8 方向切分按 `总帧数 / 方向数` 整除近似；若某精灵并非严格方向优先（如部分非玩家精灵），
   可手动把「方向数」调为 1 退回逐帧浏览。

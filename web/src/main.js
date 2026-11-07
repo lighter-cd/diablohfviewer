@@ -61,6 +61,19 @@ let charIndex = null;
 // lives in a different MPQ than the sprite (e.g. Hellfire palette on a DIABDAT sprite).
 const paletteArchives = new Map();
 
+// Full palette list fetched from sprite.list(kind:"palette"), kept so the dropdown
+// can be filtered (e.g. character mode shows only level palettes).
+let allPalettes = []; // [{ name, archive_path, isLevel }]
+
+// Level palettes (levels\ / nlevels\) carry the general colour ramp a character
+// sprite needs; everything else (gendata\cut*.pal, ui_art\diablo.pal, …) is
+// cutscene/UI-specific and mis-colours player sprites.
+function isLevelPalette(name) {
+  const n = (name || "").toLowerCase();
+  return n.includes("levels\\") || n.includes("levels/") ||
+         n.includes("nlevels\\") || n.includes("nlevels/");
+}
+
 client.onStatus = (connected) => {
   const s = $("status");
   s.textContent = connected ? "connected" : "disconnected";
@@ -123,28 +136,53 @@ function renderCurrentCatalog() {
 async function loadPalettes() {
   const sel = $("palette");
   sel.innerHTML = "";
+  allPalettes = [];
   try {
     const res = await client.callTool("sprite.list", { kind: "palette" });
     const pals = (res && res.sprites) || [];
-    if (pals.length === 0) {
-      const opt = document.createElement("option");
-      opt.textContent = "（无可用调色板）";
-      sel.appendChild(opt);
+    for (const p of pals) {
+      paletteArchives.set(p.name, p.archive_path || "");
+      allPalettes.push({
+        name: p.name,
+        archive_path: p.archive_path || "",
+        isLevel: isLevelPalette(p.name),
+      });
+    }
+    if (allPalettes.length === 0) {
+      addPaletteOption("（无可用调色板）", "");
       return;
     }
-    for (const p of pals) {
-      const opt = document.createElement("option");
-      opt.value = p.name;
-      opt.textContent = basename(p.name);
-      opt.title = p.name;
-      paletteArchives.set(p.name, p.archive_path || "");
-      sel.appendChild(opt);
-    }
+    applyPaletteFilter(isCharMode());
   } catch (e) {
+    addPaletteOption("（加载调色板失败）", "");
+  }
+}
+
+function addPaletteOption(text, value) {
+  const opt = document.createElement("option");
+  opt.value = value;
+  opt.textContent = text;
+  $("palette").appendChild(opt);
+}
+
+// Fill the palette <select>. In character mode show only level palettes
+// (levels\ / nlevels\), which is what player sprites need; in catalog mode
+// show everything so missiles/UI sprites can still pick a themed palette.
+function applyPaletteFilter(levelOnly) {
+  const sel = $("palette");
+  const prev = sel.value;
+  const list = levelOnly ? allPalettes.filter((p) => p.isLevel) : allPalettes;
+  sel.innerHTML = "";
+  for (const p of list) {
     const opt = document.createElement("option");
-    opt.textContent = "（加载调色板失败）";
+    opt.value = p.name;
+    opt.textContent = basename(p.name) + (levelOnly ? "（关卡）" : (p.isLevel ? "（关卡）" : "（其它）"));
+    opt.title = p.name;
     sel.appendChild(opt);
   }
+  // Keep the previous selection if still present; otherwise default to the first.
+  if (list.some((p) => p.name === prev)) sel.value = prev;
+  else if (list.length > 0) sel.value = list[0].name;
 }
 
 // ---- Character index -------------------------------------------------------
@@ -386,6 +424,7 @@ function wireControls() {
       const character = e.target.value === "character";
       $("catalogPane").hidden = character;
       $("charPane").hidden = !character;
+      applyPaletteFilter(character); // character mode: level palettes only
       if (character) showCharacterSprite();
     });
   });

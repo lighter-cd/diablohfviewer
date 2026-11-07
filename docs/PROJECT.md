@@ -411,8 +411,24 @@ DiabloHFConverter/
       fps 速度控制；索引由 `sprite.list(family:"plrgfx")` 一次性构建，仅暴露 MPQ 真实存在的组合。
       改动 `web/index.html` + `web/src/main.js` + `web/styles.css`，后端无改动。详见 `web/README.md`
       与 `docs/ARCHITECTURE.md` §10.4。
-- [ ] **（可选保真，后续）`sprite.decode` 应用 TRN**：职业 TRN（`plrgfx/<class>.trn`）+ 每精灵 TRN
-      （`GetPlayerGraphicTRN`），提升颜色正确度；当前首版仅用 `diablo.pal` 跑通链路。
+- [ ] **（可选保真，后续）`sprite.decode` 应用 TRN**：原理已逆向清楚（见下），待决定是否落地。
+      **TRN 上色原理（取自 DevilutionX 源码逆向，2026-11-07 已确认）**：
+      - TRN 是一张 **256 字节的调色板索引重映射表**（palette-index remap），经
+        `ClxApplyTrans` 把每帧每个像素的调色板索引 `i` 替换为 `trn[i]`，从而改变上色
+        而不改几何。我们 `sprite.decode` 当前**完全不应用 TRN**，直接用选中的 `.pal` 上色。
+      - **两类 TRN，应用顺序固定**（见 `Source/player.cpp` `LoadPlrGFX`）：
+        1. **每精灵 TRN（先应用）**：`GetPlayerGraphicTRN(pszName)` 构造
+           `<spritePath>.trn`，即 `plrgfx\{class}\{prefix}\{prefix}{type}.trn`。
+          经候选名校验，**MPQ 内该变体命中为 0**，故实际 `LoadPlrGFX` 中此项恒为
+           `std::nullopt`，**对玩家精灵无实际效果**。
+        2. **职业 TRN（后应用）**：`GetClassTRN(player)` 加载 `plrgfx\<class>.trn`
+           （如 `plrgfx\warrior.trn`），由 `sprites.tsv` 的 `trn` 字段决定。
+           这是玩家着色真正生效的那一层。
+        `LoadPlrGFX` 顺序：**先 `ClxApplyTrans(..., graphicTRN)` 再 `ClxApplyTrans(..., classTRN)`**。
+      - **落地方案（若实施）**：`sprite.decode` 增加 `apply_trn:true` 参数，后端按
+        `plrgfx\<class>.trn` 取职业 TRN 并作用到 RGBA 帧再返回；每精灵 TRN 因 MPQ 内不存在
+        可跳过（或保留为可选扩展）。前端可在角色模式下默认开启。
+      - 当前首版仅用选中的 `.pal`（如 `diablo.pal` / `levels\l1_2.pal`）跑通链路，颜色为近似。
 - [x] 枚举各职业所有动画模式（stand/walk/attack/hit/death/idle…，对应 `as/st/aw/wl/at/ht/dt…`）：
       由 `sprite.list(plrgfx)` 真实存在的 type 代码驱动动作下拉，按 `sprites.tsv` 列映射友好名。
 - [x] 8 方向切换（玩家固定 8 方向，按 `帧数/8` 切分；怪物方向数另查动画表）：前端通用分组，
