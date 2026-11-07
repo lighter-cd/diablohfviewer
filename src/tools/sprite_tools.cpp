@@ -80,6 +80,36 @@ bool endsWith(const std::string& s, const char* suf)
     return s.size() >= n && s.compare(s.size() - n, n, suf) == 0;
 }
 
+// Apply a 256-byte TRN remap table to a 768-byte (256*3) RGB palette: the result
+// is a palette where entry i = original[trn[i]]. A pixel carrying palette index j
+// then renders as original_palette[trn[j]] — exactly what DevilutionX ClxApplyTrans
+// does when a sprite is tinted at draw time.
+std::vector<uint8_t> applyTrn(const std::vector<uint8_t>& pal,
+                              const std::vector<uint8_t>& trn)
+{
+    std::vector<uint8_t> out(256 * 3);
+    for (int i = 0; i < 256; ++i) {
+        int src = trn[i];
+        if (src < 0) src = 0;
+        if (src > 255) src = 255;
+        size_t o = static_cast<size_t>(i) * 3;
+        size_t s = static_cast<size_t>(src) * 3;
+        out[o + 0] = pal[s + 0];
+        out[o + 1] = pal[s + 1];
+        out[o + 2] = pal[s + 2];
+    }
+    return out;
+}
+
+// Decide which TRN file (if any) to apply. Returns "" when apply_trn is off.
+// When apply_trn is on but no explicit trn_name is given, the default is the
+// per-class TRN DevilutionX uses: plrgfx\trn<class>.trn (the class's `trn`
+// field = "trn" + class, e.g. trnwarrior). Note: for the shipped game those
+// per-class TRN files are NOT present, so this resolves to a missing file and
+// the decode falls back to palette-only — faithful to the game, where player
+// tinting is a no-op for the base classes.
+std::string resolveTrnName(const mcp::json& params, const std::string& spriteName);
+
 // Build a 768-byte RGB palette from raw bytes (768, 1024=RGBA, or >=768).
 std::vector<uint8_t> paletteFromBytes(const std::vector<uint8_t>& raw)
 {
@@ -199,7 +229,6 @@ mcp::ToolResult toolSpriteDecode(const mcp::json& params)
     std::string format;
     std::vector<decoders::DecodedFrame> frames;
     std::vector<uint8_t> embeddedPal;
-    bool havePal = false;
 
     // Resolve width for CL2/CEL. Supports an explicit integer or the string
     // "auto" (look up from DevilutionX data tables by the sprite path).
@@ -247,21 +276,52 @@ mcp::ToolResult toolSpriteDecode(const mcp::json& params)
             "unsupported sprite format (expected .clx/.cl2/.cel/.pcx): " + name);
     }
 
+    // Resolve the base palette first (CLX/CEL/CL2 path; PCX may keep embedded).
+    std::vector<uint8_t> pal;
+    bool havePal = false;
     if (format == "pcx") {
-        // Prefer an explicitly supplied palette; otherwise keep the embedded one.
-        try {
-            std::vector<uint8_t> pal = resolvePalette(archs, params, name, &embeddedPal);
-            decoders::DecodedFrame fr;
-            decoders::decodePcx(buf, fr, nullptr, &pal);
-            frames.clear();
+        decoders::DecodedFrame fr;
+        if (decoders::decodePcx(buf, fr, &embeddedPal))
             frames.push_back(std::move(fr));
+        try {
+            pal = resolvePalette(archs, params, name, &embeddedPal);
             havePal = true;
         } catch (const std::exception&) {
             havePal = !embeddedPal.empty();
         }
     } else {
-        std::vector<uint8_t> pal = resolvePalette(archs, params, name, nullptr);
+        pal = resolvePalette(archs, params, name, nullptr);
         havePal = true;
+    }
+
+    // Optional TRN remap (toggle via apply_trn). Remaps the palette so a pixel
+    // with index j renders as palette[trn[j]] — DevilutionX ClxApplyTrans. The
+    // default class TRN (plrgfx\trn<class>.trn) is not shipped for the base game
+    // classes, so this is a no-op unless an explicit trn_name (e.g. the real
+    // plrgfx\infra.trn / plrgfx\stone.trn) is supplied or a mod adds it.
+    bool trnApplied = false;
+    std::string trnNameResolved = resolveTrnName(params, name);
+    if (!trnNameResolved.empty()) {
+        try {
+            auto trnBuf = extractBufAny(archs, trnNameResolved);
+            if (trnBuf.size() == 256) {
+                pal = applyTrn(pal, trnBuf);
+                trnApplied = true;
+            }
+        } catch (const std::exception&) {
+            // TRN file not present; keep palette-only.
+        }
+    }
+
+    // Decode with the (possibly TRN-remapped) palette.
+    if (format == "pcx") {
+        if (!pal.empty()) {
+            decoders::DecodedFrame fr;
+            decoders::decodePcx(buf, fr, nullptr, &pal);
+            frames.clear();
+            frames.push_back(std::move(fr));
+        }
+    } else {
         frames = decoders::decodeClx(clxBytes, pal);
     }
 
@@ -295,6 +355,8 @@ mcp::ToolResult toolSpriteDecode(const mcp::json& params)
                          { "height", totalH },
                          { "frame_count", static_cast<int>(frames.size()) },
                          { "palette_resolved", havePal },
+                         { "trn_applied", trnApplied },
+                         { "trn_name", trnNameResolved },
                          { "frames", framesJson } };
     return r;
 }
@@ -388,6 +450,22 @@ static SpriteInfo classifySprite(const std::string& name, bool& isSpriteExt) {
         r.sprite = true;
     }
     return r;
+}
+
+std::string resolveTrnName(const mcp::json& params, const std::string& spriteName)
+{
+    if (!params.value("apply_trn", false))
+        return "";
+    if (params.contains("trn_name") && params["trn_name"].is_string())
+        return params["trn_name"].get<std::string>();
+    bool isSpriteExt = false;
+    SpriteInfo si = classifySprite(spriteName, isSpriteExt);
+    if (si.family == "plrgfx" && !si.cls.empty()) {
+        std::string cls = si.cls;
+        if (cls == "sorceror") cls = "sorcerer"; // data-dir spelling used by the trn field
+        return "plrgfx\\trn" + cls + ".trn";
+    }
+    return "";
 }
 
 // Enumerate real sprite names (from recovered.json) grouped by family / class /
@@ -510,6 +588,10 @@ void registerSpriteTools(ToolRegistry& reg)
                                         { "description", "required for .cel/.cl2; an integer (e.g. 96) or the string \"auto\" to look up from DevilutionX data tables by sprite path" } } },
                       { "devilutionx_root", json{ { "type", "string" },
                                                    { "description", "DevilutionX source root for width:\"auto\" (default D:/work/xt/diablo/DevilutionX)" } } },
+                      { "apply_trn", json{ { "type", "boolean" },
+                                          { "description", "apply a TRN (256-byte palette remap) before decoding; default false = palette-only mode. When true, the class TRN plrgfx\\trn<class>.trn is used unless trn_name is given" } } },
+                      { "trn_name", json{ { "type", "string" },
+                                          { "description", "explicit TRN file in the MPQ to apply (e.g. plrgfx\\infra.trn for infravision tint, plrgfx\\stone.trn for petrify). Overrides the auto class TRN when apply_trn is true" } } },
                       { "frame", json{ { "type", "integer" } } } } },
               { "required", json::array({ "archive", "name" }) } },
         toolSpriteDecode });

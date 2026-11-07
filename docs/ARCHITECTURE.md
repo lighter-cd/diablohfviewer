@@ -365,19 +365,26 @@ build-mcp/mcp-server.exe --stdio --ws 18765      # 同时
      `kind:"palette"` 拉取档案内全部调色板，填入下拉框，用户选取而非手填路径。
    - 前端据此建"职业 × 护甲 × 武器 × 动作"目录树，点击即 `sprite.decode`。
    - 已加入 `integration_tests.cpp`（合成 recovered.json 断言 sprite/palette/all 分类正确）。
-3. **（可选，保真度）TRN 上色**（原理已逆向，2026-11-07 确认；待决定是否落地）
+3. **（可选，保真度）TRN 上色**（已实现，2026-11-07）
    - TRN = **256 字节调色板索引重映射表**，经 `ClxApplyTrans` 把每帧每个像素索引 `i`
-     替换为 `trn[i]` 改变上色；`sprite.decode` 当前**完全不应用 TRN**，直接选中 `.pal` 上色。
+     替换为 `trn[i]` 改变上色。`sprite.decode` 现新增 `apply_trn`（布尔，默认 false）参数：
+     开启后按 `trn_name`（可选，显式指定 TRN 文件）或默认 `plrgfx\trn<class>.trn`（来自
+     `sprites.tsv` 的 `trn` 字段，即 `trn`+职业，如 `trnwarrior`）取 256 字节 TRN，重映射调色板
+     后再解码；返回 `trn_applied` / `trn_name` 标记是否实际作用。
    - **两类 TRN（取自 `Source/player.cpp` `LoadPlrGFX`）**：
      1. **每精灵 TRN（先应用）**：`GetPlayerGraphicTRN(pszName)` → `<spritePath>.trn`
         （`plrgfx\{class}\{prefix}\{prefix}{type}.trn`）。候选名校验命中为 **0**，恒 `nullopt`，
         对玩家精灵无实际效果。
-     2. **职业 TRN（后应用）**：`GetClassTRN(player)` → `plrgfx\<class>.trn`
-        （如 `plrgfx\warrior.trn`，来自 `sprites.tsv` 的 `trn` 字段）。真正生效层。
+     2. **职业 TRN（后应用）**：`GetClassTRN(player)` → `plrgfx\trn<class>.trn`
+        （如 `plrgfx\trnwarrior.trn`，来自 `sprites.tsv` 的 `trn` 字段）。
      - 应用顺序固定：**先 `ClxApplyTrans(graphicTRN)` 再 `ClxApplyTrans(classTRN)`**。
-   - **落地方案（若实施）**：`sprite.decode` 增加 `apply_trn:true`，后端按 `plrgfx\<class>.trn`
-     取职业 TRN 作用到 RGBA 帧再返回；每精灵 TRN 因 MPQ 内不存在可跳过。前端角色模式可默认开启。
-   - 第一版前端可先只用 `diablo.pal` / `levels\*\*.pal` 跑通链路，TRN 作为保真增强后续补。
+   - **实测结论（重要）**：原版游戏中 `plrgfx\trnwarrior/trnrogue/trnsorcerer/trnmonk.trn`
+     **均不存在**（MPQ 内 plrgfx 下仅 `infra.trn`/`stone.trn` 两个全局 TRN 真实存在），
+     故按职业默认 TRN 路径解码时为**忠实的 no-op**（`trn_applied:false`，仍用调色板上色），
+     与游戏内玩家着色行为一致。真正存在的 `plrgfx\infra.trn`（红外视觉红染）/ `plrgfx\stone.trn`
+     （石化灰染）可经 `trn_name` 显式施加，作为可视的 TRN 效果演示。
+   - **前端**：`web/` 新增「应用 TRN」开关 + TRN 预设下拉（职业默认 / infra 红外视觉 /
+     stone 石化），默认关闭（原调色板模式）；开启即传 `apply_trn:true`，meta 行显示 `TRN: <name>`。
 
 ### 10.3 前端目录结构（JS ES Module + Canvas，零构建，无 Node 运行服务）
 
@@ -422,7 +429,7 @@ Archive 输入框——点选精灵即可直接解码，无需用户手填路径
 
 1. 后端：`sprite.decode` 加 `width:"auto"`（复用 render_sprite 查表）→ ✅ 已完成（三套件测试通过）。
 2. 后端：新增 `sprite.list`（读 recovered.json + 数据表）→ ✅ 已完成（三套件测试通过）。
-3. 后端（可选）：`sprite.decode` 加 `apply_trn` 上色。
+3. 后端（可选）：`sprite.decode` 加 `apply_trn` 上色 → ✅ 已完成（见 §10.2.3，含前端开关）。
 4. 前端：脚手架 `web/`（✅ 已落地，纯 JS ES Module，零构建）：`client.js` 连 WS →
    `sprite.list` 取目录 → 点击即 `sprite.decode` 取 RGBA → `viewer.js` 绘制；
    已支持"选精灵 → 看单帧"（方向/帧滑块翻帧）+ ▶播放。
@@ -440,8 +447,8 @@ Archive 输入框——点选精灵即可直接解码，无需用户手填路径
 6. 查看器能力复用（阶段 3 目标）：
    - 怪物/NPC 查看器复用同一 `sprite.list` + `sprite.decode` 链路，仅家族不同；
      怪物方向数非固定 8，可在「方向数」控件手动调整。
-   - TRN 上色（见 §10.2.3，待做）：`sprite.decode` 加 `apply_trn`，接入职业 TRN 与
-     每精灵 TRN，提升颜色正确度。
+   - TRN 上色（见 §10.2.3，已实现）：`sprite.decode` 加 `apply_trn` 接入职业 TRN 与
+     每精灵 TRN；前端「应用 TRN」开关可切换原调色板模式 / TRN 模式，meta 行显示应用状态。
 
 > 该顺序让"列清单 → 渲染 → 显示"尽快端到端跑通，且后端每一步都可独立单测，
 > 符合项目"先理解、再使用；CLI / 可验证产出优先"的章程。

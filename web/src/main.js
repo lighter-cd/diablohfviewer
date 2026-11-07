@@ -323,13 +323,24 @@ async function onSelectSprite(sprite) {
   setMeta("decoding " + sprite.name + " …");
   stopPlay();
   try {
-    const res = await client.callTool("sprite.decode", {
+    const args = {
       archive,
       archives,
       name: sprite.name,
       width: "auto",
       palette_name: palette,
-    });
+    };
+    // TRN toggle (off by default = palette-only mode). When on, the backend
+    // applies a 256-byte palette remap; default class TRN is plrgfx\trn<class>.trn
+    // (not shipped for base classes, so no-op), or an explicit preset if chosen.
+    if ($("applyTrn").checked) {
+      args.apply_trn = true;
+      const preset = $("trnPreset").value;
+      if (preset === "infra") args.trn_name = "plrgfx\\infra.trn";
+      else if (preset === "stone") args.trn_name = "plrgfx\\stone.trn";
+      // preset "class" -> let the backend compute plrgfx\trn<class>.trn
+    }
+    const res = await client.callTool("sprite.decode", args);
     if (!res || !Array.isArray(res.frames) || res.frames.length === 0) {
       showError("解码失败：" + sprite.name + " 未返回任何帧。");
       return;
@@ -385,8 +396,11 @@ function updateMeta(idx, dir, fin) {
   if (!lastRes || !currentFrames || !lastSprite) return;
   const f = currentFrames[idx];
   if (!f) return;
-  setMeta(`${lastSprite.name}  ${lastRes.format}  帧 ${f.width}×${f.height}  ` +
-         `dir ${dir} 帧内 ${fin}  ${currentFrames.length} frames`);
+  let s = `${lastSprite.name}  ${lastRes.format}  帧 ${f.width}×${f.height}  ` +
+         `dir ${dir} 帧内 ${fin}  ${currentFrames.length} frames`;
+  if (lastRes.trn_applied)
+    s += `  · TRN: ${lastRes.trn_name || "on"}`;
+  setMeta(s);
 }
 
 function startPlay() {
@@ -464,6 +478,14 @@ function wireControls() {
   // Re-decode the current sprite when the user changes the palette.
   $("palette").addEventListener("change", () => {
     if (lastSprite) onSelectSprite(lastSprite);
+  });
+
+  // TRN toggle / preset: re-decode so the colour change takes effect.
+  $("applyTrn").addEventListener("change", () => {
+    if (lastSprite) onSelectSprite(lastSprite);
+  });
+  $("trnPreset").addEventListener("change", () => {
+    if ($("applyTrn").checked && lastSprite) onSelectSprite(lastSprite);
   });
 
   // Character panel selectors.

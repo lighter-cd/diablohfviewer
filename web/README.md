@@ -107,10 +107,11 @@ web/
   （缺失时错误条会提示，便于排查 recovered.json 数据问题。）
 - 调色板下拉框在**角色查看器模式**下已预筛选为「关卡调色板」（`levels\*`/`nlevels\*`），
   目录浏览模式下列出全部 `.pal`；这是保真折中——玩家精灵只有在关卡调色板下颜色才正确。
-- **TRN 上色未做（原理已逆向，待决定是否实施）**：当前始终用选中的 `.pal`（如
-  `diablo.pal` / `levels\*`）上色。TRN 是 256 字节调色板索引重映射表（`ClxApplyTrans`），
-  分两级——**每精灵 TRN** `<spritePath>.trn`（`GetPlayerGraphicTRN`，MPQ 内命中为 0，无实际效果）
-  与**职业 TRN** `plrgfx/<class>.trn`（`GetClassTRN`，真正生效层）；`LoadPlrGFX` 顺序为
-  先每精灵后职业。若落地，`sprite.decode` 加 `apply_trn:true` 取职业 TRN 作用到帧再返回。
+- **TRN 上色已实现（开关切换）**：控制条新增「应用 TRN」复选框 + TRN 预设下拉
+  （职业默认 / infra 红外视觉 / stone 石化），默认关闭（原调色板模式）。开启后 `sprite.decode`
+  传 `apply_trn:true`，后端取 256 字节 TRN 重映射调色板后解码；meta 行显示 `TRN: <name>`。
+  **实测关键结论**：原版 MPQ 内 `plrgfx\trnwarrior/trnrogue/trnsorcerer/trnmonk.trn` 均不存在，
+  故「职业默认」路径是**忠实的 no-op**（仍用调色板上色，与游戏内一致）；`infra.trn`（红染）/
+  `stone.trn`（灰染）可经预设显式施加看效果。每精灵 TRN `<spritePath>.trn` 在 MPQ 内命中为 0，无实际效果。
 - 8 方向切分按 `总帧数 / 方向数` 整除近似；若某精灵并非严格方向优先（如部分非玩家精灵），
   可手动把「方向数」调为 1 退回逐帧浏览。

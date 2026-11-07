@@ -154,3 +154,5 @@ canvas { background: transparent; image-rendering: pixelated; }
 .controls button#playBtn:hover { background: #3a3a44; }
 .fps { font-size: 12px; color: #c9c9d2; }
 .fps input { width: 48px; background: #15151a; color: #e6e6e6; border: 1px solid #3a3a42; border-radius: 4px; padding: 2px 4px; }
+.trn-toggle { font-size: 12px; color: #c9c9d2; cursor: pointer; }
+.trn-toggle input { width: auto; }

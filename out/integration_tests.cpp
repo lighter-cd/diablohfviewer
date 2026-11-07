@@ -348,6 +348,75 @@ static void testSpriteDecode(const std::string& mpq) {
     printf("sprite_tools (decode): %s\n", allOk ? "PASS" : "FAIL");
 }
 
+// TRN remap toggle: verifies sprite.decode honours apply_trn + trn_name.
+// Uses a self-describing CLX sprite + a real .trn from the same MPQ (so no width
+// table is needed). SKIPs if the fixture has no CLX/TRN to exercise.
+static void testSpriteDecodeTrn(const std::string& mpq) {
+    ToolRegistry reg;
+    tools::registerMpqTools(reg);
+    tools::registerSpriteTools(reg);
+
+    auto call = [&](const std::string& tool, const json& args) -> json {
+        auto resp = handleRequest(reg, json{
+            {"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/call"},
+            {"params", json{{"name", tool}, {"arguments", args}}}});
+        CHECK(resp.has_value(), ("tools/call " + tool + " returns response").c_str());
+        CHECK(!resp->contains("error"), ("tools/call " + tool + " no error").c_str());
+        return (*resp)["result"];
+    };
+
+    json lst = call("mpq.list", json{{"archive", mpq}});
+    std::string clxName, trnName, palName;
+    for (auto& f : lst["files"]) {
+        std::string n = f.value("name", "");
+        auto ends = [&](const char* suf) {
+            return n.size() >= std::strlen(suf) &&
+                   n.compare(n.size() - std::strlen(suf), std::strlen(suf), suf) == 0;
+        };
+        if (clxName.empty() && ends(".clx")) clxName = n;
+        if (trnName.empty() && ends(".trn")) trnName = n;
+        if (palName.empty() && ends(".pal")) palName = n;
+    }
+    if (clxName.empty() || trnName.empty() || palName.empty()) {
+        printf("  (skipped sprite.decode TRN; fixture lacks CLX/TRN/PAL)\n");
+        printf("sprite_tools (trn): %s\n", allOk ? "PASS" : "FAIL");
+        return;
+    }
+
+    // Default (apply_trn omitted): no TRN applied.
+    json def = call("sprite.decode", json{{"archive", mpq},
+                                          {"name", clxName},
+                                          {"palette_name", palName}});
+    CHECK(def.value("trn_applied", true) == false,
+          "sprite.decode without apply_trn leaves trn_applied false");
+
+    // apply_trn with a real existing TRN name -> applied true, still decodes.
+    json on = call("sprite.decode", json{{"archive", mpq},
+                                         {"name", clxName},
+                                         {"palette_name", palName},
+                                         {"apply_trn", true},
+                                         {"trn_name", trnName}});
+    CHECK(on.value("trn_applied", false) == true,
+          "sprite.decode apply_trn+trn_name sets trn_applied true");
+    CHECK(on.value("trn_name", std::string()) == trnName,
+          "sprite.decode reports the applied trn_name");
+    CHECK(on.value("frame_count", 0) > 0,
+          "sprite.decode with TRN still yields frames");
+
+    // apply_trn with a missing TRN name -> applied false, still decodes (palette-only).
+    json miss = call("sprite.decode", json{{"archive", mpq},
+                                           {"name", clxName},
+                                           {"palette_name", palName},
+                                           {"apply_trn", true},
+                                           {"trn_name", "plrgfx\\__nope__.trn"}});
+    CHECK(miss.value("trn_applied", true) == false,
+          "sprite.decode apply_trn with missing trn_name leaves trn_applied false");
+    CHECK(miss.value("frame_count", 0) > 0,
+          "sprite.decode with missing TRN still decodes (palette-only)");
+
+    printf("sprite_tools (trn): %s\n", allOk ? "PASS" : "FAIL");
+}
+
 int main() {
     printf("=== DiabloHFConverter integration tests (engine + mpq_tools + sprite_tools) ===\n");
     testNormalize();
@@ -371,6 +440,7 @@ int main() {
     testEngineArchive(mpq);
     testMpqTools(mpq);
     testSpriteDecode(mpq);
+    testSpriteDecodeTrn(mpq);
     printf("=== %s ===\n", allOk ? "ALL PASS" : "FAILURES PRESENT");
     return allOk ? 0 : 1;
 }
