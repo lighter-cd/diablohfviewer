@@ -404,6 +404,11 @@ build-mcp/mcp-server.exe --stdio --ws 18765      # 同时
    - 已加入 `integration_tests.cpp`（`testSpriteListSynthesis` 断言合成含
      `monsters\zombie\zombien.cl2` 且 `frames_per_dir==11`；`testSpriteDecodeMonster`
      对真实 MPQ 断言 `directions==8` / `frame_count==88`）。
+   - **跨 MPQ 解码**：Hellfire 怪物 CL2 位于 `hellfire.mpq` 而非 `DIABDAT.MPQ`，故前端
+     `buildDecodeArgs` 把 `sprite.list` 收集到的**全部 MPQ** 作为 `sprite.decode` 的 `archives`
+     搜索栈（并统一 `/` 路径避免同一档案两种拼写被重复打开），后端 `extractBufAny` 逐个档案
+     查找精灵/调色板。回归测试 `testSpriteDecodeCrossArchive`：单 MPQ 解码 Hellfire 怪物应失败、
+     传入全栈应成功。修复前全量 325 条合成目录 137 条失败，修复后 116 条转为成功。
 
 5. **（特效叠加层 alpha 合成）**（已实现，2026-11-08）
    - 通用叠加子系统：任一浏览模式选中基础精灵后，画布下方「特效叠加层」面板（默认折叠）可把任意

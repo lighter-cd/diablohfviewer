@@ -445,6 +445,12 @@ DiabloHFConverter/
       monster 的 Special 动画）。
 - [x] 产出：怪物/NPC 查看数据（浏览器内实时查看；后端 `directions` 字段由 `monstdat.tsv` 的
       `frames[6]` 切分方向，如僵尸 Stand=11 帧/方向 × 8 方向 = 88 帧 → `directions=8`）。
+- [x] 修复 Hellfire 怪物批量解码失败（`extract failed (name not found?)`）：根因是前端只把
+      「选中的单个 MPQ」传给 `sprite.decode`，而 Hellfire 怪物 CL2 实际在 `hellfire.mpq`。现改为把
+      全部已知 MPQ 作为 `archives` 搜索栈，并把路径统一规范为 `/`（避免 `recovered.json` 里
+      `/` 与 `\` 混用使同一 MPQ 被打开两次报 `cannot open archive`）。回归测试
+      `testSpriteDecodeCrossArchive` 断言「单 MPQ 失败 / 全栈成功」；全量 325 条合成目录中
+      116 条由此修好（用户报告的 6 条全部由失败转 OK）。
 
 ### 特效叠加层（alpha 合成）
 - 通用叠加子系统：在任一浏览模式下选中基础精灵后，右侧「特效叠加层」面板（默认折叠，点「展开」）可把

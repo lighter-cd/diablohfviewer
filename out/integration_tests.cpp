@@ -530,6 +530,71 @@ static void testSpriteDecodeMonster() {
     printf("sprite_tools (monster dirs): %s\n", allOk ? "PASS" : "FAIL");
 }
 
+// A Hellfire monster CL2 lives in hellfire.mpq, NOT in the base DIABDAT.MPQ.
+// The frontend monster viewer supplies the whole MPQ stack via `archives`, so
+// sprite.decode must find the sprite in a *different* MPQ than `archive`.
+// Regression test for the "extract failed (name not found?)" failures on
+// monsters\antworm\wormn.cl2, monsters\bspidr\bspidrn.cl2, ... which occurred
+// when only the single MPQ picked in the viewer was searched.
+static void testSpriteDecodeCrossArchive() {
+    std::string base = findMonsterMpq();   // has zombie, but not Hellfire monsters
+    std::string hf;
+    {
+        size_t i = base.find_last_of("/\\");
+        if (i != std::string::npos)
+            hf = base.substr(0, i + 1) + "hellfire.mpq";
+    }
+    if (base.empty() || hf.empty()) {
+        printf("  (skipped cross-archive decode; no monster fixture)\n");
+        return;
+    }
+    std::ifstream f(engine::Archive::normalizePath(hf));
+    if (!f.good()) {
+        printf("  (skipped cross-archive decode; hellfire.mpq not found)\n");
+        return;
+    }
+
+    ToolRegistry reg;
+    tools::registerMpqTools(reg);
+    tools::registerSpriteTools(reg);
+    auto raw = [&](const std::string& tool, const json& args) -> json {
+        auto resp = handleRequest(reg, json{
+            {"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/call"},
+            {"params", json{{"name", tool}, {"arguments", args}}}});
+        CHECK(resp.has_value(), "cross-archive: tools/call returns a response");
+        return resp ? *resp : json::object();
+    };
+    auto resultOf = [&](const std::string& tool, const json& args) -> json {
+        return raw(tool, args).value("result", json::object());
+    };
+
+    const char* name = "monsters\\antworm\\wormn.cl2";
+    const char* pal  = "gendata\\cut2.pal";
+
+    json vb = resultOf("mpq.verify", json{{"archive", base}, {"name", name}});
+    CHECK(!vb.value("exists", true), "Hellfire monster absent from the base MPQ");
+    json vh = resultOf("mpq.verify", json{{"archive", hf}, {"name", name}});
+    CHECK(vh.value("exists", false), "Hellfire monster present in hellfire.mpq");
+
+    // Single-MPQ decode must fail: this is exactly the bug the viewer hit.
+    json single = raw("sprite.decode", json{
+        {"archive", base}, {"name", name}, {"width", "auto"},
+        {"palette_name", pal}});
+    CHECK(single.contains("error"),
+          "single-MPQ decode of a Hellfire monster fails as expected");
+
+    // With the full stack supplied via `archives` it must succeed.
+    json stacked = resultOf("sprite.decode", json{
+        {"archive", base}, {"archives", json::array({base, hf})},
+        {"name", name}, {"width", "auto"}, {"palette_name", pal}});
+    CHECK(stacked.value("format", std::string()) == "cl2",
+          "cross-archive decode format == cl2");
+    CHECK(stacked.value("frame_count", 0) > 0,
+          "cross-archive decode returns frames");
+
+    printf("sprite_tools (cross-archive): %s\n", allOk ? "PASS" : "FAIL");
+}
+
 int main() {
     printf("=== DiabloHFConverter integration tests (engine + mpq_tools + sprite_tools) ===\n");
     testNormalize();
@@ -556,6 +621,7 @@ int main() {
     testSpriteDecode(mpq);
     testSpriteDecodeTrn(mpq);
     testSpriteDecodeMonster();
+    testSpriteDecodeCrossArchive();
     printf("=== %s ===\n", allOk ? "ALL PASS" : "FAILURES PRESENT");
     return allOk ? 0 : 1;
 }

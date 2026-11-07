@@ -588,12 +588,26 @@ function renderOverlayList() {
 // sprite name, used when decoding an effect-overlay variant of the same base).
 // Reuses the current palette + TRN settings so overlays match the base sprite.
 function buildDecodeArgs(sprite, nameOverride) {
-  const archive = (sprite.archive_path || "").trim();
+  // recovered.json stores archive paths with a mix of "/" and "\". Normalize
+  // them: if the same MPQ reaches the backend under two spellings, StormLib is
+  // asked to open it twice and fails ("cannot open archive").
+  const norm = (p) => (p || "").trim().replace(/\\/g, "/");
+  const archive = norm(sprite.archive_path);
   const palette = $("palette").value;
   const paletteArchive = paletteArchives.get(palette) || "";
-  const archives = [archive];
-  if (paletteArchive && !archives.includes(paletteArchive))
-    archives.push(paletteArchive);
+  // Monsters/NPCs are spread across MPQs (Hellfire monsters live in
+  // hellfire.mpq, base ones in DIABDAT.MPQ, some in hfopt1.mpq, ...), so give
+  // sprite.decode the whole known archive stack to search instead of only the
+  // single MPQ picked in the monster viewer. Otherwise every Hellfire monster
+  // fails with "extract failed (name not found?)" when DIABDAT.MPQ is selected.
+  const archives = [];
+  const add = (p) => {
+    const n = norm(p);
+    if (n && !archives.includes(n)) archives.push(n);
+  };
+  add(archive);
+  add(paletteArchive);
+  for (const a of allArchives) add(a);
   const args = {
     archive,
     archives,

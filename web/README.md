@@ -84,6 +84,12 @@ python -m http.server 8000        # 或： npx serve .
 **`directions`** 字段（如僵尸 Stand：88 帧 ÷ 11 帧/方向 = 8 方向），前端据此自动切分；
 NPC 固定单方向。两者宽度均由后端自动查表（`monstdat.tsv` / `towners.tsv`）。
 
+**跨 MPQ 搜索**：怪物/NPC 精灵分散在多个 MPQ（基础怪物在 `DIABDAT.MPQ`，Hellfire 怪物在
+`hellfire.mpq`，个别在 `hfopt1.mpq`…）。解码时前端把目录里收集到的**全部 MPQ** 作为
+`archives` 传给 `sprite.decode`，后端逐个档案查找精灵/调色板，因此上方「MPQ」下拉选哪个都能
+正确解码（含所有 Hellfire 怪物）。MPQ 路径统一规范为 `/`，避免 `recovered.json` 里 `/` 与 `\`
+混用导致同一档案被重复打开而报 `cannot open archive`。
+
 ### 特效叠加层（alpha 合成）
 
 画布下方有一块「特效叠加层」面板（默认折叠，点「展开」）。在**任一浏览模式**选中基础精灵后，
