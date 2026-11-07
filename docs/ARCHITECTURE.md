@@ -142,8 +142,8 @@ public:
 | `mpq.recover`  | `{archive,dict_path}` | `{recovered:[{name,size}]}`（移植 mpq-recover） | 0 |
 | `mpq.dump`     | `{archive,name,max_bytes?}` | `{name,size,preview_hex}`（前 N 字节十六进制预览；移植 mpqextract `dump`） | 0 |
 | `palette.load` | `{archive,name}` | `{name,count,colors:[[r,g,b]×256],rgba_base64}` | ✅ |
-| `sprite.decode`| `{archive,name,palette?,frame?,width?}` | `{name,format,width,height,frame_count,palette_resolved,frames:[{index,width,height,rgba_base64}]}`（`.clx` 直解；`.cel`/`.cl2` 经 `celToClx`/`cl2ToClx` 转 CLX 后解；`.pcx` 走内置解码。格式由扩展名自动探测。`width` 为 `.cel`/`.cl2` 必需，阶段 2 起支持 `width:"auto"` 按路径自动查表） | ✅ |
-| `sprite.list`  | `{archive?,family?,class?}` | `{sprites:[{name,archive,family,class,type,width,frames?}]}`（从 `recovered.json` + DevilutionX 数据表枚举**真实存在的**精灵名，供前端建目录树；无 listfile 时 `mpq.list` 给的是占位名，故需此工具） | 阶段 2（计划中） |
+| `sprite.decode`| `{archive,name,palette?,frame?,width?}` | `{name,format,width,height,frame_count,palette_resolved,frames:[{index,width,height,rgba_base64}]}`（`.clx` 直解；`.cel`/`.cl2` 经 `celToClx`/`cl2ToClx` 转 CLX 后解；`.pcx` 走内置解码。格式由扩展名自动探测。`width` 为 `.cel`/`.cl2` 必需，支持 `width:"auto"` 按路径自动查表） | ✅ |
+| `sprite.list`  | `{dict?,devilutionx_root?,family?,class?}` | `{count,sprites:[{name,archive,family,class,type,width}]}`（从 `recovered.json` + DevilutionX 数据表枚举**真实存在的**精灵名并分类 family/class/type、带自动帧宽，供前端建目录树；无 listfile 时 `mpq.list` 给的是占位名，故需此工具） | ✅ |
 | `map.build`    | `{archive,dun,...}` | `{tiles:[...],width,height}` | 4 |
 
 > **PCX 已并入 `sprite.decode`**（按 `.pcx` 扩展名自动路由），不再单独设 `pcx.decode` 工具。
@@ -204,13 +204,13 @@ mcp-server --stdio --ws 18765      # 同时（开发调试最方便）
    的 base64（`data:image/png;base64,...`），但 RGBA 对查看器更灵活。
 4. **错误**：`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"..."}}`。
 5. **列举工具**：`{"method":"tools/list"}` → `result.tools[]`（含 name/description/schema）。
-6. **枚举精灵（阶段 2 新工具 `sprite.list`）**：
+6. **枚举精灵（工具 `sprite.list`，已落地）**：
    ```json
    {"jsonrpc":"2.0","id":2,"method":"tools/call",
     "params":{"name":"sprite.list","arguments":{"family":"plrgfx","class":"warrior"}}}
    // → result.sprites[] 含每件精灵的 name / width / type，前端据此建 职业×护甲×武器×动作 树
    ```
-7. **自动取宽（阶段 2 增强 `sprite.decode`）**：
+7. **自动取宽（`sprite.decode` 已支持 `width:"auto"`）**：
    ```json
    {"jsonrpc":"2.0","id":3,"method":"tools/call",
     "params":{"name":"sprite.decode",
@@ -339,27 +339,27 @@ build-mcp/mcp-server.exe --stdio --ws 18765      # 同时
 ### 10.1 当前已具备（无需重造）
 
 - `mcp-server` 已带 **WS 桥**（`--ws <port>`，自研 RFC6455），与 stdio 共用同一套 tool `dispatch`。
-- 后端已注册 `palette.load` 与 `sprite.decode`（`src/tools/sprite_tools.cpp`）：
+- 后端已注册 `palette.load`、`sprite.decode`、`sprite.list`（`src/tools/sprite_tools.cpp`）：
   `sprite.decode` 能从 MPQ 抽出 `.clx/.cl2/.cel/.pcx` 并解码成
-  `frames:[{index,width,height,rgba_base64}]`，前端用 `ImageData` 直接画。
-- 因此"前端引用后端"的主干链路**已经打通**，缺的是让前端"好用"的少量后端补齐 + 前端壳。
+  `frames:[{index,width,height,rgba_base64}]`，前端用 `ImageData` 直接画；
+  `sprite.list` 从 `recovered.json` + DevilutionX 数据表枚举真实精灵名（分类 + 自动帧宽）。
+- 因此"前端引用后端"的主干链路**已经打通**，缺的是让前端"好用"的少量后端补齐（TRN）+ 前端壳。
 
-### 10.2 后端需先补齐的 3 项（纯 C/C++，可独立验证）
+### 10.2 后端补齐状态（纯 C/C++，可独立验证）
 
-1. **`sprite.decode` 支持 `width:"auto"`**（高优先）
-   - 现 `sprite.decode` 对 `.cl2/.cel` 强制要求手填 `width`（`sprite_tools.cpp:169/175`）。
-   - 复用 `mpq-info/render_sprite.cpp` 刚实现的路径→家族→宽度表查表逻辑
-     （plrgfx→`sprites.tsv`、monsters→`monstdat.tsv`、missiles→`missile_sprites.tsv`、
-     objects→`objdat.tsv`、towners→`towners.tsv`；items 无表仍手填）。
-   - 实现位置：把 `autoWidth()` 抽成 `src/tools/sprite_tools.cpp` 内的静态函数（或
-     提到 `src/decoders/` 共享），`width` 参数为 `"auto"` 或非正时调用。
-2. **新增 `sprite.list` 工具**（高优先）
+1. **`sprite.decode` 支持 `width:"auto"`**（✅ 已完成）
+   - `width` 参数为 `"auto"` 或非正时，调用共享模块 `src/decoders/sprite_width.cpp`
+     的 `autoWidth()`（路径→家族→宽度表查表：plrgfx→`sprites.tsv`、monsters→`monstdat.tsv`、
+     missiles→`missile_sprites.tsv`、objects→`objdat.tsv`、towners→`towners.tsv`；items 无表仍手填）。
+   - 已通过 `sprite_width` 单元测试 + 手动 stdio 端到端验证（`wluas.cl2`→96、`whaat.cl2`→128 等）。
+2. **新增 `sprite.list` 工具**（✅ 已完成）
    - `mpq.list` 在无 listfile 时只给占位名 `FileNNNNNNN.xxx`，前端无法据此浏览。
-   - `sprite.list` 改读 `mpq-info/dict/recovered.json` + DevilutionX 数据表，枚举
-     **真实存在**的精灵名，并按家族/职业/动作归类，返回
-     `{sprites:[{name,archive,family,class,type,width,frames?}]}`。
+   - `sprite.list` 读 `mpq-info/dict/recovered.json` + DevilutionX 数据表，枚举
+     **真实存在**的精灵名，并按 family/class/type 归类，返回
+     `{count,sprites:[{name,archive,family,class,type,width}]}`（width 为自动帧宽，items 为 0）。
    - 前端据此建"职业 × 护甲 × 武器 × 动作"目录树，点击即 `sprite.decode`。
-3. **（可选，保真度）TRN 上色**
+   - 已加入 `integration_tests.cpp`（合成 recovered.json 断言分类正确）。
+3. **（可选，保真度）TRN 上色**（待做）
    - `sprite.decode` 现只解析基Palette，未应用职业 TRN（`plrgfx/<class>.trn`，`GetClassTRN`）
      与每精灵 TRN（`GetPlayerGraphicTRN`）。
    - 可加参数 `apply_trn:true`，从 MPQ 取对应 `.trn`（256 字节色彩变换表）后作用于帧
@@ -385,8 +385,8 @@ web/                              # 浏览器前端（不读 MPQ/文件，仅 We
 
 ### 10.4 工作顺序（建议）
 
-1. 后端：`sprite.decode` 加 `width:"auto"`（复用 render_sprite 查表）→ 跑三套件测试。
-2. 后端：新增 `sprite.list`（读 recovered.json + 数据表）→ 跑三套件测试。
+1. 后端：`sprite.decode` 加 `width:"auto"`（复用 render_sprite 查表）→ ✅ 已完成（三套件测试通过）。
+2. 后端：新增 `sprite.list`（读 recovered.json + 数据表）→ ✅ 已完成（三套件测试通过）。
 3. 后端（可选）：`sprite.decode` 加 `apply_trn` 上色。
 4. 前端：脚手架 `web/`，`client.ts` 连 WS → `tools/list` → `sprite.list` 取目录 →
    `sprite.decode` 取 RGBA → `viewer.ts` 绘制；先做"选精灵 → 看单帧"。

@@ -76,3 +76,8 @@
 - 实现 sprite.decode 支持 width:"auto"：将 render_sprite 的帧宽自动查表逻辑抽成共享模块 src/decoders/sprite_width.{h,cpp}（plrgfx→sprites.tsv、monsters→monstdat.tsv、missiles→missile_sprites.tsv、objects→objdat.tsv、towners→towners.tsv；items 无表仍手填），render_sprite 与 sprite.decode 共用；sprite.decode 新增 width:"auto"（及可选 devilutionx_root）参数并改 input_schema。out/unit_tests.cpp 新增 testSpriteWidth（类型码映射 + 真实表 autoWidth，缺 DevilutionX 则 SKIP）；README §1/§5 构建命令补 sprite_width.cpp。mcp-server 重新 configure 以重新 GLOB 新 .cpp 并链接通过。
 - 涉及: src/decoders/sprite_width.h, src/decoders/sprite_width.cpp, src/tools/sprite_tools.cpp, mpq-info/render_sprite.cpp, out/unit_tests.cpp, README.md
 - 验证：unit/core/integration 三套件全 PASS；mcp-server --stdio 经 tools/call sprite.decode width:"auto" 对 plrgfx\warrior\wlu\wluas.cl2 自动取宽 96 并解出 80 帧。
+
+## 2026-11-07 19:09:09
+- 实现 sprite.list 枚举真实精灵名：在 src/tools/sprite_tools.cpp 新增 classifySprite + toolSpriteList，按 recovered.json（StormLib 单向哈希校验恢复的真实名）枚举 .cl2/.cel 精灵，分类为 family/class/type 并带自动帧宽（items 无表则 width=0）；registerSpriteTools 注册 sprite.list（参数 dict/devilutionx_root/family/class）。out/integration_tests.cpp 新增 testSpriteList（合成 recovered.json 断言分类正确）+ testSpriteDecode（动态探测 MPQ 内 CLX+PAL 走完整解码管线），并补齐构建命令；out/unit_tests.cpp 构建命令补 sprite_width.cpp 与 -static 链接。README/ARCHITECTURE/PROJECT 同步标记 sprite.list 与 width:"auto" 已实现。
+- 涉及: src/tools/sprite_tools.cpp, out/integration_tests.cpp, out/unit_tests.cpp, README.md, docs/ARCHITECTURE.md, docs/PROJECT.md
+- 验证：unit/core/integration 三套件全 PASS；mcp-server --stdio 经 tools/call sprite.list 对 plrgfx/warrior 返回 340 条（as/aw/wl 等 width=96、at width=128），全档案共 1802 条；items 族 width=0。

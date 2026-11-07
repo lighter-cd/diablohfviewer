@@ -16,6 +16,7 @@
 #include "decoders/sprite_width.h"
 
 #include <filesystem>
+#include <fstream>
 
 #include <algorithm>
 #include <cstdint>
@@ -262,6 +263,156 @@ mcp::ToolResult toolSpriteDecode(const mcp::json& params)
     return r;
 }
 
+// Classify an in-archive sprite name into family / class / type, and report
+// whether it is a sprite we enumerate (CL2 / CEL only). Used by sprite.list.
+struct SpriteInfo {
+    std::string family; // plrgfx / monsters / missiles / items / objects / towners
+    std::string cls;    // class path, assetsSuffix, missile/item/object name, etc.
+    std::string type;   // 2-char player type code (as/at/...), or monster L letter
+    bool        sprite = false;
+};
+
+static SpriteInfo classifySprite(const std::string& name, bool& isSpriteExt) {
+    SpriteInfo r;
+    isSpriteExt = false;
+    std::string p = name;
+    for (char& c : p)
+        if (c == '\\') c = '/';
+    size_t dot = p.rfind('.');
+    if (dot == std::string::npos)
+        return r;
+    std::string ext = p.substr(dot + 1);
+    if (ext != "cl2" && ext != "cel")
+        return r; // only sprite formats are enumerated
+    isSpriteExt = true;
+
+    std::vector<std::string> comps;
+    std::string cur;
+    for (char c : p) {
+        if (c == '/') { comps.push_back(cur); cur.clear(); }
+        else cur.push_back(c);
+    }
+    comps.push_back(cur);
+
+    auto findTok = [&](const std::string& tok) -> int {
+        for (size_t i = 0; i < comps.size(); i++)
+            if (comps[i] == tok) return (int)i;
+        return -1;
+    };
+    auto stripExt = [](std::string s) -> std::string {
+        size_t d = s.rfind('.');
+        if (d != std::string::npos) s = s.substr(0, d);
+        return s;
+    };
+    auto joinAfter = [&](int idx) -> std::string {
+        std::string rel;
+        for (int i = idx + 1; i < (int)comps.size(); i++) {
+            if (!rel.empty()) rel += '\\';
+            rel += comps[i];
+        }
+        return rel;
+    };
+
+    int idx;
+    if ((idx = findTok("plrgfx")) >= 0) {
+        if ((size_t)idx + 3 >= comps.size()) return r;
+        r.family = "plrgfx";
+        r.cls = comps[idx + 1];
+        std::string fn = stripExt(comps[idx + 3]);
+        if (fn.size() >= 2) r.type = fn.substr(fn.size() - 2);
+        r.sprite = true;
+    } else if ((idx = findTok("monsters")) >= 0) {
+        std::string rel = stripExt(joinAfter(idx));
+        if (rel.size() < 2) return r;
+        r.family = "monsters";
+        r.cls = rel.substr(0, rel.size() - 1); // assetsSuffix (may include subdir)
+        r.type = rel.substr(rel.size() - 1);    // L letter
+        r.sprite = true;
+    } else if ((idx = findTok("missiles")) >= 0) {
+        r.family = "missiles";
+        r.cls = stripExt(comps.back());
+        r.sprite = true;
+    } else if ((idx = findTok("items")) >= 0) {
+        r.family = "items";
+        r.cls = stripExt(comps.back());
+        r.sprite = true;
+    } else if ((idx = findTok("objects")) >= 0) {
+        r.family = "objects";
+        r.cls = stripExt(comps.back());
+        r.sprite = true;
+    } else if ((idx = findTok("towners")) >= 0) {
+        r.family = "towners";
+        r.cls = stripExt(joinAfter(idx));
+        r.sprite = true;
+    }
+    return r;
+}
+
+// Enumerate real sprite names (from recovered.json) grouped by family / class /
+// type, with the auto-resolved frame width. Frontend uses this to build its
+// catalog tree; it then calls sprite.decode(name, width:"auto") per leaf.
+mcp::ToolResult toolSpriteList(const mcp::json& params)
+{
+    std::string dictPath = params.value("dict", "mpq-info/dict/recovered.json");
+    std::filesystem::path dp = dictPath;
+    if (!dp.is_absolute())
+        dp = std::filesystem::current_path() / dp;
+    std::ifstream f(dp);
+    if (!f)
+        throw std::runtime_error("cannot open dict (recovered.json): " + dp.string());
+    mcp::json dict;
+    f >> dict;
+
+    std::filesystem::path devRoot =
+        (params.contains("devilutionx_root") && params["devilutionx_root"].is_string())
+            ? std::filesystem::path(params["devilutionx_root"].get<std::string>())
+            : std::filesystem::path("D:/work/xt/diablo/DevilutionX");
+    std::string famFilter =
+        (params.contains("family") && params["family"].is_string())
+            ? params["family"].get<std::string>() : "";
+    std::string classFilter =
+        (params.contains("class") && params["class"].is_string())
+            ? params["class"].get<std::string>() : "";
+
+    mcp::json sprites = mcp::json::array();
+    if (dict.contains("archives") && dict["archives"].is_array()) {
+        for (auto& arch : dict["archives"]) {
+            std::string archName = arch.value("name", "");
+            if (!arch.contains("recovered") || !arch["recovered"].is_array())
+                continue;
+            for (auto& e : arch["recovered"]) {
+                if (!e.contains("name") || !e["name"].is_string())
+                    continue;
+                std::string name = e["name"].get<std::string>();
+                bool isSpriteExt = false;
+                SpriteInfo si = classifySprite(name, isSpriteExt);
+                if (!isSpriteExt) // only enumerate CL2/CEL sprites
+                    continue;
+                if (!famFilter.empty() && si.family != famFilter)
+                    continue;
+                if (!classFilter.empty() && si.cls != classFilter)
+                    continue;
+                int w = 0;
+                std::string dbg;
+                int aw = decoders::sprite_width::autoWidth(name, devRoot, dbg);
+                if (aw > 0) w = aw;
+                sprites.push_back(mcp::json{
+                    { "name", name },
+                    { "archive", archName },
+                    { "family", si.family },
+                    { "class", si.cls },
+                    { "type", si.type },
+                    { "width", w } });
+            }
+        }
+    }
+
+    mcp::ToolResult r;
+    r.value = mcp::json{ { "count", static_cast<int>(sprites.size()) },
+                         { "sprites", sprites } };
+    return r;
+}
+
 } // namespace
 
 namespace mcp {
@@ -304,6 +455,30 @@ void registerSpriteTools(ToolRegistry& reg)
                       { "frame", json{ { "type", "integer" } } } } },
               { "required", json::array({ "archive", "name" }) } },
         toolSpriteDecode });
+
+    reg.registerTool(ToolDef{
+        "sprite.list",
+        "Enumerate real sprite names recovered from MPQs (no listfile; recovered via "
+        "StormLib one-way-hash verify). Each entry is classified into family / class / "
+        "type and carries the auto-resolved frame width (0 if no table). Filter with "
+        "'family' / 'class'. The frontend builds its catalog tree from this and then "
+        "calls sprite.decode(name, width:\"auto\") per leaf.",
+        json{ { "type", "object" },
+              { "properties",
+                json{ { "dict",
+                        json{ { "type", "string" },
+                              { "description", "recovered.json path (default mpq-info/dict/recovered.json, relative to cwd)" } } },
+                      { "devilutionx_root",
+                        json{ { "type", "string" },
+                              { "description", "DevilutionX source root for width auto-resolve (default D:/work/xt/diablo/DevilutionX)" } } },
+                      { "family",
+                        json{ { "type", "string" },
+                              { "description", "filter by family: plrgfx / monsters / missiles / items / objects / towners (empty = all)" } } },
+                      { "class",
+                        json{ { "type", "string" },
+                              { "description", "filter by class (classPath, assetsSuffix, or sprite name; empty = all)" } } } } },
+              { "required", json::array({}) } },
+        toolSpriteList });
 }
 
 } // namespace tools

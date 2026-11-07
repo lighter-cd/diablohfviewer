@@ -393,11 +393,13 @@ DiabloHFConverter/
 > 关键认知：D1 的武器/护甲已 **bake 进文件名前缀**（`{c}{a}{w}`），"装备图层叠加"=
 > **枚举前缀组合**，不是 alpha 合成多张图，勿过度设计通用合成器。
 
-- [ ] **后端：`sprite.decode` 支持 `width:"auto"`**：复用 `render_sprite` 的路径→家族→
+- [x] **后端：`sprite.decode` 支持 `width:"auto"`**：复用 `render_sprite` 的路径→家族→
       宽度表查表（plrgfx→`sprites.tsv`、monsters→`monstdat.tsv`、missiles→
       `missile_sprites.tsv`、objects→`objdat.tsv`、towners→`towners.tsv`；items 无表仍手填）。
-- [ ] **后端：新增 `sprite.list`**：读 `recovered.json` + DevilutionX 数据表，枚举真实存在的
+      查表逻辑抽成共享模块 `src/decoders/sprite_width.cpp`，已三套件测试 + 端到端验证。
+- [x] **后端：新增 `sprite.list`**：读 `recovered.json` + DevilutionX 数据表，枚举真实存在的
       精灵名并按 家族/职业/动作 归类（前端据此建目录树）。`mpq.list` 仅给占位名，不足以浏览。
+      已加入 `integration_tests.cpp` 断言分类正确。
 - [ ] **前端壳（web/，TS+Canvas）**：连 `ws://localhost:<port>` → `tools/list` →
       `sprite.list` 取目录 → `sprite.decode` 取 RGBA → Canvas 绘制；先做"选精灵→看单帧"。
 - [ ] **（可选保真）`sprite.decode` 应用 TRN**：职业 TRN（`plrgfx/<class>.trn`）+ 每精灵 TRN

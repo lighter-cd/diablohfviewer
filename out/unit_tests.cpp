@@ -10,6 +10,8 @@
 //   g++ -I src -std=c++17 out/unit_tests.cpp \
 //       src/decoders/clx.cpp src/decoders/cel.cpp src/decoders/cl2.cpp \
 //       src/decoders/pcx.cpp src/decoders/palette.cpp src/decoders/png.cpp \
+//       src/decoders/sprite_width.cpp \
+//       -static-libgcc -static-libstdc++ \
 //       -o out/unit_tests.exe && out/unit_tests.exe
 //
 // Exit code 0 = all pass, 1 = at least one failure.

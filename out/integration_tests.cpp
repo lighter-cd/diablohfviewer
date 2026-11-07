@@ -16,16 +16,21 @@
 //   g++ -I 3rdparty/StormLib/src -I 3rdparty -I src -std=c++17 \
 //       out/integration_tests.cpp \
 //       src/engine/archive.cpp src/tools/registry.cpp \
-//       src/tools/mpq_tools.cpp src/mcp/jsonrpc.cpp \
+//       src/tools/mpq_tools.cpp src/tools/sprite_tools.cpp \
+//       src/decoders/palette.cpp src/decoders/clx.cpp src/decoders/cel.cpp \
+//       src/decoders/cl2.cpp src/decoders/pcx.cpp src/decoders/sprite_width.cpp \
+//       src/mcp/jsonrpc.cpp \
 //       3rdparty/StormLib/build/libStormLib.a \
 //       -lws2_32 -lwininet -static-libgcc -static-libstdc++ \
 //       -o out/integration_tests.exe && out/integration_tests.exe
 //
+
 // Exit code 0 = all pass (or skip), 1 = at least one failure.
 
 #include "engine/archive.h"
 #include "tools/registry.h"
 #include "tools/mpq_tools.h"
+#include "tools/sprite_tools.h"
 #include "tools/base64.h"
 #include "mcp/jsonrpc.h"
 
@@ -203,9 +208,118 @@ static void testMpqTools(const std::string& mpq) {
     printf("mpq_tools: %s\n", allOk ? "PASS" : "FAIL");
 }
 
+// ---------------------------------------------------------------------------
+// sprite_tools group (sprite.list / sprite.decode) via the JSON-RPC layer
+// ---------------------------------------------------------------------------
+
+// sprite.list runs WITHOUT a real MPQ: it only reads recovered.json. A small
+// synthetic dict keeps the test independent of the bundled dictionary / cwd.
+// Width resolves to 0 when the DevilutionX tables are absent (autoWidth returns
+// 0), which is fine for these assertions.
+static void testSpriteList() {
+    ToolRegistry reg;
+    tools::registerSpriteTools(reg);
+    CHECK(reg.has("sprite.list") && reg.has("sprite.decode") &&
+              reg.has("palette.load"),
+          "all sprite.* + palette.load tools registered");
+
+    auto call = [&](const std::string& tool, const json& args) -> json {
+        auto resp = handleRequest(reg, json{
+            {"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/call"},
+            {"params", json{{"name", tool}, {"arguments", args}}}});
+        CHECK(resp.has_value(), ("tools/call " + tool + " returns response").c_str());
+        CHECK(!resp->contains("error"), ("tools/call " + tool + " no error").c_str());
+        return (*resp)["result"];
+    };
+
+    std::string dictPath = "out/_it_sprite_dict.json";
+    {
+        std::ofstream d(dictPath);
+        d << "{ \"archives\": [ { \"name\": \"DIABDAT.MPQ\", \"recovered\": [ ";
+        d << "{ \"name\": \"plrgfx\\\\warrior\\\\wha\\\\whaas.cl2\", \"size\": 1 }, ";
+        d << "{ \"name\": \"plrgfx\\\\warrior\\\\wha\\\\whaat.cl2\", \"size\": 1 }, ";
+        d << "{ \"name\": \"items\\\\armor2.cel\", \"size\": 1 }, ";
+        d << "{ \"name\": \"gendata\\\\cut2.pal\", \"size\": 1 } ";
+        d << "] } ] }";
+    }
+    json lst = call("sprite.list", json{{"dict", dictPath}});
+    std::remove(dictPath.c_str());
+
+    CHECK(lst.value("count", 0) == 3, "sprite.list enumerates 3 CL2/CEL (palette excluded)");
+    int nWarrior = 0, nItems = 0;
+    for (auto& s : lst["sprites"]) {
+        CHECK(s.contains("width") && s["width"].is_number_integer(),
+              "each sprite entry has integer width");
+        if (s.value("family", "") == "plrgfx" && s.value("class", "") == "warrior")
+            nWarrior++;
+        if (s.value("family", "") == "items")
+            nItems++;
+    }
+    CHECK(nWarrior == 2, "sprite.list classified 2 warrior plrgfx sprites");
+    CHECK(nItems == 1, "sprite.list classified 1 items sprite");
+
+    printf("sprite_tools (list): %s\n", allOk ? "PASS" : "FAIL");
+}
+
+// sprite.decode needs a real MPQ; gated by the caller. We probe the MPQ for a
+// real CLX sprite + a real palette name so the test is fixture-independent. CLX
+// carries its own dimensions, so no 'width' is needed. The CEL/CL2 width:"auto"
+// path is covered by the sprite_width unit test and manual checks.
+static void testSpriteDecode(const std::string& mpq) {
+    ToolRegistry reg;
+    tools::registerMpqTools(reg);
+    tools::registerSpriteTools(reg);
+
+    auto call = [&](const std::string& tool, const json& args) -> json {
+        auto resp = handleRequest(reg, json{
+            {"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/call"},
+            {"params", json{{"name", tool}, {"arguments", args}}}});
+        CHECK(resp.has_value(), ("tools/call " + tool + " returns response").c_str());
+        CHECK(!resp->contains("error"), ("tools/call " + tool + " no error").c_str());
+        return (*resp)["result"];
+    };
+
+    // Find a CLX + a PAL by listing the archive.
+    json lst = call("mpq.list", json{{"archive", mpq}});
+    std::string clxName, palName;
+    for (auto& f : lst["files"]) {
+        std::string n = f.value("name", "");
+        if (clxName.empty() && n.size() >= 4 &&
+            n.compare(n.size() - 4, 4, ".clx") == 0)
+            clxName = n;
+        if (palName.empty() && n.size() >= 4 &&
+            n.compare(n.size() - 4, 4, ".pal") == 0)
+            palName = n;
+    }
+    if (clxName.empty() || palName.empty()) {
+        printf("  (skipped sprite.decode; MPQ has no CLX/PAL to decode)\n");
+        printf("sprite_tools (decode): %s\n", allOk ? "PASS" : "FAIL");
+        return;
+    }
+
+    // Decode the CLX with the palette resolved by name from the MPQ.
+    json dec = call("sprite.decode",
+                    json{{"archive", mpq},
+                         {"name", clxName},
+                         {"palette_name", palName}});
+    CHECK(dec.value("format", std::string()) == "clx", "sprite.decode format == clx");
+    CHECK(dec.value("frame_count", 0) > 0, "sprite.decode frame_count > 0");
+    CHECK(dec.contains("frames") && dec["frames"].is_array() &&
+              !dec["frames"].empty(),
+          "sprite.decode frames array non-empty");
+    CHECK(dec["frames"][0].contains("rgba_base64"),
+          "sprite.decode frame has rgba_base64");
+    CHECK(dec["frames"][0].value("width", 0) > 0 &&
+              dec["frames"][0].value("height", 0) > 0,
+          "sprite.decode frame has positive width/height");
+
+    printf("sprite_tools (decode): %s\n", allOk ? "PASS" : "FAIL");
+}
+
 int main() {
-    printf("=== DiabloHFConverter integration tests (engine + mpq_tools) ===\n");
+    printf("=== DiabloHFConverter integration tests (engine + mpq_tools + sprite_tools) ===\n");
     testNormalize();
+    testSpriteList();
 
     std::string mpq = "/d/work/xt/diablo/DevilutionX-Hell Fire/devilutionx.mpq";
     if (const char* e = std::getenv("DHFC_TEST_MPQ"))
@@ -216,7 +330,7 @@ int main() {
         // that Archive::open does, so normalize the path before probing.
         std::ifstream f(engine::Archive::normalizePath(mpq));
         if (!f.good()) {
-            printf("engine::Archive + mpq_tools: SKIP (fixture not found: %s)\n", mpq.c_str());
+            printf("engine::Archive + mpq_tools + sprite.decode: SKIP (fixture not found: %s)\n", mpq.c_str());
             printf("=== %s (with skips) ===\n", allOk ? "ALL PASS" : "FAILURES PRESENT");
             return allOk ? 0 : 1;
         }
@@ -224,6 +338,7 @@ int main() {
 
     testEngineArchive(mpq);
     testMpqTools(mpq);
+    testSpriteDecode(mpq);
     printf("=== %s ===\n", allOk ? "ALL PASS" : "FAILURES PRESENT");
     return allOk ? 0 : 1;
 }
