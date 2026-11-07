@@ -435,7 +435,8 @@ DiabloHFConverter/
       方向数可选 1/2/4/8，plrgfx 默认 8。
 - [x] 装备组合浏览（前缀 `c+a+w` 枚举：武器/护甲变化 = 不同文件名，直接枚举即可）：角色面板的
       盔甲/武器下拉仅列出该职业当前动作真实存在的组合。
-- [x] 技能特效叠加层渲染（`lm`/`fm`/`qm` 等特效精灵本就在 plrgfx 前缀枚举内）：`web/` 新增通用
+- [x] 角色施法动作层渲染（`lm`/`fm`/`qm` 是**角色举手/发光动作**，不是火球之类攻击效果；
+      真正的攻击效果在 `missiles\` 家族，见阶段 3.5）：`web/` 新增通用
       **特效叠加层（alpha 合成）**面板——选好基础精灵后，可把任意特效精灵解码为独立图层，按
       `(dir, frame)` 对齐后 alpha 叠加到底图上（见下方「特效叠加层」小节）。该面板覆盖三种浏览模式：
       角色（技能 `lm`/`fm`/`qm` 一键加）、怪物（Special `s` 动画一键加）、以及通用「任意精灵」选取器。
@@ -480,6 +481,26 @@ DiabloHFConverter/
 - 实现：`web/src/viewer.js` 的 `drawComposite(画布, 底图RGBA, w, h, 叠加数组)`；叠加层状态在
   `web/src/main.js`（`overlayLayers`、`lastDecodeArgs`、构建参数复用 `buildDecodeArgs` 以共享调色板/TRN）。
   切换基础精灵时清空叠加层并刷新快速加按钮。
+
+### 阶段 3.5：技能 / 战斗查看器（全阶段视觉时间线）
+- [x] 需求澄清：`plrgfx` 的 `lm/fm/qm` 是**角色施法动作**；火球 / 火墙等**攻击效果**在
+      `missiles\` 编号文件。两者都需要，且一个技能的施放要显示**所有阶段**
+      （施法 → 投射 → 命中 → debuff）；技能加在目标身上的 debuff 视觉也要。
+- [x] 玩家技能列表：`spelldat.tsv` 36 个基础技能 + Hellfire 15 个 = 51 个，`missiles` 列给出 MissileID。
+- [x] 怪物远程攻击列表：`monstdat.ai` + `Source/monster.cpp::GetMissileType(ai)` 真实 switch 转录，
+      共 14 类 AI 攻击（含 default→Arrow）。
+- [x] 后端 `spell.list`：四表 join（`spelldat` / `misdat` / `missile_sprites` / `monstdat`），
+      输出 `{count,spell_count,monster_attack_count,cast_action_map,impact_catalog[],spells[],monster_attacks[]}`；
+      每条目四阶段 `stages[]`，`sprite` 层带编号 `missiles\{name}{N}.cl2` 清单 + 显式 `width`，
+      `trn` 层带目标 debuff 重映射；命中阶段按命名约定自动关联 + override + `impact_catalog` 候选。
+      纯 join 逻辑在 `src/tools/spell_tables.h`（header-only，不依赖 json，便于单测）。
+- [x] 前端第 4 种浏览模式「技能 / 战斗查看器」：`web/src/viewer.js` 新增 `drawScene`
+      （多 actor 绝对定位，抽 `blitRgba` 复用，`drawComposite` 行为不变）；同屏 玩家(左) + 怪物(右) + 效果；
+      自动时间线连播四阶段 + 阶段 stepper；debuff 用 `apply_trn` 对怪物层近似着色。
+      角色前缀从 `charIndex.combos` 取真实存在的组合（不硬编码 `l+n`）。
+- [x] 回归：`testSpellTables`（单元）、`testSpellListSynthesis`（集成）、stdio 端到端
+      （51 技能 / 14 怪物攻击 / 17 命中候选，Fireball 的 17 个特效文件全部可解码）、
+      前端 42 个解码契约预演全通过；全量 320 条目录回归不退化。
 
 ### 阶段 4：地图还原（目标 1）
 - [ ] 解码 TIL / MIN / DUN，移植 `levels/` 的拼接逻辑。

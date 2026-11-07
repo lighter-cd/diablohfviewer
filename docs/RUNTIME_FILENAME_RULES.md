@@ -123,6 +123,26 @@ missiles\{name}.cl2        （animFAmt!=1，FileNameGenerator + DEVILUTIONX_CL2_
 - **生成函数**：`genMissiles()`。
 - **已验证扩展名**：`.cl2`。
 
+**编号文件规则（2026-11-08 实测修正）**：`missile_sprites.tsv` 的 `numFrames` 是
+**编号文件个数**，`frameLength[i]` 是该文件内帧数。`FileNameGenerator` 的 `min=1`，
+因此：
+
+```text
+numFrames > 1  ->  missiles\{name}1.cl2 … missiles\{name}{numFrames}.cl2
+numFrames == 1 ->  missiles\{name}.cl2        （无数字后缀；{name}1.cl2 不存在）
+```
+
+实测 `Fireball numFrames=16` → `fireba1..16.cl2` 全部存在、各 14 帧；
+`FireWall=2` → `firewal1/2.cl2`（13/11 帧）；`Lightning=1` → `lghning.cl2`。
+这些编号文件**不在** `recovered.json`（只恢复了 33 个单帧 missiles 名），由
+`spell.list` 从数据表合成清单发现。
+
+**宽度必须显式传**：`sprite_width.cpp` 的 missiles 分支按 basename 精确查
+`missile_sprites.tsv` 的 `name` 列，`fireba1` 查不到表里的 `fireba`，故
+`sprite.decode(name:"missiles\\fireba1.cl2", width:"auto")` 会报
+`auto width failed`。应从 `missile_sprites.width`（96/128/160…）取显式整数宽度；
+`spell.list` 的 `sprite` 层已带 `width` 字段。
+
 ---
 
 ## 6. items — 物品掉落 / 背包精灵

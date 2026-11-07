@@ -706,6 +706,140 @@ static void testSpriteDecodeCow() {
     printf("sprite_tools (cow width): %s\n", allOk ? "PASS" : "FAIL");
 }
 
+// spell.list: stage-ordered spell / monster-attack catalog synthesized from the
+// DevilutionX data tables. Pure logic (no MPQ); SKIPs if the tables are absent.
+static void testSpellListSynthesis() {
+    ToolRegistry reg;
+    tools::registerSpriteTools(reg);
+
+    auto raw = [&](const std::string& tool, const json& args) -> json {
+        auto resp = handleRequest(reg, json{
+            {"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/call"},
+            {"params", json{{"name", tool}, {"arguments", args}}}});
+        CHECK(resp.has_value(), "spell.list: tools/call returns a response");
+        return resp ? *resp : json::object();
+    };
+    auto resultOf = [&](const std::string& tool, const json& args) -> json {
+        return raw(tool, args).value("result", json::object());
+    };
+
+    auto listing = handleRequest(reg, json{
+        {"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/list"}});
+    bool registered = false;
+    if (listing) {
+        json arr = listing->value("result", json::object()).value("tools", json::array());
+        for (auto& t : arr)
+            if (t.value("name", "") == "spell.list") registered = true;
+    }
+    CHECK(registered, "tools/list exposes spell.list");
+
+    json r = raw("spell.list", json::object());
+    if (r.contains("error")) {
+        printf("  (skipped spell.list synthesis; DevilutionX data tables not available)\n");
+        return;
+    }
+    json res = r.value("result", json::object());
+    CHECK(res.value("count", 0) >= 36, "spell.list has >= 36 player spells");
+    CHECK(res.value("monster_attack_count", 0) > 0, "spell.list has monster attacks");
+    json spells = res.value("spells", json::array());
+    json attacks = res.value("monster_attacks", json::array());
+    json impacts = res.value("impact_catalog", json::array());
+    CHECK(!impacts.empty(), "spell.list has impact_catalog");
+
+    auto findSpell = [&](const std::string& name) -> json {
+        for (auto& s : spells)
+            if (s.value("name", "") == name || s.value("id", "") == name) return s;
+        return json::object();
+    };
+    auto stageOf = [](const json& e, const std::string& id) -> json {
+        for (auto& s : e.value("stages", json::array()))
+            if (s.value("id", "") == id) return s;
+        return json::object();
+    };
+
+    // Fireball: 4 stages, 16 numbered files, explicit width, impact override.
+    json fb = findSpell("Fireball");
+    CHECK(!fb.empty(), "spell.list includes Fireball");
+    if (!fb.empty()) {
+        CHECK(fb.value("cast_action", std::string()) == "fm", "Fireball cast_action == fm");
+        CHECK(fb.value("element", std::string()) == "Fire", "Fireball element == Fire");
+        CHECK(fb.value("stages", json::array()).size() == 4, "Fireball has 4 stages");
+        CHECK(stageOf(fb, "cast").value("layers", json::array()).size() == 1,
+              "Fireball cast has 1 layer");
+        json pl = stageOf(fb, "projectile").value("layers", json::array());
+        CHECK(pl.size() == 1, "Fireball projectile has 1 layer");
+        if (!pl.empty()) {
+            json files = pl[0].value("files", json::array());
+            CHECK(files.size() == 16, "Fireball has 16 numbered files");
+            if (!files.empty())
+                CHECK(files[0] == "missiles\\fireba1.cl2", "Fireball first file name");
+            CHECK(pl[0].value("width", 0) == 96, "Fireball explicit width == 96");
+            CHECK(pl[0].value("frames", 0) == 14, "Fireball frames == 14");
+        }
+        json il = stageOf(fb, "impact").value("layers", json::array());
+        CHECK(!il.empty() && il[0].value("graphic_id", std::string()) == "MagmaBallExplosion",
+              "Fireball impact -> MagmaBallExplosion");
+    }
+
+    // Fire Wall: 2 numbered files, width 128.
+    json fw = findSpell("Fire Wall");
+    CHECK(!fw.empty(), "spell.list includes Fire Wall");
+    if (!fw.empty()) {
+        json pl = stageOf(fw, "projectile").value("layers", json::array());
+        CHECK(!pl.empty() && pl[0].value("files", json::array()).size() == 2,
+              "Fire Wall has 2 numbered files");
+        if (!pl.empty())
+            CHECK(pl[0].value("width", 0) == 128, "Fire Wall width == 128");
+    }
+
+    // Stone Curse: TRN debuff applied to the monster.
+    json sc = findSpell("Stone Curse");
+    CHECK(!sc.empty(), "spell.list includes Stone Curse");
+    if (!sc.empty()) {
+        bool trn = false;
+        for (auto& l : stageOf(sc, "debuff").value("layers", json::array())) {
+            if (l.value("kind", "") == "trn") {
+                json t = l.value("trn", json::object());
+                if (t.value("preset", "") == "stone" && t.value("apply_to", "") == "monster")
+                    trn = true;
+            }
+        }
+        CHECK(trn, "Stone Curse has stone TRN debuff on monster");
+    }
+
+    // Flash: comma-separated missiles -> 2 projectile layers.
+    json fl = findSpell("Flash");
+    CHECK(!fl.empty(), "spell.list includes Flash");
+    if (!fl.empty()) {
+        CHECK(fl.value("missiles", json::array()).size() == 2, "Flash has 2 missiles");
+        CHECK(stageOf(fl, "projectile").value("layers", json::array()).size() == 2,
+              "Flash has 2 projectile layers");
+    }
+
+    // Monster ranged attacks (real GetMissileType switch).
+    json tor;
+    for (auto& a : attacks)
+        if (a.value("monster_ai", "") == "Torchant") tor = a;
+    CHECK(!tor.empty(), "spell.list includes Torchant monster attack");
+    if (!tor.empty()) {
+        bool hasFireball = false;
+        for (auto& m : tor.value("missiles", json::array()))
+            if (m == "Fireball") hasFireball = true;
+        CHECK(hasFireball, "Torchant -> Fireball missile");
+        CHECK(!tor.value("monsters", json::array()).empty(), "Torchant has monster names");
+    }
+    bool hasDefault = false;
+    for (auto& a : attacks)
+        if (a.value("default_ai", false)) hasDefault = true;
+    CHECK(hasDefault, "spell.list marks default AI attacks");
+
+    // source / id filters.
+    json one = resultOf("spell.list", json{{"source", "player"}, {"id", "Fireball"}});
+    CHECK(one.value("count", 0) == 1, "spell.list id/source filter works");
+
+    printf("sprite_tools (spell.list): %s\n", allOk ? "PASS" : "FAIL");
+}
+
 int main() {
     printf("=== DiabloHFConverter integration tests (engine + mpq_tools + sprite_tools) ===\n");
     testNormalize();
@@ -736,6 +870,7 @@ int main() {
     testSpriteDecodeRejectsTruncatedCl2();
     testSpriteListCatalogFixes();
     testSpriteDecodeCow();
+    testSpellListSynthesis();
     printf("=== %s ===\n", allOk ? "ALL PASS" : "FAILURES PRESENT");
     return allOk ? 0 : 1;
 }

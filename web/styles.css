@@ -121,7 +121,7 @@ main { display: flex; height: calc(100vh - 52px); }
 canvas { background: transparent; image-rendering: pixelated; }
 
 /* Character viewer pane */
-.char-pane, .monster-pane {
+.char-pane, .monster-pane, .combat-pane {
   width: 320px;
   flex: 0 0 320px;
   display: flex;
@@ -130,7 +130,7 @@ canvas { background: transparent; image-rendering: pixelated; }
   border-right: 1px solid #3a3a42;
   padding: 10px 12px;
 }
-.char-pane[hidden], .monster-pane[hidden] { display: none; }
+.char-pane[hidden], .monster-pane[hidden], .combat-pane[hidden] { display: none; }
 .char-bar {
   padding: 8px 10px; margin: -10px -12px 10px;
   background: #2a2a32; border-bottom: 1px solid #3a3a42;
@@ -196,3 +196,12 @@ canvas { background: transparent; image-rendering: pixelated; }
   border-radius: 4px; padding: 1px 8px; cursor: pointer; font-size: 12px;
 }
 .overlay-item button:hover { background: #4a3434; }
+
+/* ---- Skill / combat viewer stage stepper ---- */
+#stageNo { display: inline-block; min-width: 96px; text-align: center; color: #cfe3ff; font-size: 12px; }
+#stagePrev, #stageNext {
+  background: #2c2c34; color: #e6e6e6; border: 1px solid #3a3a42;
+  border-radius: 4px; padding: 2px 9px; cursor: pointer; font-size: 12px;
+}
+#stagePrev:hover, #stageNext:hover { background: #3a3a44; }
+.combat-hint-err { color: #f0a0a0; }

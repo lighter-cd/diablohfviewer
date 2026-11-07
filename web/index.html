@@ -40,6 +40,7 @@
       <label><input type="radio" name="mode" value="catalog" checked> 目录浏览</label>
       <label><input type="radio" name="mode" value="character"> 角色查看器</label>
       <label><input type="radio" name="mode" value="monster"> 怪物 / NPC 查看器</label>
+      <label><input type="radio" name="mode" value="combat"> 技能 / 战斗查看器</label>
     </div>
   </header>
 
@@ -100,6 +101,42 @@
         </label>
       </div>
       <div class="char-hint">怪物按 monstdat 的动画字母枚举（Stand/Walk/Attack/Hit/Death/Special）；NPC 为单方向 .cel 精灵。选择即解码并播放，方向数取自解码返回的 directions。</div>
+    </aside>
+
+    <aside class="combat-pane" id="combatPane" hidden>
+      <div class="char-bar">技能 / 战斗查看器（同屏：玩家 + 怪物 + 全阶段效果）</div>
+      <div class="char-controls">
+        <label>来源
+          <select id="combatSource">
+            <option value="player">玩家技能</option>
+            <option value="monster">怪物远程攻击</option>
+          </select>
+        </label>
+        <label>技能 / 攻击
+          <select id="combatSpell"></select>
+        </label>
+        <label>玩家职业
+          <select id="combatClass"></select>
+        </label>
+        <label>怪物 MPQ
+          <select id="combatArchive"></select>
+        </label>
+        <label>怪物
+          <select id="combatMonster"></select>
+        </label>
+        <label>怪物动作
+          <select id="combatMonsterAnim"></select>
+        </label>
+      </div>
+      <div class="char-controls">
+        <label>阶段
+          <button id="stagePrev" type="button">◀</button>
+          <span id="stageNo">—</span>
+          <button id="stageNext" type="button">▶</button>
+        </label>
+        <label class="fps"><input type="checkbox" id="combatLoop" checked /> 自动连播全阶段</label>
+      </div>
+      <div class="char-hint">按下方「▶ 播放」走完 施法 → 投射 → 命中 → debuff；阶段按钮可单独查看。debuff 用 TRN 对怪物做近似着色。</div>
     </aside>
 
     <section class="stage">

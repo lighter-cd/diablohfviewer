@@ -14,7 +14,7 @@
 
 import { McpClient } from "./client.js";
 import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js";
-import { drawFrame, fitCanvas, drawComposite } from "./viewer.js";
+import { drawFrame, fitCanvas, drawComposite, drawScene } from "./viewer.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -59,6 +59,18 @@ let overlayLayers = [];
 // The decode args used for the current base sprite, so overlays reuse the same
 // archive / palette / TRN context.
 let lastDecodeArgs = null;
+
+// Skill / combat viewer: stage-ordered full-cast timeline (player + monster +
+// effect layers in one scene). spell.list supplies the catalog.
+let spellCatalog = null;       // spell.list result
+let combatEntry = null;        // currently selected spell / monster attack
+let combatStage = 0;           // index into combatEntry.stages
+let combatFrame = 0;           // frame index within that stage
+let combatCache = new Map();   // "name|width|trn" -> decoded frames[]
+let combatActors = { playerStand: [], playerCast: [], monsterBase: [], monsterTrn: [] };
+let combatStageFrames = [];    // per stage: [{ frames, anchor, role }]
+let combatTimeline = [];       // flattened [{ stageIdx, frameIdx }]
+let combatPlayIdx = 0;
 
 // 8-direction animation state.
 let currentDirections = 1;  // number of directions the current sprite is split into
@@ -141,6 +153,7 @@ async function loadCatalog() {
     }
     await loadPalettes();
     await loadCharacterData();   // build the class/action/armor/weapon index
+    await loadSpellList();       // stage-ordered spell / monster-attack catalog
   } catch (e) {
     setMeta("sprite.list failed: " + e.message, true);
   }
@@ -472,6 +485,7 @@ function monsterSpecialNames() {
 function populateOverlayQuick() {
   const el = $("overlayQuick");
   el.innerHTML = "";
+  if (isCombatMode()) { el.hidden = true; return; }
   let items = [];
   if (isCharMode()) items = characterEffectNames();
   else if (isMonsterMode()) items = monsterSpecialNames();
@@ -587,7 +601,7 @@ function renderOverlayList() {
 // Build the sprite.decode argument object for `sprite` (optionally overriding the
 // sprite name, used when decoding an effect-overlay variant of the same base).
 // Reuses the current palette + TRN settings so overlays match the base sprite.
-function buildDecodeArgs(sprite, nameOverride) {
+function buildDecodeArgs(sprite, nameOverride, opts = {}) {
   // recovered.json stores archive paths with a mix of "/" and "\". Normalize
   // them: if the same MPQ reaches the backend under two spellings, StormLib is
   // asked to open it twice and fails ("cannot open archive").
@@ -612,13 +626,17 @@ function buildDecodeArgs(sprite, nameOverride) {
     archive,
     archives,
     name: nameOverride || sprite.name,
-    width: "auto",
+    // Numbered missiles\{name}{N}.cl2 effects need an explicit width from
+    // spell.list; width:"auto" only works for un-numbered sprite paths.
+    width: opts.width !== undefined ? opts.width : "auto",
     palette_name: palette,
   };
-  // TRN toggle (off by default = palette-only mode). When on, the backend
-  // applies a 256-byte palette remap; default class TRN is plrgfx\trn<class>.trn
-  // (not shipped for base classes, so no-op), or an explicit preset if chosen.
-  if ($("applyTrn").checked) {
+  // An explicit TRN (combat debuff tint on the target) wins over the global
+  // toggle. Otherwise the toggle uses the class TRN or a chosen preset.
+  if (opts.trn) {
+    args.apply_trn = true;
+    args.trn_name = opts.trn;
+  } else if ($("applyTrn").checked) {
     args.apply_trn = true;
     const preset = $("trnPreset").value;
     if (preset === "infra") args.trn_name = "plrgfx\\infra.trn";
@@ -710,6 +728,7 @@ function setDirections(dirs) {
 // Composites any enabled effect-overlay layers on top (alpha), aligning each
 // overlay's own (dir, fin) so multi-direction sprites stay in sync.
 function showFrame(dir, fin) {
+  if (isCombatMode()) return;   // combat mode owns the canvas via drawScene
   if (!currentFrames) return;
   const idx = dir * framesPerDir + fin;
   const f = currentFrames[idx];
@@ -755,6 +774,7 @@ function updateMeta(idx, dir, fin) {
 }
 
 function startPlay() {
+  if (isCombatMode()) return startCombatPlay();
   if (!currentFrames || framesPerDir <= 1) return;
   isPlaying = true;
   const fps = Math.min(60, Math.max(1, Number($("fps").value) || 12));
@@ -770,6 +790,305 @@ function stopPlay() {
   if (playTimer) clearInterval(playTimer);
   playTimer = null;
   $("playBtn").textContent = "▶ 播放";
+}
+
+// ---- Skill / combat viewer (stage-ordered full-cast timeline) ---------------
+
+function isCombatMode() {
+  const r = document.querySelector('input[name="mode"]:checked');
+  return !!r && r.value === "combat";
+}
+
+async function loadSpellList() {
+  try {
+    spellCatalog = await client.callTool("spell.list", {});
+  } catch (e) {
+    console.warn("spell.list failed:", e.message);
+    spellCatalog = null;
+  }
+}
+
+function combatList() {
+  if (!spellCatalog) return [];
+  return $("combatSource").value === "monster"
+    ? (spellCatalog.monster_attacks || [])
+    : (spellCatalog.spells || []);
+}
+
+function populateCombatSpells() {
+  const sel = $("combatSpell");
+  sel.innerHTML = "";
+  for (const e of combatList()) {
+    const o = document.createElement("option");
+    o.value = e.id;
+    o.textContent = e.name + (e.monster_ai ? `  (${e.monster_ai})` : "");
+    sel.appendChild(o);
+  }
+}
+
+function populateCombatClass() {
+  const sel = $("combatClass");
+  sel.innerHTML = "";
+  for (const cp of (charIndex ? [...charIndex.keys()].sort() : [])) {
+    const o = document.createElement("option");
+    o.value = cp;
+    o.textContent = cp;
+    sel.appendChild(o);
+  }
+}
+
+function populateCombatArchive() {
+  const sel = $("combatArchive");
+  sel.innerHTML = "";
+  for (const a of allArchives) {
+    const o = document.createElement("option");
+    o.value = a;
+    o.textContent = basename(a);
+    o.title = a;
+    sel.appendChild(o);
+  }
+}
+
+function fillCombatMonsters() {
+  const sel = $("combatMonster");
+  sel.innerHTML = "";
+  for (const c of (monsterMap ? [...monsterMap.keys()].sort() : [])) {
+    const o = document.createElement("option");
+    o.value = c;
+    o.textContent = c;
+    sel.appendChild(o);
+  }
+  fillCombatMonsterAnims();
+}
+
+function fillCombatMonsterAnims() {
+  const sel = $("combatMonsterAnim");
+  sel.innerHTML = "";
+  const list = (monsterMap && monsterMap.get($("combatMonster").value)) || [];
+  for (const s of list) {
+    const o = document.createElement("option");
+    o.value = s.name;
+    o.textContent = `${s.anim || s.type} (${s.frames_per_dir || "?"} 帧/方向)`;
+    o.title = s.name;
+    sel.appendChild(o);
+  }
+}
+
+function combatArchiveFor() {
+  return $("combatArchive").value || allArchives[0] || "";
+}
+
+async function decodeCombatFrames(name, width, trn) {
+  const key = name + "|" + (width === "auto" ? "auto" : width) + "|" + (trn || "");
+  if (combatCache.has(key)) return combatCache.get(key);
+  const args = buildDecodeArgs(
+    { name, archive_path: combatArchiveFor() }, name, { width, trn });
+  const res = await client.callTool("sprite.decode", args);
+  const frames = (res && res.frames) || [];
+  combatCache.set(key, frames);
+  return frames;
+}
+
+// Not every class has the same armour/weapon combos (e.g. sorcerer/barbarian
+// have no light-armour + no-weapon "ln"). Pick a combo that exists for BOTH the
+// stand and the casting action so the player keeps the same look across stages.
+function combatCombo(e, action) {
+  const st = e.combos.get("st") || new Set();
+  const ca = e.combos.get(action) || new Set();
+  const common = [...st].filter((c) => ca.has(c)).sort();
+  if (common.length) return common[0];
+  return [...st].sort()[0] || "ln";
+}
+
+function plrgfxPath(cp, e, combo, action) {
+  const prefix = e.classChar + combo;
+  return `plrgfx\\${cp}\\${prefix}\\${prefix}${action}.cl2`;
+}
+
+// A sprite layer can span several numbered .cl2 files; flatten them into one
+// frame sequence so the stage timeline can play straight through.
+async function decodeLayerFrames(layer) {
+  const key = "layer|" + (layer.files || []).join("|") + "|" + layer.width;
+  if (combatCache.has(key)) return combatCache.get(key);
+  const frames = [];
+  for (const f of layer.files || [])
+    frames.push(...await decodeCombatFrames(f, layer.width));
+  combatCache.set(key, frames);
+  return frames;
+}
+
+function combatDebuffTrn() {
+  const st = ((combatEntry && combatEntry.stages) || []).find((s) => s.id === "debuff");
+  if (!st) return null;
+  for (const l of st.layers || [])
+    if (l.kind === "trn" && l.trn && l.trn.name) return l.trn.name;
+  return null;
+}
+
+async function buildCombatScene() {
+  if (!isCombatMode() || !combatEntry) return;
+  setMeta("loading combat scene…");
+  stopPlay();
+  try {
+    const cp = $("combatClass").value;
+    const ce = charIndex && charIndex.get(cp);
+    if (ce) {
+      const action = combatEntry.cast_action || "qm";
+      const combo = combatCombo(ce, action);
+      combatActors.playerStand =
+        await decodeCombatFrames(plrgfxPath(cp, ce, combo, "st"), "auto");
+      try {
+        combatActors.playerCast =
+          await decodeCombatFrames(plrgfxPath(cp, ce, combo, action), "auto");
+      } catch (e) {
+        combatActors.playerCast = [];   // fall back to standing if unavailable
+      }
+      if (!combatActors.playerCast.length)
+        combatActors.playerCast = combatActors.playerStand;
+    }
+
+    const mName = $("combatMonsterAnim").value;
+    const trn = combatDebuffTrn();
+    combatActors.monsterBase = mName ? await decodeCombatFrames(mName, "auto") : [];
+    combatActors.monsterTrn = (mName && trn)
+      ? await decodeCombatFrames(mName, "auto", trn) : [];
+
+    combatStageFrames = [];
+    for (const st of combatEntry.stages || []) {
+      const layers = [];
+      for (const l of st.layers || []) {
+        if (l.kind !== "sprite") continue;
+        layers.push({ frames: await decodeLayerFrames(l), anchor: l.anchor, role: l.role });
+      }
+      combatStageFrames.push(layers);
+    }
+    buildCombatTimeline();
+    hideError();
+    renderCombatStage(0, 0);
+  } catch (e) {
+    showError("战斗场景加载失败：" + (e.message || e));
+  }
+}
+
+function stageFrameCount(si) {
+  const st = ((combatEntry && combatEntry.stages) || [])[si];
+  if (!st) return 1;
+  if (st.id === "cast")
+    return Math.max(1, (combatActors.playerCast || []).length ||
+                       (combatActors.playerStand || []).length || 8);
+  let n = 1;
+  for (const l of combatStageFrames[si] || []) n = Math.max(n, l.frames.length);
+  return n;
+}
+
+function buildCombatTimeline() {
+  combatTimeline = [];
+  ((combatEntry && combatEntry.stages) || []).forEach((st, si) => {
+    const n = stageFrameCount(si);
+    for (let f = 0; f < n; f++) combatTimeline.push({ stageIdx: si, frameIdx: f });
+  });
+  combatPlayIdx = 0;
+}
+
+function combatActorFrame(frames, fi) {
+  if (!frames || !frames.length) return null;
+  return frames[fi % frames.length];
+}
+
+function renderCombatStage(si, fi) {
+  if (!combatEntry) return;
+  const stages = combatEntry.stages || [];
+  if (!stages.length) return;
+  si = Math.max(0, Math.min(si, stages.length - 1));
+  const st = stages[si];
+  combatStage = si;
+  combatFrame = fi;
+  const actors = [];
+
+  // Player (left): casting animation on the cast stage, standing otherwise.
+  const pf = combatActorFrame(
+    st.id === "cast" ? combatActors.playerCast : combatActors.playerStand, fi);
+  if (pf) actors.push({ rgba: pf.rgba_base64, w: pf.width, h: pf.height, x: 40, y: 72, z: 1 });
+
+  // Monster (right): TRN tint from the debuff stage onwards.
+  const debuffIdx = stages.findIndex((s) => s.id === "debuff");
+  const tinted = debuffIdx >= 0 && si >= debuffIdx && (combatActors.monsterTrn || []).length;
+  const mf = combatActorFrame(
+    tinted ? combatActors.monsterTrn : combatActors.monsterBase, fi);
+  if (mf) actors.push({ rgba: mf.rgba_base64, w: mf.width, h: mf.height, x: 300, y: 72, z: 1 });
+
+  // Effect layers (projectile / impact / debuff sprites).
+  let k = 0;
+  for (const l of combatStageFrames[si] || []) {
+    const f = combatActorFrame(l.frames, fi);
+    if (f) {
+      let x = 180 + (k % 2) * 40;
+      if (l.anchor === "monster") x = 296;
+      else if (l.anchor === "player") x = 40;
+      actors.push({ rgba: f.rgba_base64, w: f.width, h: f.height,
+                    x, y: 60 + (k % 3) * 8, z: 2 });
+    }
+    k++;
+  }
+
+  drawScene($("canvas"), 480, 256, actors);
+  fitCanvas($("canvas"), 480);
+  $("dirNo").textContent = String(si);
+  $("frameNo").textContent = `${st.label} · 帧 ${fi} / ${Math.max(0, stageFrameCount(si) - 1)}`;
+  $("stageNo").textContent = `${si + 1}/${stages.length} ${st.label}`;
+  $("frame").max = String(Math.max(0, stageFrameCount(si) - 1));
+  $("frame").value = String(Math.min(fi, Math.max(0, stageFrameCount(si) - 1)));
+  $("currentName").textContent = `${combatEntry.name} — ${st.label}`;
+  setMeta(`技能/战斗查看器  ${combatEntry.name}  ·  ${st.label}  ·  ${st.layers.length} 层`);
+}
+
+function startCombatPlay() {
+  if (!combatEntry) return;
+  if ($("combatLoop").checked && !combatTimeline.length) return;
+  isPlaying = true;
+  const fps = Math.min(60, Math.max(1, Number($("fps").value) || 12));
+  playTimer = setInterval(() => {
+    if ($("combatLoop").checked) {
+      combatPlayIdx = (combatPlayIdx + 1) % combatTimeline.length;
+      const step = combatTimeline[combatPlayIdx];
+      renderCombatStage(step.stageIdx, step.frameIdx);
+    } else {
+      const n = Math.max(1, stageFrameCount(combatStage));
+      renderCombatStage(combatStage, (combatFrame + 1) % n);
+    }
+  }, 1000 / fps);
+  $("playBtn").textContent = "⏸ 暂停";
+}
+
+function selectCombatEntry() {
+  const list = combatList();
+  combatEntry = list.find((e) => e.id === $("combatSpell").value) || list[0] || null;
+  combatStage = 0;
+  combatFrame = 0;
+  combatPlayIdx = 0;
+}
+
+async function showCombatView() {
+  stopPlay();
+  if (!spellCatalog) await loadSpellList();
+  if (!spellCatalog) {
+    showError("spell.list 不可用（后端未注册或 DevilutionX 数据表缺失）。");
+    return;
+  }
+  if (!monsterMap) await populateMonsters();
+  populateCombatClass();
+  populateCombatArchive();
+  populateCombatSpells();
+  fillCombatMonsters();
+  selectCombatEntry();
+  await buildCombatScene();
+}
+
+function stepCombatStage(delta) {
+  if (!combatEntry) return;
+  stopPlay();
+  const n = combatEntry.stages.length;
+  renderCombatStage((combatStage + delta + n) % n, 0);
 }
 
 function wireControls() {
@@ -788,13 +1107,17 @@ function wireControls() {
       if (!e.target.checked) return;
       const character = e.target.value === "character";
       const monster = e.target.value === "monster";
-      $("catalogPane").hidden = character || monster;
+      const combat = e.target.value === "combat";
+      stopPlay();
+      $("catalogPane").hidden = character || monster || combat;
       $("charPane").hidden = !character;
       $("monsterPane").hidden = !monster;
-      // Both character and monster modes want level palettes (correct colours).
-      applyPaletteFilter(character || monster);
+      $("combatPane").hidden = !combat;
+      // Character / monster / combat all want level palettes (correct colours).
+      applyPaletteFilter(character || monster || combat);
       if (character) showCharacterSprite();
       if (monster) showMonsterView();
+      if (combat) showCombatView();
     });
   });
 
@@ -809,18 +1132,22 @@ function wireControls() {
   $("expandAll").addEventListener("click", () => setAllExpanded($("catalog"), true));
   $("collapseAll").addEventListener("click", () => setAllExpanded($("catalog"), false));
 
-  // Frame slider (frame within the current direction).
+  // Frame slider (frame within the current direction / combat stage).
   $("frame").addEventListener("input", (e) => {
     stopPlay();
-    showFrame(currentDir, Number(e.target.value));
+    const v = Number(e.target.value);
+    if (isCombatMode()) renderCombatStage(combatStage, v);
+    else showFrame(currentDir, v);
   });
-  // Direction slider.
+  // Direction slider (combat mode uses the stage stepper instead).
   $("dir").addEventListener("input", (e) => {
+    if (isCombatMode()) return;
     stopPlay();
     showFrame(Number(e.target.value), currentFin);
   });
   // Directions selector (re-splits the flat frame list).
   $("directions").addEventListener("change", (e) => {
+    if (isCombatMode()) return;
     stopPlay();
     setDirections(Number(e.target.value));
     currentFin = Math.min(currentFin, framesPerDir - 1);
@@ -832,14 +1159,17 @@ function wireControls() {
 
   // Re-decode the current sprite when the user changes the palette.
   $("palette").addEventListener("change", () => {
+    if (isCombatMode()) { combatCache.clear(); buildCombatScene(); return; }
     if (lastSprite) onSelectSprite(lastSprite);
   });
 
   // TRN toggle / preset: re-decode so the colour change takes effect.
   $("applyTrn").addEventListener("change", () => {
+    if (isCombatMode()) { combatCache.clear(); buildCombatScene(); return; }
     if (lastSprite) onSelectSprite(lastSprite);
   });
   $("trnPreset").addEventListener("change", () => {
+    if (isCombatMode()) return;
     if ($("applyTrn").checked && lastSprite) onSelectSprite(lastSprite);
   });
 
@@ -886,6 +1216,32 @@ function wireControls() {
     const name = $("overlayPick").value;
     if (!name) return;
     addOverlay(name);
+  });
+
+  // Skill / combat viewer controls.
+  $("combatSource").addEventListener("change", () => {
+    populateCombatSpells();
+    selectCombatEntry();
+    buildCombatScene();
+  });
+  $("combatSpell").addEventListener("change", () => {
+    selectCombatEntry();
+    buildCombatScene();
+  });
+  $("combatClass").addEventListener("change", () => buildCombatScene());
+  $("combatArchive").addEventListener("change", () => {
+    combatCache.clear();
+    buildCombatScene();
+  });
+  $("combatMonster").addEventListener("change", () => {
+    fillCombatMonsterAnims();
+    buildCombatScene();
+  });
+  $("combatMonsterAnim").addEventListener("change", () => buildCombatScene());
+  $("stagePrev").addEventListener("click", () => stepCombatStage(-1));
+  $("stageNext").addEventListener("click", () => stepCombatStage(1));
+  $("combatLoop").addEventListener("change", () => {
+    if (isPlaying) { stopPlay(); startCombatPlay(); }
   });
 }
 

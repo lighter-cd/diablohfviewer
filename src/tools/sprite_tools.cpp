@@ -6,6 +6,7 @@
 
 #include "tools/registry.h"
 #include "tools/base64.h"
+#include "tools/spell_tables.h"
 #include "engine/archive.h"
 
 #include "decoders/palette.h"
@@ -781,6 +782,102 @@ mcp::ToolResult toolSpriteList(const mcp::json& params)
     return r;
 }
 
+// Join the DevilutionX spell / missile / monster tables into a stage-ordered
+// catalog of visual effects (see tools/spell_tables.h for the pure logic).
+// Numbered missiles\{name}{N}.cl2 effects are NOT in recovered.json, so this is
+// the only way the frontend can discover fireball / fire wall / holy bolt etc.
+mcp::ToolResult toolSpellList(const mcp::json& params)
+{
+    std::filesystem::path devRoot =
+        (params.contains("devilutionx_root") && params["devilutionx_root"].is_string())
+            ? std::filesystem::path(params["devilutionx_root"].get<std::string>())
+            : std::filesystem::path("D:/work/xt/diablo/DevilutionX");
+    const std::string sourceFilter =
+        (params.contains("source") && params["source"].is_string())
+            ? params["source"].get<std::string>() : "";
+    const std::string idFilter =
+        (params.contains("id") && params["id"].is_string())
+            ? params["id"].get<std::string>() : "";
+
+    spell_tables::Catalog cat = spell_tables::buildCatalog(devRoot);
+    if (!cat.ok)
+        throw std::runtime_error("spell.list: " + cat.error);
+
+    auto layerJson = [](const spell_tables::Layer& l) -> mcp::json {
+        mcp::json j = { { "kind", l.kind }, { "role", l.role },
+                        { "anchor", l.anchor }, { "confidence", l.confidence } };
+        if (l.kind == "cast_action") {
+            j["action"] = l.action;
+            j["element"] = l.element;
+        } else if (l.kind == "sprite") {
+            j["graphic_id"] = l.graphic_id;
+            j["files"] = l.files;
+            j["width"] = l.width;
+            j["frames"] = l.frames;
+            j["num_files"] = l.num_files;
+            j["element"] = l.element;
+        } else if (l.kind == "trn") {
+            j["trn"] = mcp::json{ { "name", l.trn_name },
+                                  { "preset", l.trn_preset },
+                                  { "apply_to", l.anchor } };
+        }
+        return j;
+    };
+
+    auto entryJson = [&](const spell_tables::Entry& e) -> mcp::json {
+        mcp::json stages = mcp::json::array();
+        for (const auto& s : e.stages) {
+            mcp::json layers = mcp::json::array();
+            for (const auto& l : s.layers)
+                layers.push_back(layerJson(l));
+            stages.push_back(mcp::json{ { "id", s.id }, { "label", s.label },
+                                        { "layers", layers } });
+        }
+        mcp::json j = { { "id", e.id }, { "name", e.name }, { "source", e.source },
+                        { "element", e.element }, { "cast_action", e.cast_action },
+                        { "missiles", e.missiles }, { "stages", stages } };
+        if (!e.monster_ai.empty()) {
+            j["monster_ai"] = e.monster_ai;
+            j["monsters"] = e.monsters;
+            j["default_ai"] = e.default_ai;
+        }
+        return j;
+    };
+
+    auto want = [&](const spell_tables::Entry& e) -> bool {
+        return idFilter.empty() || e.id == idFilter || e.name == idFilter;
+    };
+
+    mcp::json spells = mcp::json::array();
+    mcp::json attacks = mcp::json::array();
+    if (sourceFilter.empty() || sourceFilter == "player")
+        for (const auto& e : cat.spells)
+            if (want(e)) spells.push_back(entryJson(e));
+    if (sourceFilter.empty() || sourceFilter == "monster")
+        for (const auto& e : cat.monster_attacks)
+            if (want(e)) attacks.push_back(entryJson(e));
+
+    mcp::json impacts = mcp::json::array();
+    for (const auto& si : cat.impact_catalog)
+        impacts.push_back(mcp::json{ { "id", si.id }, { "files", si.files },
+                                     { "width", si.width }, { "frames", si.frames },
+                                     { "num_files", si.num_files },
+                                     { "confidence", "catalog" } });
+
+    mcp::ToolResult r;
+    r.value = mcp::json{
+        { "count", spells.size() + attacks.size() },
+        { "spell_count", spells.size() },
+        { "monster_attack_count", attacks.size() },
+        { "cast_action_map", mcp::json{ { "Fire", "fm" }, { "Lightning", "lm" },
+                                        { "Magic", "qm" }, { "Physical", "qm" },
+                                        { "Acid", "qm" } } },
+        { "impact_catalog", impacts },
+        { "spells", spells },
+        { "monster_attacks", attacks } };
+    return r;
+}
+
 } // namespace
 
 namespace mcp {
@@ -860,6 +957,30 @@ void registerSpriteTools(ToolRegistry& reg)
                               { "description", "what to enumerate: 'sprite' (default, CL2/CEL) | 'palette' (.pal files) | 'all'" } } } } },
               { "required", json::array({}) } },
         toolSpriteList });
+
+    reg.registerTool(ToolDef{
+        "spell.list",
+        "Synthesize a stage-ordered catalog of spell / monster-attack visual effects "
+        "from the DevilutionX data tables (spelldat/misdat/missile_sprites/monstdat). "
+        "Each entry has ordered stages cast -> projectile -> impact -> debuff. Sprite "
+        "layers carry the numbered missiles\\{name}{N}.cl2 file list plus an EXPLICIT "
+        "width (width:\"auto\" does not work for numbered files). debuff layers may be "
+        "TRN palette remaps (apply_trn on the target) or overlay sprites. "
+        "impact_catalog lists all boom/splat effects (confidence='catalog') for manual "
+        "selection. Filter with source='player'|'monster' and/or id.",
+        json{ { "type", "object" },
+              { "properties",
+                json{ { "devilutionx_root",
+                        json{ { "type", "string" },
+                              { "description", "DevilutionX source root (default D:/work/xt/diablo/DevilutionX)" } } },
+                      { "source",
+                        json{ { "type", "string" },
+                              { "description", "'player' | 'monster' | empty (both)" } } },
+                      { "id",
+                        json{ { "type", "string" },
+                              { "description", "filter by spell/AI id or display name" } } } } },
+              { "required", json::array({}) } },
+        toolSpellList });
 }
 
 } // namespace tools

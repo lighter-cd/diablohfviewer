@@ -104,6 +104,27 @@ NPC 固定单方向。两者宽度均由后端自动查表（`monstdat.tsv` / `t
 实现见 `web/src/viewer.js` 的 `drawComposite` 与 `web/src/main.js` 的 `overlayLayers` 状态
 （叠加层复用基础精灵的调色板 / TRN 上下文，由 `buildDecodeArgs` 统一构造解码参数）。
 
+### 技能 / 战斗查看器（浏览模式）
+
+第 4 种浏览模式，同屏显示 **玩家（左）+ 怪物（右）+ 攻击/施法效果**：
+
+1. **来源**：玩家技能（51 个，来自 `spelldat.tsv`）或 怪物远程攻击（14 类 AI，来自
+   `monstdat.ai` + `Source/monster.cpp::GetMissileType`）。
+2. **技能 / 攻击**：选具体条目。
+3. **玩家职业 / 怪物 MPQ / 怪物 / 怪物动作**：决定同屏两侧的角色。
+4. **阶段**：`◀ / ▶` 单独查看 施法 → 投射 → 命中 → debuff；底部「▶ 播放」在
+   `自动连播全阶段` 勾选时按时间线一次走完，否则只循环当前阶段。
+
+数据来自后端 `spell.list`（`spelldat` / `misdat` / `missile_sprites` / `monstdat` 四表 join）。注意：
+
+- `plrgfx` 的 `lm/fm/qm` 是**角色施法动作**（cast 阶段），不是火球之类攻击效果；
+- 火球 / 火墙等**攻击效果**是 `missiles\{name}{N}.cl2` 编号文件，不在 `sprite.list` 的目录中，
+  由 `spell.list` 合成清单并提供**显式 `width`**（编号文件不能用 `width:"auto"`）；
+- debuff 阶段用 TRN（`stone.trn` / `infra.trn`）对怪物层做**近似**着色，或叠加状态精灵
+  （`manashld` / `shatter1` 等）；
+- 命中 / 爆炸阶段在数据表中无外键，按命名约定自动关联，其余进 `impact_catalog` 候选
+  （标 `confidence:"catalog"`）。
+
 ## 目录结构（纯静态，无 Node 运行服务）
 
 ```

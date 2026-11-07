@@ -58,6 +58,16 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
 
 查看器结构见 `web/README.md`；与后端契约、已知限制见 `docs/ARCHITECTURE.md` §10.3。
 
+### 技能 / 战斗查看器（第 4 种浏览模式）
+
+同屏显示 **玩家（左）+ 怪物（右）+ 攻击/施法效果**。选「来源」（玩家技能 / 怪物远程攻击）与具体技能后：
+
+- 按「▶ 播放」自动走完 **施法 → 投射 → 命中 → debuff** 全阶段时间线（`自动连播全阶段` 可关闭，改为只循环当前阶段）；
+- 「◀ / ▶」阶段按钮单独查看每个阶段；
+- debuff 用后端 `apply_trn`（`stone.trn` 石化 / `infra.trn` 红外等）对怪物层做**近似**着色，或叠加 `manashld` / `shatter1` 等状态精灵。
+
+数据来自 `spell.list`（编号特效文件带显式 `width`，由前端直接传给 `sprite.decode`）；`recovered.json` 只恢复了单帧 missiles 名，火球 / 火墙等核心编号特效不在其中，故必须经此工具发现。
+
 ## 工具一览（使用者角度）
 
 | 工具 | 说明 |
@@ -70,6 +80,7 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
 | `palette.load` | 加载 `.pal` 调色板为 RGBA（`src/decoders/palette.cpp`） |
 | `sprite.decode` | 解码 `.clx` / `.cel` / `.cl2` / `.pcx` 精灵为 RGBA 帧；`.cl2`/`.cel` 传 `width` 整数或 `"auto"` 自动按路径查表。可选 `archives`（额外 MPQ 路径数组）：精灵/调色板可来自与 `archive` 不同的 MPQ，用于跨档案解析调色板。**损坏/截断的 CL2/CEL 或错误 `width` 会返回错误而非崩溃**（`src/tools/sprite_tools.cpp`、`src/decoders/cl2.cpp`、`src/decoders/cel.cpp`） |
 | `sprite.list` | 枚举 `recovered.json` 中真实存在的精灵名（按 family/class/type 分类并带自动帧宽），供前端建目录树（`src/tools/sprite_tools.cpp`） |
+| `spell.list` | 从 DevilutionX 数据表（`spelldat` / `misdat` / `missile_sprites` / `monstdat`）合成**玩家技能与怪物远程攻击的全阶段视觉目录**：每个条目按 施法 → 投射 → 命中 → debuff 四阶段组织；`sprite` 层给出编号 `missiles\{name}{N}.cl2` 文件清单 + 显式 `width`（编号文件**不能**用 `width:"auto"`），`trn` 层给出目标 debuff 的调色板重映射；另附 `impact_catalog` 候选命中特效。可用 `source` / `id` 过滤（`src/tools/sprite_tools.cpp`、`src/tools/spell_tables.h`） |
 
 请求示例（JSON-RPC 2.0，stdio 与 WS 同构）：
 
@@ -95,8 +106,8 @@ g++ -I src -std=c++17 out/unit_tests.cpp \
     -static-libgcc -static-libstdc++ \
     -o out/unit_tests.exe && out/unit_tests.exe
 ```
-覆盖：CLX 解码、CEL→CLX / CL2→CLX 往返、**CL2/CEL 畸形输入与错误 `width` 拒绝（不崩溃）**、PCX 解码、调色板加载、base64 编解码往返。
-源码路径：`src/decoders/*.cpp`、`src/tools/base64.h`；测试脚本 `out/unit_tests.cpp`。
+覆盖：CLX 解码、CEL→CLX / CL2→CLX 往返、**CL2/CEL 畸形输入与错误 `width` 拒绝（不崩溃）**、**`spell_tables.h` 纯 join（TSV/CRLF、编号文件生成、AI→导弹、阶段派生）**、PCX 解码、调色板加载、base64 编解码往返。
+源码路径：`src/decoders/*.cpp`、`src/tools/base64.h`、`src/tools/spell_tables.h`；测试脚本 `out/unit_tests.cpp`。
 
 ### 2. Registry + JSON-RPC（纯逻辑，无需 MPQ）
 
@@ -131,10 +142,12 @@ g++ -I 3rdparty/StormLib/src -I 3rdparty -I src -std=c++17 \
 `extract`/`extractToFile`，以及 `mpq.list`/`mpq.verify`/`mpq.extract`/`mpq.dump`/
 `mpq.recover`（含用内置字典 `mpq-info/dict/diablo1-harvest.txt` 的端到端恢复）；
 `sprite.list` 目录合成（过滤无 MPQ 文件的幽灵条目、cow 带真实宽度）、`sprite.decode`
-跨 MPQ 搜索、**截断 CL2 返回干净错误而非崩溃**、以及 `cow.cel` 的 `width:"auto"` 解码。
+跨 MPQ 搜索、**截断 CL2 返回干净错误而非崩溃**、`cow.cel` 的 `width:"auto"` 解码，以及
+**`spell.list` 全阶段目录**（51 技能 / 14 怪物攻击、Fireball 四阶段、Stone Curse TRN、
+Fire Wall 双文件、Flash 双层、Torchant→Fireball、default→Arrow）。
 源码路径：`src/engine/archive.cpp`、`src/tools/mpq_tools.cpp`、`src/tools/sprite_tools.cpp`、
-`src/decoders/cl2.cpp`、`src/decoders/cel.cpp`、`src/decoders/sprite_width.cpp`；
-测试脚本 `out/integration_tests.cpp`。
+`src/tools/spell_tables.h`、`src/decoders/cl2.cpp`、`src/decoders/cel.cpp`、
+`src/decoders/sprite_width.cpp`；测试脚本 `out/integration_tests.cpp`。
 
 > 每轮改动后请完整运行以上三个套件，确保全绿。
 

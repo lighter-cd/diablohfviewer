@@ -25,6 +25,7 @@
 #include "decoders/png.h"
 #include "decoders/sprite_width.h"
 #include "tools/base64.h"
+#include "tools/spell_tables.h"
 
 #include <cstdio>
 #include <cstring>
@@ -569,6 +570,122 @@ static void testSpriteWidth()
     printf("sprite_width: %s\n", ok ? "PASS" : "FAIL");
 }
 
+// ---------------------------------------------------------------------------
+// tools/spell_tables.h: pure data-table joins (no MPQ / no TSV files on disk)
+// ---------------------------------------------------------------------------
+static void testSpellTables()
+{
+    using namespace spell_tables;
+
+    auto bad = [](const char* label) {
+        printf("  %s: FAIL\n", label);
+        allOk = false;
+    };
+
+    // (a) parseTsvText: CRLF, trimmed cells, empty trailing columns.
+    const std::string tsv =
+        "id\twidth\tnumFrames\tname\tframeLength\r\n"
+        "Fireball\t96\t16\tfireba\t14,14,14\r\n"
+        "Lightning\t96\t1\tlghning\t8\r\n";
+    Table t = parseTsvText(tsv);
+    if (t.size() != 2) bad("parse rows");
+    else if (val(t[0], "id") != "Fireball" || val(t[1], "name") != "lghning")
+        bad("parse CRLF/values");
+
+    // (b) element -> cast action
+    if (elementToAction(firstElement("Fire,Targeted")) != "fm") bad("Fire -> fm");
+    if (elementToAction(firstElement("Lightning,Targeted")) != "lm") bad("Lightning -> lm");
+    if (elementToAction(firstElement("Magic")) != "qm") bad("Magic -> qm");
+
+    // (c) numbered sprite files vs single-frame file
+    SpriteInfo s1 = spriteFilesFor(t[0]);
+    if (s1.files.size() != 16 || s1.files.front() != "missiles\\fireba1.cl2" ||
+        s1.files.back() != "missiles\\fireba16.cl2" || s1.width != 96 || s1.frames != 14)
+        bad("Fireball 16 numbered files / width / frames");
+    SpriteInfo s2 = spriteFilesFor(t[1]);
+    if (s2.files.size() != 1 || s2.files[0] != "missiles\\lghning.cl2")
+        bad("Lightning single .cl2 (no numeric suffix)");
+    Row invalid;
+    invalid["name"] = "?"; invalid["width"] = "96"; invalid["numFrames"] = "1";
+    if (spriteFilesFor(invalid).valid()) bad("'?' name rejected");
+
+    // (d) AI -> missile (real GetMissileType switch)
+    bool def = false;
+    if (aiToMissile("Torchant", def) != "Fireball" || def) bad("Torchant -> Fireball");
+    if (aiToMissile("Magma", def) != "MagmaBall" || def) bad("Magma -> MagmaBall");
+    if (aiToMissile("SkeletonRanged", def) != "Arrow" || !def) bad("SkeletonRanged -> default Arrow");
+    if (!rangedAiSet().count("SkeletonRanged")) bad("rangedAiSet contains SkeletonRanged");
+
+    // (e) impact / status classification
+    if (impactOverride("Fireball") != "MagmaBallExplosion") bad("Fireball impact override");
+    if (!isImpactGraphic("MagmaBallExplosion")) bad("isImpactGraphic");
+    if (!isStatusGraphic("ManaShield") || isStatusGraphic("Fireball"))
+        bad("isStatusGraphic");
+
+    // (f) deriveEntry with tiny in-memory tables
+    Table mis = parseTsvText(
+        "id\tgraphic\tflags\taddFn\tprocessFn\n"
+        "Fireball\tFireball\tFire\tAddFireball\tProcessFireball\n"
+        "FireWallControl\tFireWall\tFire\tAddWallControl\tProcessWallControl\n"
+        "StoneCurse\t\tMagic,Invisible\tAddStoneCurse\tProcessStoneCurse\n"
+        "FlashBottom\tFlashBottom\tMagic\tAddFlashBottom\tProcessFlashBottom\n"
+        "FlashTop\tFlashTop\tMagic\tAddFlashTop\tProcessFlashTop\n");
+    Table spr = parseTsvText(
+        "id\twidth\tnumFrames\tname\tframeLength\n"
+        "Fireball\t96\t16\tfireba\t14\n"
+        "FireWall\t128\t2\tfirewal\t13,11\n"
+        "MagmaBallExplosion\t128\t1\tmagblos\t16\n"
+        "StoneCurseShatter\t128\t1\tshatter1\t1\n"
+        "FlashBottom\t160\t1\tbluexfr\t1\n"
+        "FlashTop\t160\t1\tbluexbk\t1\n");
+    std::map<std::string, Row> misById;
+    for (const auto& r : mis) misById[val(r, "id")] = r;
+    std::map<std::string, SpriteInfo> sprById;
+    for (const auto& r : spr) sprById[val(r, "id")] = spriteFilesFor(r);
+
+    Row fb;
+    fb["id"] = "Fireball"; fb["name"] = "Fireball";
+    fb["flags"] = "Fire,Targeted"; fb["missiles"] = "Fireball";
+    Entry e = deriveEntry(fb, misById, sprById, "player");
+    if (e.stages.size() != 4) bad("Fireball 4 stages");
+    else {
+        if (e.stages[0].layers.size() != 1 || e.stages[0].layers[0].action != "fm")
+            bad("Fireball cast stage");
+        if (e.stages[1].layers.size() != 1 ||
+            e.stages[1].layers[0].files.size() != 16 ||
+            e.stages[1].layers[0].width != 96)
+            bad("Fireball projectile stage");
+        if (e.stages[2].layers.size() != 1 ||
+            e.stages[2].layers[0].graphic_id != "MagmaBallExplosion")
+            bad("Fireball impact stage");
+        if (!e.stages[3].layers.empty()) bad("Fireball debuff stage empty");
+    }
+
+    // Flash: two comma-separated missiles -> two projectile layers.
+    Row flash;
+    flash["id"] = "Flash"; flash["name"] = "Flash";
+    flash["flags"] = "Magic"; flash["missiles"] = "FlashBottom,FlashTop";
+    Entry ef = deriveEntry(flash, misById, sprById, "player");
+    if (ef.missiles.size() != 2 || ef.stages[1].layers.size() != 2)
+        bad("Flash two missiles -> two projectile layers");
+
+    // Stone Curse: TRN debuff + impact shatter.
+    Row sc;
+    sc["id"] = "StoneCurse"; sc["name"] = "Stone Curse";
+    sc["flags"] = "Magic"; sc["missiles"] = "StoneCurse";
+    Entry e2 = deriveEntry(sc, misById, sprById, "player");
+    if (e2.stages[2].layers.empty() ||
+        e2.stages[2].layers[0].graphic_id != "StoneCurseShatter")
+        bad("Stone Curse impact");
+    bool hasTrn = false;
+    for (const auto& l : e2.stages[3].layers)
+        if (l.kind == "trn" && l.trn_preset == "stone" && l.anchor == "monster")
+            hasTrn = true;
+    if (!hasTrn) bad("Stone Curse TRN debuff layer");
+
+    printf("spell_tables (pure joins): %s\n", allOk ? "PASS" : "FAIL");
+}
+
 int main()
 {
     printf("=== DiabloHFConverter unit tests ===\n");
@@ -582,6 +699,7 @@ int main()
     testBase64();
     testPngWrite();
     testSpriteWidth();
+    testSpellTables();
     printf("=== %s ===\n", allOk ? "ALL PASS" : "FAILURES PRESENT");
     return allOk ? 0 : 1;
 }

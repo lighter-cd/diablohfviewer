@@ -144,6 +144,7 @@ public:
 | `palette.load` | `{archive,name}` | `{name,count,colors:[[r,g,b]×256],rgba_base64}` | ✅ |
 | `sprite.decode`| `{archive,name,archives?,palette?,frame?,width?}` | `{name,format,width,height,frame_count,palette_resolved,frames:[{index,width,height,rgba_base64}]}`（`.clx` 直解；`.cel`/`.cl2` 经 `celToClx`/`cl2ToClx` 转 CLX 后解；`.pcx` 走内置解码。格式由扩展名自动探测。`width` 为 `.cel`/`.cl2` 必需，支持 `width:"auto"` 按路径自动查表。`archives` 为额外 MPQ 路径数组，精灵/调色板可来自与 `archive` 不同的 MPQ，前端据此跨档案解析调色板） | ✅ |
 | `sprite.list`  | `{dict?,devilutionx_root?,family?,class?,kind?}` | `{count,sprites:[{name,archive,archive_path,family,class,type,width}]}`（从 `recovered.json` + DevilutionX 数据表枚举**真实存在的**精灵名并分类 family/class/type、带自动帧宽，供前端建目录树；`archive_path` 直接取自 recovered.json 的档案 `path`，前端无需再手动填 MPQ 路径；`kind` 默认 `sprite`（CL2/CEL），可传 `palette` 仅列 `.pal` 调色板、`all` 两者都列，用于前端调色板下拉框；无 listfile 时 `mpq.list` 给的是占位名，故需此工具） | ✅ |
+| `spell.list`   | `{devilutionx_root?,source?,id?}` | `{count,spell_count,monster_attack_count,cast_action_map,impact_catalog[],spells[],monster_attacks[]}`（从 `spelldat`/`misdat`/`missile_sprites`/`monstdat` 四表 join 出**玩家技能与怪物远程攻击的有序阶段目录**：`stages[]` 固定 `cast→projectile→impact→debuff`；每层 `L={kind,role,anchor,confidence,...}`，`sprite` 层带编号 `missiles\{name}{N}.cl2` 文件清单 + 显式 `width` + `frames`，`trn` 层带 `trn:{name,preset,apply_to}`；`impact_catalog` 为候选命中特效） | ✅ |
 | `map.build`    | `{archive,dun,...}` | `{tiles:[...],width,height}` | 4 |
 
 > **PCX 已并入 `sprite.decode`**（按 `.pcx` 扩展名自动路由），不再单独设 `pcx.decode` 工具。
@@ -154,6 +155,19 @@ public:
 > 传入，`sprite.decode` 在整组档案栈中查找；缺省只查 `archive`（旧行为，跨档案会报
 > `extract failed (name not found?)`）。
 > 工具名用点分命名空间，便于 Agent 理解分组，也方便前端按前缀路由 UI。
+
+> **`spell.list` 与编号特效文件**：`recovered.json` 只恢复了 33 个单帧 `missiles\` 名，
+> 火球 / 火墙 / 圣光等核心特效是 `missiles\{name}{N}.cl2`（`numFrames` 个编号文件，
+> 各含 `frameLength[i]` 帧），不在其中。四表 join 链路：
+> `spelldat.missiles`(MissileID) → `misdat.id→graphic/flags` →
+> `missile_sprites.id→name/width/numFrames` → 文件清单。
+> 编号文件的 `width` 必须显式传（`sprite_width.cpp` 按 basename 精确匹配，
+> `fireba1` 查不到表里的 `fireba`）。怪物远程攻击由
+> `Source/monster.cpp::GetMissileType(ai)` 的 switch 转录（后端内置常量表）驱动。
+> 命中/爆炸阶段无数据表外键，按命名约定自动关联 + 少量 override，
+> 其余进 `impact_catalog` 标 `confidence:"catalog"`。debuff 的 TRN
+> （`infra.trn` / `stone.trn`）本是玩家调色板重映射，套怪物层为**近似** tint。
+> 纯 join 逻辑在 `src/tools/spell_tables.h`（header-only，不依赖 json，便于单测）。
 
 ---
 
