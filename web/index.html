@@ -31,8 +31,18 @@
   </header>
 
   <main>
-    <aside id="catalog" class="catalog">
-      <em>点击 Connect 加载精灵目录…</em>
+    <aside class="catalog-pane">
+      <div class="catalog-bar">
+        <span class="cat-bar-label">分组</span>
+        <label><input type="radio" name="groupMode" value="family" checked> 按类型合并</label>
+        <label><input type="radio" name="groupMode" value="mpq"> 按 MPQ 包</label>
+        <span class="cat-bar-spacer"></span>
+        <button id="expandAll" type="button">展开全部</button>
+        <button id="collapseAll" type="button">收起全部</button>
+      </div>
+      <aside id="catalog" class="catalog">
+        <em>点击 Connect 加载精灵目录…</em>
+      </aside>
     </aside>
 
     <section class="stage">

@@ -1,64 +1,109 @@
 // web/src/catalog.js
 //
-// Turn a sprite.list result into a nested family -> class -> type tree and
-// render it as a clickable DOM tree. Clicking a leaf sprite calls onSelect(sprite).
+// Turn a sprite.list result into a nested tree, grouped either by sprite
+// family/class/type (combined mode) or by the owning MPQ package (mpq mode),
+// and render it as a collapsible, clickable DOM tree. Clicking a leaf sprite
+// calls onSelect(sprite). Every branch starts collapsed by default.
 
-// Build a nested map: family -> class -> type -> sprite[]
-export function buildTree(sprites) {
-  const tree = {};
-  for (const s of sprites) {
-    const f = s.family || "(unknown)";
-    const c = s.class || "(unknown)";
-    const t = s.type || "";
-    (tree[f] = tree[f] || {});
-    (tree[f][c] = tree[f][c] || {});
-    (tree[f][c][t] = tree[f][c][t] || []).push(s);
+// Chain of keys (root -> ... -> leaf) for one sprite in the chosen mode.
+function keyPath(sprite, mode) {
+  if (mode === "mpq") {
+    // group by owning MPQ, then by the in-archive directory path.
+    const archive = sprite.archive || "(unknown)";
+    const parts = (sprite.name || "")
+      .split(/[\\/]/)
+      .filter((p) => p.length > 0);
+    return [archive, ...parts];
   }
-  return tree;
+  // combined / family mode: family -> class -> type -> basename
+  const segs = [sprite.family || "(unknown)", sprite.class || "(unknown)"];
+  if (sprite.type) segs.push(sprite.type);
+  segs.push(leafBasename(sprite.name));
+  return segs;
+}
+
+function leafBasename(name) {
+  return (name || "").split(/[\\/]/).pop();
+}
+
+// Build a nested node map from sprites. Each node: { label, children: Map, sprite }.
+// Leaf nodes (the sprite itself) carry `sprite` and have no children.
+export function buildTree(sprites, mode = "family") {
+  const root = { label: "", children: new Map(), sprite: null };
+  for (const s of sprites || []) {
+    const keys = keyPath(s, mode);
+    let node = root;
+    for (const k of keys) {
+      if (!node.children.has(k))
+        node.children.set(k, { label: k, children: new Map(), sprite: null });
+      node = node.children.get(k);
+    }
+    node.sprite = s; // leaf holds the actual sprite
+  }
+  return root;
 }
 
 function leafLabel(sprite) {
-  const base = sprite.name.split("\\").pop().split("/").pop();
-  return (sprite.type ? sprite.type + " · " : "") + base;
+  return leafBasename(sprite.name);
 }
 
-// Render `tree` into `container` (a <ul>). onSelect(sprite) fires on leaf click.
-export function renderCatalog(container, tree, onSelect) {
-  container.innerHTML = "";
-  const frag = document.createDocumentFragment();
+// Recursively render a node's children into `ul`.
+function renderChildren(ul, node, onSelect, container) {
+  for (const child of node.children.values()) {
+    const li = document.createElement("li");
 
-  for (const fam of Object.keys(tree).sort()) {
-    const famLi = document.createElement("li");
-    famLi.className = "cat-family";
-    famLi.textContent = fam;
+    if (child.children.size > 0) {
+      // branch node (collapsible)
+      li.className = "cat-branch";
+      const head = document.createElement("span");
+      head.className = "cat-head collapsed";
+      head.textContent = child.label;
+      const sub = document.createElement("ul");
+      sub.className = "cat-sub";
+      sub.hidden = true; // default collapsed
+      renderChildren(sub, child, onSelect, container);
 
-    const classUl = document.createElement("ul");
-    for (const cls of Object.keys(tree[fam]).sort()) {
-      const clsLi = document.createElement("li");
-      clsLi.className = "cat-class";
-      clsLi.textContent = cls;
-
-      const typeUl = document.createElement("ul");
-      for (const type of Object.keys(tree[fam][cls]).sort()) {
-        for (const sprite of tree[fam][cls][type]) {
-          const spLi = document.createElement("li");
-          spLi.className = "cat-sprite";
-          spLi.textContent = leafLabel(sprite);
-          spLi.title = sprite.name + (sprite.width ? `  (w=${sprite.width})` : "");
-          spLi.addEventListener("click", () => {
-            container.querySelectorAll(".cat-sprite.selected")
-              .forEach((el) => el.classList.remove("selected"));
-            spLi.classList.add("selected");
-            onSelect(sprite);
-          });
-          typeUl.appendChild(spLi);
-        }
-      }
-      clsLi.appendChild(typeUl);
-      classUl.appendChild(clsLi);
+      head.addEventListener("click", () => {
+        const collapsed = sub.hidden;
+        sub.hidden = !collapsed;
+        head.classList.toggle("collapsed", !collapsed);
+        head.classList.toggle("expanded", collapsed);
+      });
+      li.appendChild(head);
+      li.appendChild(sub);
+    } else {
+      // leaf sprite
+      li.className = "cat-sprite";
+      li.textContent = leafLabel(child.sprite);
+      li.title = child.sprite.name +
+        (child.sprite.width ? `  (w=${child.sprite.width})` : "");
+      li.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        container.querySelectorAll(".cat-sprite.selected")
+          .forEach((el) => el.classList.remove("selected"));
+        li.classList.add("selected");
+        onSelect(child.sprite);
+      });
     }
-    famLi.appendChild(classUl);
-    frag.appendChild(famLi);
+    ul.appendChild(li);
   }
-  container.appendChild(frag);
+}
+
+// Render the tree (root node map) into `container`.
+export function renderCatalog(container, root, onSelect) {
+  container.innerHTML = "";
+  const ul = document.createElement("ul");
+  ul.className = "cat-root";
+  renderChildren(ul, root, onSelect, container);
+  container.appendChild(ul);
+  return ul;
+}
+
+// Expand or collapse every branch in `container`.
+export function setAllExpanded(container, expanded) {
+  container.querySelectorAll(".cat-sub").forEach((ul) => { ul.hidden = !expanded; });
+  container.querySelectorAll(".cat-head").forEach((h) => {
+    h.classList.toggle("collapsed", !expanded);
+    h.classList.toggle("expanded", expanded);
+  });
 }

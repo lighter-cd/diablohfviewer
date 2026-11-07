@@ -383,7 +383,7 @@ web/                              # 浏览器前端（不读 MPQ/文件，仅 We
 ├── styles.css                   # 极简暗色样式
 ├── src/
 │   ├── client.js                 # McpClient：WS + JSON-RPC（id 配对，并发安全）
-│   ├── catalog.js                # sprite.list 结果 → family→class→type 树 → 可点击 DOM
+│   ├── catalog.js                # sprite.list 结果 → 嵌套树（按类型合并 / 按 MPQ 包）→ 可点击可折叠 DOM
 │   ├── viewer.js                 # rgba_base64 → atob→ImageData→putImageData（最近邻放大）
 │   └── main.js                   # 编排：connect → sprite.list(+kind:palette 填下拉框) → 点击 → sprite.decode → 绘制
 └── README.md                     # 开发者说明 + 运行步骤 + 与后端契约
@@ -400,6 +400,10 @@ web/                              # 浏览器前端（不读 MPQ/文件，仅 We
   ② 调色板改为**下拉框**，由 `sprite.list(kind:"palette")` 拉取档案内全部 `.pal` 填充，
   切换即对该精灵重新解码；③ 任何失败（暂不支持的格式 / 缺 archive_path / 解码报错）都通过
   **错误条（errorBanner）显式提示**，而非静默。
+- 左侧**资源树**（`catalog.js`）由 `sprite.list` 结果构建，支持两种分组方式可切换：
+  **按类型合并**（`family→class→type→精灵`）与 **按 MPQ 包**（先按所属 MPQ，再按档案内
+  目录路径逐层展开）；两种模式下分支节点均**默认收起**，点击标题展开/收起，并提供
+  「展开全部 / 收起全部」。切换分组方式无需重新请求后端（前端缓存上次 `sprite.list` 结果）。
 
 **契约说明**：`sprite.list` 每条精灵除 `archive`（档案名，如 `DIABDAT.MPQ`）外，
 还返回 `archive_path`（recovered.json 里该档案的 `path` 字段，即可直用于

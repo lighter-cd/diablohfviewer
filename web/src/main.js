@@ -6,7 +6,7 @@
 // 8-direction playback yet).
 
 import { McpClient } from "./client.js";
-import { buildTree, renderCatalog } from "./catalog.js";
+import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js";
 import { drawFrame, fitCanvas } from "./viewer.js";
 
 const $ = (id) => document.getElementById(id);
@@ -18,6 +18,8 @@ const DECODABLE = new Set(["cl2", "cel", "clx", "pcx"]);
 const client = new McpClient();
 let currentFrames = null;   // last decode result frames, for the frame slider
 let lastSprite = null;      // last selected sprite (re-decode when palette changes)
+let lastSprites = [];       // last sprite.list payload (re-group without re-fetch)
+let currentMode = "family"; // catalog grouping: "family" (combined) | "mpq" (by package)
 // Map palette name -> owning MPQ path (from sprite.list kind:"palette"). Used to
 // tell sprite.decode which extra MPQ holds the palette, since a palette often
 // lives in a different MPQ than the sprite (e.g. Hellfire palette on a DIABDAT sprite).
@@ -58,13 +60,20 @@ async function loadCatalog() {
   try {
     const res = await client.callTool("sprite.list", {});
     const sprites = (res && res.sprites) || [];
-    const tree = buildTree(sprites);
-    renderCatalog($("catalog"), tree, onSelectSprite);
+    lastSprites = sprites;
+    renderCurrentCatalog();
     setMeta(`catalog: ${res.count ?? sprites.length} sprites`);
     await loadPalettes();
   } catch (e) {
     setMeta("sprite.list failed: " + e.message, true);
   }
+}
+
+// Rebuild the catalog tree from the cached sprite list using the current
+// grouping mode (family-combined or by-MPQ). Called on load and on mode switch.
+function renderCurrentCatalog() {
+  const tree = buildTree(lastSprites, currentMode);
+  renderCatalog($("catalog"), tree, onSelectSprite);
 }
 
 // Populate the palette <select> from sprite.list(kind:"palette"): every .pal in
@@ -180,6 +189,17 @@ function wireControls() {
   $("palette").addEventListener("change", () => {
     if (lastSprite) onSelectSprite(lastSprite);
   });
+  // Grouping mode switch (combined family/class/type <-> by MPQ package).
+  document.querySelectorAll('input[name="groupMode"]').forEach((r) => {
+    r.addEventListener("change", (e) => {
+      if (!e.target.checked) return;
+      currentMode = e.target.value;
+      renderCurrentCatalog();
+    });
+  });
+  // Expand / collapse all branches.
+  $("expandAll").addEventListener("click", () => setAllExpanded($("catalog"), true));
+  $("collapseAll").addEventListener("click", () => setAllExpanded($("catalog"), false));
 }
 
 wireControls();

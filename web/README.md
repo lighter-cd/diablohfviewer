@@ -22,8 +22,16 @@ python -m http.server 8000        # 或： npx serve .
 ```
 
 打开后点 **Connect**（默认 `ws://localhost:18765`），左侧目录树由 `sprite.list`
-按 `family → class → type` 构建；点任一精灵即调用 `sprite.decode` 并绘制第 0 帧，
-用下方 Frame 滑块翻看其余帧。
+构建；点任一精灵即调用 `sprite.decode` 并绘制第 0 帧，用下方 Frame 滑块翻看其余帧。
+
+目录树支持两种分组方式，可在顶部「分组」处切换：
+
+- **按类型合并**（默认）：`family → class → type → 精灵`，与之前一致。
+- **按 MPQ 包**：先按精灵所属 MPQ（如 `DIABDAT.MPQ` / `hellfire.mpq`），再按档案内目录
+  路径逐层展开（`missiles → fireplar.cl2`），便于按资源来源浏览。
+
+两种模式下所有分支节点都**默认收起**，点击节点标题即可展开/收起；顶部另有
+「展开全部 / 收起全部」一键展开或折叠整棵树。
 
 ## 目录结构（纯静态，无 Node 运行服务）
 
