@@ -173,6 +173,58 @@ static void testCl2RoundTrip()
 }
 
 // ---------------------------------------------------------------------------
+// decoders: malformed / truncated CL2 must be rejected, never SIGSEGV.
+// Regression for monsters\darkmage\dmagew.cl2 (a 96-byte stub in DIABDAT.MPQ)
+// whose unvalidated offsets used to make `src` run past the buffer in cl2ToClx.
+// ---------------------------------------------------------------------------
+static void testCl2RejectsMalformed()
+{
+    auto w32 = [](std::vector<uint8_t>& b, size_t o, uint32_t v) { WriteLE32(&b[o], v); };
+    auto expectThrow = [](const std::vector<uint8_t>& b, uint16_t w, const char* label) {
+        bool threw = false;
+        try {
+            auto clx = cl2ToClx(b.data(), b.size(), w);
+            (void)clx;
+        } catch (const std::runtime_error&) {
+            threw = true;
+        }
+        if (!threw) {
+            printf("  %s: FAIL (no exception)\n", label);
+            allOk = false;
+        }
+    };
+
+    // (a) header too small to even read maybeNumFrames.
+    expectThrow(std::vector<uint8_t>(0), 128, "empty CL2 rejected");
+    expectThrow(std::vector<uint8_t>(3, 0), 128, "3-byte CL2 rejected");
+
+    // (b) exact shape of monsters\darkmage\dmagew.cl2 from DIABDAT.MPQ:
+    //     96 bytes, first u32 = 32 (misread as a group-offset table), then the
+    //     8 offsets 32/39/46/53/60/67/74/81, then repeating 0/8 pairs.
+    std::vector<uint8_t> stub(96, 0);
+    const uint32_t head[8] = {32, 39, 46, 53, 60, 67, 74, 81};
+    for (int i = 0; i < 8; ++i) w32(stub, static_cast<size_t>(4 * i), head[i]);
+    for (size_t o = 32; o + 4 <= stub.size(); o += 8) w32(stub, o, 8);
+    expectThrow(stub, 128, "96-byte dmagew stub rejected");
+
+    // (c) valid single-group header, but a frame offset points past EOF.
+    std::vector<uint8_t> pastEof(16, 0);
+    w32(pastEof, 0, 1); w32(pastEof, 4, 999999);
+    w32(pastEof, 8, 16); w32(pastEof, 12, 16);
+    expectThrow(pastEof, 4, "frame offset past EOF rejected");
+
+    // (d) non-monotonic frame offsets (the corrupt shape in dmagew group 4):
+    //     frame 2 ends before frame 1, which `while (src != frameEnd)` used to
+    //     turn into an unbounded overrun.
+    std::vector<uint8_t> nonMono(24, 0);
+    w32(nonMono, 0, 2); w32(nonMono, 4, 16);
+    w32(nonMono, 8, 8); w32(nonMono, 12, 24);
+    expectThrow(nonMono, 4, "non-monotonic frame offsets rejected");
+
+    printf("CL2 malformed-input: %s\n", allOk ? "PASS" : "FAIL");
+}
+
+// ---------------------------------------------------------------------------
 // decoders: PCX decode (hand-built 4x2, embedded palette)
 // ---------------------------------------------------------------------------
 static void testPcxDecode()
@@ -474,6 +526,7 @@ int main()
     testClxDecode();
     testCelRoundTrip();
     testCl2RoundTrip();
+    testCl2RejectsMalformed();
     testPcxDecode();
     testPalette();
     testBase64();

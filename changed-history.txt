@@ -165,3 +165,8 @@
 - 修复 Hellfire 怪物批量解码失败（用户报 antworm/bspidr/bubba/byclps/clasp/eye2 六条 `tool execution failed`）：根因是前端 buildDecodeArgs 只把「怪物查看器选中的单个 MPQ」放进 sprite.decode 的 archives，而 Hellfire 怪物 CL2 实际在 hellfire.mpq → `extract failed (name not found?)`。现改为把 allArchives 全部 MPQ 作为搜索栈，并用 norm() 统一 / 路径（避免 recovered.json 中 / 与 \ 混用导致同一 MPQ 被打开两次报 cannot open archive）。
 - 涉及: web/src/main.js, out/integration_tests.cpp, docs/PROJECT.md, docs/ARCHITECTURE.md, web/README.md
 - 验证：node --check 4 个 JS 模块通过；重建并运行 unit/core/integration 三套 C++ 测试全 PASS（新增 testSpriteDecodeCrossArchive 断言「单 MPQ 失败 / 全栈成功」）；stdio 全量 325 条合成目录分批回归 ok 188→304、fail 137→21，116 条由跨档案搜索修好，用户 6 条全部转 OK。诊断发现错误文本虽相同但根因共四类，本轮先修主类；剩余 21 条为：5 条 monstdat 占位条目（worm\worm*.cl2，MPQ 无文件；注意 availability=Never 不可直接过滤，unrav\unrav 是 Never 但文件存在）、15 条 NO RESPONSE（其中 darkmage\dmagew.cl2 触发后端 0xC0000005 段错误崩溃并连带同批请求丢失）、1 条 cow.cel 宽度查表失败（已知限制），均未在轮内改动。
+
+## 2026-11-08 03:55:26
+- 修复 CL2 解码器越界崩溃（SIGSEGV）：src/decoders/cl2.cpp 对所有来自文件的偏移做 [data,data+size) 边界校验，帧解码循环由 `while (src != frameEnd)` 改为 `src < frameEnd`，读到坏数据抛 std::runtime_error 转干净 JSON-RPC error。根因是 cl2.cpp:24 无边界的头部探测（maybeNumFrames=32 → 读 data+132，缓冲区仅 96 字节）+ cl2.cpp:64 的 != 循环让 src 越过 frameEnd 后永不终止并持续越界读。
+- 涉及: src/decoders/cl2.cpp, out/unit_tests.cpp, out/integration_tests.cpp, README.md, docs/PROJECT.md, docs/ARCHITECTURE.md
+- 验证：unit/core/integration 三套 C++ 测试全 PASS（新增 testCl2RejectsMalformed 覆盖空/3字节/96字节 stub/帧偏移越界/非单调，testSpriteDecodeRejectsTruncatedCl2 端到端断言返回 error 而非崩溃）；全量重建 mcp-server.exe（03:53:37）后 stdio 全量 325 条回归 ok 304→318、fail 21→7、NO RESPONSE 15→0，dmagew.cl2 返回 `invalid CL2: frame offset past end of file`，正常 CL2 无回归。剩余 7 条为另三类已知问题（5 条 monstdat 幽灵条目 worm\*、1 条残缺 dmagew 预期报错、1 条 cow.cel 宽度限制）。

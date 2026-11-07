@@ -381,8 +381,14 @@ DiabloHFConverter/
     `towners.tsv`(`animWidth`) 取宽；`items`(CEL) 无宽度表，仍需手填。`towners/animals/cow.cel`
     是 `towners.cpp` 硬编码特例，不在 TSV 中，自动查表会回退到手动宽度。
   - 调色板用任意 256 色 `.pal` 即可出形，选对游戏调色板则颜色正确。
-  - 单测：`out/unit_tests.cpp` 含 CLX/CEL/CL2 round-trip、PCX、palette、**PNG write round-trip**；
-    构建与运行见仓库根 `README.md` §1（解码器单测）与 §5（精灵渲染）。
+  - 单测：`out/unit_tests.cpp` 含 CLX/CEL/CL2 round-trip、**CL2 畸形/截断输入拒绝**、PCX、
+    palette、**PNG write round-trip**；构建与运行见仓库根 `README.md` §1（解码器单测）与
+    §5（精灵渲染）。
+  - [x] 修复 CL2 解码器越界崩溃（2026-11-08）：`src/decoders/cl2.cpp` 对所有文件偏移做边界
+    校验、帧循环改为 `src < frameEnd`、坏数据抛异常转干净 JSON-RPC error。根因
+    `cl2.cpp:24` 无边界的头部探测 + `cl2.cpp:64` 的 `!=` 循环让残缺 CL2
+    （`monsters\darkmage\dmagew.cl2`，96 字节 stub）越界读触发 SIGSEGV。回归测试
+    `testCl2RejectsMalformed`（单元）与 `testSpriteDecodeRejectsTruncatedCl2`（端到端）。
 
 ### 阶段 2：角色查看器（目标 2）
 

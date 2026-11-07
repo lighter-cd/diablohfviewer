@@ -595,6 +595,39 @@ static void testSpriteDecodeCrossArchive() {
     printf("sprite_tools (cross-archive): %s\n", allOk ? "PASS" : "FAIL");
 }
 
+// A truncated CL2 (the 96-byte monsters\darkmage\dmagew.cl2 stub in DIABDAT)
+// must be rejected with a clean JSON-RPC error instead of crashing the server.
+// If cl2ToClx regresses to an out-of-bounds read, this process dies here
+// (SIGSEGV) and the suite never reaches "ALL PASS".
+static void testSpriteDecodeRejectsTruncatedCl2() {
+    std::string mpq = findMonsterMpq();
+    if (mpq.empty()) {
+        printf("  (skipped truncated-CL2 decode; no MPQ fixture)\n");
+        return;
+    }
+    ToolRegistry reg;
+    tools::registerMpqTools(reg);
+    tools::registerSpriteTools(reg);
+    auto resp = handleRequest(reg, json{
+        {"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/call"},
+        {"params", json{{"name", "sprite.decode"},
+                        {"arguments", json{
+                            {"archive", mpq},
+                            {"name", "monsters\\darkmage\\dmagew.cl2"},
+                            {"width", "auto"},
+                            {"palette_name", "gendata\\cut2.pal"}}}}}});
+    CHECK(resp.has_value(), "truncated CL2: server returned a response (did not crash)");
+    if (!resp) { printf("sprite_tools (truncated CL2): FAIL\n"); return; }
+    CHECK(resp->contains("error"), "truncated CL2: returns a JSON-RPC error");
+    json err  = resp->value("error", json::object());
+    json data = err.value("data", json::object());
+    std::string detail = data.value("error", std::string());
+    CHECK(detail.find("invalid CL2") != std::string::npos,
+          "truncated CL2: error reports 'invalid CL2'");
+    printf("       detail: %s\n", detail.c_str());
+    printf("sprite_tools (truncated CL2): %s\n", allOk ? "PASS" : "FAIL");
+}
+
 int main() {
     printf("=== DiabloHFConverter integration tests (engine + mpq_tools + sprite_tools) ===\n");
     testNormalize();
@@ -622,6 +655,7 @@ int main() {
     testSpriteDecodeTrn(mpq);
     testSpriteDecodeMonster();
     testSpriteDecodeCrossArchive();
+    testSpriteDecodeRejectsTruncatedCl2();
     printf("=== %s ===\n", allOk ? "ALL PASS" : "FAILURES PRESENT");
     return allOk ? 0 : 1;
 }

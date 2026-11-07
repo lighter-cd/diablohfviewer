@@ -68,7 +68,7 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
 | `mpq.recover` | 用字典 `dict_path` 恢复真实文件名 |
 | `mpq.dump` | 前 N 字节十六进制预览 |
 | `palette.load` | 加载 `.pal` 调色板为 RGBA（`src/decoders/palette.cpp`） |
-| `sprite.decode` | 解码 `.clx` / `.cel` / `.cl2` / `.pcx` 精灵为 RGBA 帧；`.cl2`/`.cel` 传 `width` 整数或 `"auto"` 自动按路径查表。可选 `archives`（额外 MPQ 路径数组）：精灵/调色板可来自与 `archive` 不同的 MPQ，用于跨档案解析调色板（`src/tools/sprite_tools.cpp`） |
+| `sprite.decode` | 解码 `.clx` / `.cel` / `.cl2` / `.pcx` 精灵为 RGBA 帧；`.cl2`/`.cel` 传 `width` 整数或 `"auto"` 自动按路径查表。可选 `archives`（额外 MPQ 路径数组）：精灵/调色板可来自与 `archive` 不同的 MPQ，用于跨档案解析调色板。**损坏/截断的 CL2 会返回错误而非崩溃**（`src/tools/sprite_tools.cpp`、`src/decoders/cl2.cpp`） |
 | `sprite.list` | 枚举 `recovered.json` 中真实存在的精灵名（按 family/class/type 分类并带自动帧宽），供前端建目录树（`src/tools/sprite_tools.cpp`） |
 
 请求示例（JSON-RPC 2.0，stdio 与 WS 同构）：
@@ -95,7 +95,7 @@ g++ -I src -std=c++17 out/unit_tests.cpp \
     -static-libgcc -static-libstdc++ \
     -o out/unit_tests.exe && out/unit_tests.exe
 ```
-覆盖：CLX 解码、CEL→CLX / CL2→CLX 往返、PCX 解码、调色板加载、base64 编解码往返。
+覆盖：CLX 解码、CEL→CLX / CL2→CLX 往返、**CL2 畸形/截断输入拒绝（不崩溃）**、PCX 解码、调色板加载、base64 编解码往返。
 源码路径：`src/decoders/*.cpp`、`src/tools/base64.h`；测试脚本 `out/unit_tests.cpp`。
 
 ### 2. Registry + JSON-RPC（纯逻辑，无需 MPQ）
@@ -129,8 +129,10 @@ g++ -I 3rdparty/StormLib/src -I 3rdparty -I src -std=c++17 \
 ```
 覆盖：`engine::Archive` 的 `normalizePath`/`open`/`list`/`verify`/`querySize`/
 `extract`/`extractToFile`，以及 `mpq.list`/`mpq.verify`/`mpq.extract`/`mpq.dump`/
-`mpq.recover`（含用内置字典 `mpq-info/dict/diablo1-harvest.txt` 的端到端恢复）。
-源码路径：`src/engine/archive.cpp`、`src/tools/mpq_tools.cpp`；测试脚本 `out/integration_tests.cpp`。
+`mpq.recover`（含用内置字典 `mpq-info/dict/diablo1-harvest.txt` 的端到端恢复）；
+`sprite.list` 目录合成、`sprite.decode` 跨 MPQ 搜索，以及**截断 CL2 返回干净错误而非崩溃**。
+源码路径：`src/engine/archive.cpp`、`src/tools/mpq_tools.cpp`、`src/tools/sprite_tools.cpp`、
+`src/decoders/cl2.cpp`；测试脚本 `out/integration_tests.cpp`。
 
 > 每轮改动后请完整运行以上三个套件，确保全绿。
 

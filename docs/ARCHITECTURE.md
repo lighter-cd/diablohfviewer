@@ -299,9 +299,16 @@ cmake --build . --target mcp-server
    `main.cpp` 调 `registerSpriteTools(reg)`）。调色板、CLX/CEL/CL2/PCX 解码器均为
    DevilutionX `load_*` 的忠实移植；CEL/CL2 通过 `celToClx`/`cl2ToClx` 转 CLX 后复用同一
    套 CL2 帧解码（透明 run / 不透明填充 / 不透明像素三种控制字节）。
+   - **`cl2ToClx` 输入校验**（2026-11-08）：CL2 里的所有偏移均来自文件、属不可信输入，
+     `src/decoders/cl2.cpp` 对每个偏移做 `[data, data+size)` 边界校验，并把帧解码循环的
+     `while (src != frameEnd)` 改为 `src < frameEnd`，读到坏数据即抛 `std::runtime_error`
+     （工具层转成干净的 JSON-RPC error）。修复前 96 字节残缺 CL2
+     （`monsters\darkmage\dmagew.cl2`，DIABDAT.MPQ 内的 stub）会让 `src` 越过缓冲区触发
+     SIGSEGV，连带同批 stdio 请求全部丢失；修复后返回 `invalid CL2: ...`，全量 325 条
+     回归 `NO RESPONSE` 由 15 降为 0。
    - **单元验证**（三套件，均 PASS，见 `README.md` §测试）：
-     - `out/unit_tests.cpp`：CLX 解码、CEL→CLX / CL2→CLX 往返、PCX 内嵌调色板、调色板
-       加载、base64 编解码（无需 MPQ）。
+     - `out/unit_tests.cpp`：CLX 解码、CEL→CLX / CL2→CLX 往返、**CL2 畸形/截断输入拒绝**
+       （`testCl2RejectsMalformed`）、PCX 内嵌调色板、调色板加载、base64 编解码（无需 MPQ）。
      - `out/core_tests.cpp`：`ToolRegistry` 注册/重名/分发/异常/`list`，`handleRequest`
        的 `tools/list`/`tools/call` 与各错误码（无需 MPQ）。
      - `out/integration_tests.cpp`：`engine::Archive` 全链路（open/list/verify/querySize/
