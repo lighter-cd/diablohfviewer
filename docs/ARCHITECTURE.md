@@ -274,8 +274,14 @@ cmake --build . --target mcp-server
    `main.cpp` 调 `registerSpriteTools(reg)`）。调色板、CLX/CEL/CL2/PCX 解码器均为
    DevilutionX `load_*` 的忠实移植；CEL/CL2 通过 `celToClx`/`cl2ToClx` 转 CLX 后复用同一
    套 CL2 帧解码（透明 run / 不透明填充 / 不透明像素三种控制字节）。
-   - **单元验证**（`out/decode_test.cpp`，手写缓冲）：CL2 帧三态控制字节、CEL→CLX、
-     CL2→CLX 往返、PCX 内嵌调色板解码均 PASS。
+   - **单元验证**（三套件，均 PASS，见 `README.md` §测试）：
+     - `out/unit_tests.cpp`：CLX 解码、CEL→CLX / CL2→CLX 往返、PCX 内嵌调色板、调色板
+       加载、base64 编解码（无需 MPQ）。
+     - `out/core_tests.cpp`：`ToolRegistry` 注册/重名/分发/异常/`list`，`handleRequest`
+       的 `tools/list`/`tools/call` 与各错误码（无需 MPQ）。
+     - `out/integration_tests.cpp`：`engine::Archive` 全链路（open/list/verify/querySize/
+       extract/extractToFile）+ `mpq.list`/`mpq.verify`/`mpq.extract`/`mpq.dump`/`mpq.recover`
+       （需真实 MPQ，见 `DHFC_TEST_MPQ`；缺失则 SKIP）。
    - **端到端验证**：`palette.load` 对 `devilutionx.mpq` 的 `gendata\cut2.pal` 返回 256 色
      + 合法 RGBA base64；`sprite.decode` 对 `devilutionx.mpq` 的 `data\health.clx` +
      `ui_art\diablo.pal` 返回正确 264×19 RGBA 帧。

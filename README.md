@@ -68,7 +68,10 @@ build-mcp/mcp-server.exe --stdio --ws 18765      # 同时启用
 
 ## 测试
 
-后端各单元均配合单元测试，统一在 `out/unit_tests.cpp`，一键构建并运行：
+后端各单元均配合单元测试，分三个套件，全部在 `out/` 下，用 MinGW-w64 的 `g++` 直接构建运行。
+（注意：`GLOB_RECURSE` 仅用于 CMake 的 `mcp-server`；测试用 g++ 单文件直接编译，新增源文件无需重跑 cmake。）
+
+### 1. 解码器 + base64（无需 MPQ / StormLib）
 
 ```bash
 g++ -I src -std=c++17 out/unit_tests.cpp \
@@ -76,9 +79,41 @@ g++ -I src -std=c++17 out/unit_tests.cpp \
     src/decoders/pcx.cpp src/decoders/palette.cpp \
     -o out/unit_tests.exe && out/unit_tests.exe
 ```
-
 覆盖：CLX 解码、CEL→CLX / CL2→CLX 往返、PCX 解码、调色板加载、base64 编解码往返。
-源码路径：`src/decoders/*.cpp`、`src/tools/base64.h`；测试脚本即上述 `out/unit_tests.cpp`。
+源码路径：`src/decoders/*.cpp`、`src/tools/base64.h`；测试脚本 `out/unit_tests.cpp`。
+
+### 2. Registry + JSON-RPC（纯逻辑，无需 MPQ）
+
+```bash
+g++ -I 3rdparty -I src -std=c++17 out/core_tests.cpp \
+    src/tools/registry.cpp src/mcp/jsonrpc.cpp \
+    -o out/core_tests.exe && out/core_tests.exe
+```
+覆盖：`ToolRegistry` 注册/重名/分发/异常捕获/`list`，以及 `handleRequest` 的
+`tools/list`、`tools/call` 与各错误码（-32600 / -32601 / -32602 / -32000）。
+源码路径：`src/tools/registry.cpp`、`src/mcp/jsonrpc.cpp`；测试脚本 `out/core_tests.cpp`。
+
+### 3. Engine + mpq_tools（需要真实 MPQ）
+
+MPQ 路径取环境变量 `DHFC_TEST_MPQ`，缺省为本地 DevilutionX 安装的
+`/d/work/xt/diablo/DevilutionX-Hell Fire/devilutionx.mpq`。若找不到该 fixture，
+本套件打印 `SKIP` 并以退出码 0 结束（无游戏资源的环境也能跑）。
+
+```bash
+g++ -I 3rdparty/StormLib/src -I 3rdparty -I src -std=c++17 \
+    out/integration_tests.cpp \
+    src/engine/archive.cpp src/tools/registry.cpp \
+    src/tools/mpq_tools.cpp src/mcp/jsonrpc.cpp \
+    3rdparty/StormLib/build/libStormLib.a \
+    -lws2_32 -lwininet -static-libgcc -static-libstdc++ \
+    -o out/integration_tests.exe && out/integration_tests.exe
+```
+覆盖：`engine::Archive` 的 `normalizePath`/`open`/`list`/`verify`/`querySize`/
+`extract`/`extractToFile`，以及 `mpq.list`/`mpq.verify`/`mpq.extract`/`mpq.dump`/
+`mpq.recover`（含用内置字典 `mpq-info/dict/diablo1-harvest.txt` 的端到端恢复）。
+源码路径：`src/engine/archive.cpp`、`src/tools/mpq_tools.cpp`；测试脚本 `out/integration_tests.cpp`。
+
+> 每轮改动后请完整运行以上三个套件，确保全绿。
 
 ## 开发文档
 

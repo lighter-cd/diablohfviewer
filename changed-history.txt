@@ -7,3 +7,7 @@
 ## 2026-11-07 13:17:26
 - 将 3rdparty/StormLib 改造为正式 git submodule（pin 至上游 commit 116135c），将其 build.sh 移出 submodule 至仓库根 build-stormlib.sh（submodule 指向上游，无法承载本地构建脚本）；同步更新 .gitmodules、README/ARCHITECTURE/PROJECT/CMakeLists 的引用，并验证 submodule 构建 + mcp-server 链接通过。
 - 涉及: .gitmodules, build-stormlib.sh, 3rdparty/StormLib(build.sh删), README.md, docs/ARCHITECTURE.md, docs/PROJECT.md, CMakeLists.txt, .gitignore
+
+## 2026-11-07 13:30:51
+- 补全 engine / registry / mpq_tools / mcp 的单元测试：新增 out/core_tests.cpp（ToolRegistry + jsonrpc 纯逻辑，覆盖注册/重名/分发/异常/错误码）、out/integration_tests.cpp（engine::Archive 全链路 + mpq.* 工具组，针对真实 devilutionx.mpq，缺失则 SKIP）；更新 README §测试与 docs/ARCHITECTURE 验证小节；三个套件全部 PASS。
+- 涉及: out/core_tests.cpp, out/integration_tests.cpp, README.md, docs/ARCHITECTURE.md
