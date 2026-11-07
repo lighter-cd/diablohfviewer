@@ -404,13 +404,24 @@ DiabloHFConverter/
       `sprite.list` 取目录 → 点击即 `sprite.decode` 取 RGBA → Canvas 绘制；先做"选精灵→看单帧"
       （Frame 滑块翻帧）。环境无 TypeScript 工具链，故用纯 JS ES Module（模块划分与计划一致，
       需静态服务器托管，不能用 file://）。详 `web/README.md`、`docs/ARCHITECTURE.md` §10.3。
-- [ ] **（可选保真）`sprite.decode` 应用 TRN**：职业 TRN（`plrgfx/<class>.trn`）+ 每精灵 TRN
-      （`GetPlayerGraphicTRN`），提升颜色正确度；首版可仅用 `diablo.pal` 跑通链路。
-- [ ] 枚举各职业所有动画模式（stand/walk/attack/hit/death/idle…，对应 `as/st/aw/wl/at/ht/dt…`）。
-- [ ] 8 方向切换（玩家固定 8 方向，按 `帧数/8` 切分；怪物方向数另查动画表）。
-- [ ] 装备组合浏览（前缀 `c+a+w` 枚举：武器/护甲变化 = 不同文件名，直接枚举即可）。
-- [ ] 技能特效叠加层渲染（`lm`/`fm`/`qm` 等特效精灵本就在 plrgfx 前缀枚举内）。
-- [ ] 产出：按“职业 × 动作 × 装备 × 技能特效”组合的查看数据。
+- [x] **前端：独立「角色查看器」面板 + 8 方向动画播放（2026-11-07 落地）**：在 `web/` 新增
+      **浏览模式切换**（目录浏览 / 角色查看器）。角色面板按 `职业 → 动作 → 盔甲/武器` 选择器
+      拼 `plrgfx\{class}\{c}{a}{w}\{c}{a}{w}{type}.cl2` 解码（装备组合即文件名枚举，无合成）。
+      玩家 CL2 为方向优先（8 方向 × N 帧），前端按 `帧数/8` 切分，提供方向滑块 + ▶播放/⏸ +
+      fps 速度控制；索引由 `sprite.list(family:"plrgfx")` 一次性构建，仅暴露 MPQ 真实存在的组合。
+      改动 `web/index.html` + `web/src/main.js` + `web/styles.css`，后端无改动。详见 `web/README.md`
+      与 `docs/ARCHITECTURE.md` §10.4。
+- [ ] **（可选保真，后续）`sprite.decode` 应用 TRN**：职业 TRN（`plrgfx/<class>.trn`）+ 每精灵 TRN
+      （`GetPlayerGraphicTRN`），提升颜色正确度；当前首版仅用 `diablo.pal` 跑通链路。
+- [x] 枚举各职业所有动画模式（stand/walk/attack/hit/death/idle…，对应 `as/st/aw/wl/at/ht/dt…`）：
+      由 `sprite.list(plrgfx)` 真实存在的 type 代码驱动动作下拉，按 `sprites.tsv` 列映射友好名。
+- [x] 8 方向切换（玩家固定 8 方向，按 `帧数/8` 切分；怪物方向数另查动画表）：前端通用分组，
+      方向数可选 1/2/4/8，plrgfx 默认 8。
+- [x] 装备组合浏览（前缀 `c+a+w` 枚举：武器/护甲变化 = 不同文件名，直接枚举即可）：角色面板的
+      盔甲/武器下拉仅列出该职业当前动作真实存在的组合。
+- [x] 技能特效叠加层渲染（`lm`/`fm`/`qm` 等特效精灵本就在 plrgfx 前缀枚举内）：按设计**仅作为
+      可浏览动画**纳入动作下拉（不 alpha 合成到角色上），与「勿过度设计通用合成器」一致。
+- [x] 产出：按“职业 × 动作 × 装备 × 技能特效”组合的查看数据（浏览器内实时查看；非合成位图）。
 
 ### 阶段 3：怪物 / NPC 查看器（目标 3）
 - [ ] 枚举怪物/NPC 精灵与动画模式。

@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  DiabloHFConverter Sprite Viewer (web frontend skeleton).
+  DiabloHFConverter Sprite & Character Viewer (web frontend).
 
   This page never touches MPQ files or the filesystem itself — it talks to the
   local `mcp-server` WebSocket bridge (default ws://localhost:18765), which
@@ -12,26 +12,38 @@
     3) open:               http://localhost:8000/
 
   (A plain file:// open will not load ES modules; use a static server.)
+
+  Two browse modes share the same canvas / palette / direction / playback
+  controls:
+    - 目录浏览 (Catalog): pick any sprite from the recovered-name tree.
+    - 角色查看器 (Character): assemble a player sprite by Class → Action →
+      Armor/Weapon via the plrgfx filename formula, then decode + play it
+      with 8-direction animation.
 -->
 <html lang="zh">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>DiabloHFConverter · Sprite Viewer</title>
+  <title>DiabloHFConverter · Sprite & Character Viewer</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header>
-    <h1>Sprite Viewer</h1>
+    <h1>Sprite &amp; Character Viewer</h1>
     <div class="conn">
       <input id="wsUrl" value="ws://localhost:18765" size="28" />
       <button id="connectBtn">Connect</button>
       <span id="status" class="status">disconnected</span>
     </div>
+    <div class="toolbar">
+      <span class="tb-label">浏览模式</span>
+      <label><input type="radio" name="mode" value="catalog" checked> 目录浏览</label>
+      <label><input type="radio" name="mode" value="character"> 角色查看器</label>
+    </div>
   </header>
 
   <main>
-    <aside class="catalog-pane">
+    <aside class="catalog-pane" id="catalogPane">
       <div class="catalog-bar">
         <span class="cat-bar-label">分组</span>
         <label><input type="radio" name="groupMode" value="family" checked> 按类型合并</label>
@@ -45,6 +57,25 @@
       </aside>
     </aside>
 
+    <aside class="char-pane" id="charPane" hidden>
+      <div class="char-bar">角色查看器（按公式 plrgfx\{职业}\{c}{a}{w}\{c}{a}{w}{动作}.cl2 拼路径）</div>
+      <div class="char-controls">
+        <label>职业
+          <select id="charClass"></select>
+        </label>
+        <label>动作
+          <select id="charAction"></select>
+        </label>
+        <label>盔甲
+          <select id="charArmor"></select>
+        </label>
+        <label>武器
+          <select id="charWeapon"></select>
+        </label>
+      </div>
+      <div class="char-hint">选职业/动作后自动列出该职业真实存在的盔甲与武器组合；切换即解码并播放。</div>
+    </aside>
+
     <section class="stage">
       <div class="current">
         <span class="current-label">当前资源：</span>
@@ -55,9 +86,25 @@
         <label>调色板
           <select id="palette"></select>
         </label>
-        <label>Frame
+        <label>方向数
+          <select id="directions">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="4">4</option>
+            <option value="8">8</option>
+          </select>
+        </label>
+        <label>方向
+          <input id="dir" type="range" min="0" max="0" value="0" />
+          <span id="dirNo">0</span>
+        </label>
+        <label>帧
           <input id="frame" type="range" min="0" max="0" value="0" />
           <span id="frameNo">0 / 0</span>
+        </label>
+        <button id="playBtn" type="button">▶ 播放</button>
+        <label class="fps">速度
+          <input id="fps" type="number" min="1" max="60" value="12" size="3" /> fps
         </label>
         <span id="meta" class="meta"></span>
       </div>

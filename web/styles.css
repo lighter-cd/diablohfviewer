@@ -16,9 +16,18 @@ header {
   padding: 10px 16px;
   background: #26262c;
   border-bottom: 1px solid #3a3a42;
+  flex-wrap: wrap;
 }
 header h1 { font-size: 16px; margin: 0; }
-.conn { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.conn { display: flex; align-items: center; gap: 8px; }
+.toolbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 10px; margin-left: auto;
+  background: #202027; border: 1px solid #3a3a42; border-radius: 6px;
+  font-size: 13px;
+}
+.toolbar label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.tb-label { color: #b9b9c2; }
 
 .status { padding: 2px 8px; border-radius: 10px; font-size: 12px; }
 .status.ok { background: #1f5132; color: #b6f0c8; }
@@ -110,3 +119,38 @@ main { display: flex; height: calc(100vh - 52px); }
   margin-top: 12px; border-radius: 6px;
 }
 canvas { background: transparent; image-rendering: pixelated; }
+
+/* Character viewer pane */
+.char-pane {
+  width: 320px;
+  flex: 0 0 320px;
+  display: flex;
+  flex-direction: column;
+  background: #202027;
+  border-right: 1px solid #3a3a42;
+  padding: 10px 12px;
+}
+.char-pane[hidden] { display: none; }
+.char-bar {
+  padding: 8px 10px; margin: -10px -12px 10px;
+  background: #2a2a32; border-bottom: 1px solid #3a3a42;
+  font-size: 13px; font-weight: 600; color: #ffd479;
+}
+.char-controls { display: flex; flex-direction: column; gap: 10px; }
+.char-controls label {
+  display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: #c9c9d2;
+}
+.char-controls select {
+  background: #15151a; color: #e6e6e6; border: 1px solid #3a3a42;
+  border-radius: 4px; padding: 4px 6px; font-size: 13px;
+}
+.char-hint { margin-top: 12px; font-size: 12px; color: #8f8f99; line-height: 1.5; }
+
+/* Playback controls */
+.controls button#playBtn {
+  background: #2c2c34; color: #e6e6e6; border: 1px solid #3a3a42;
+  border-radius: 4px; padding: 3px 12px; cursor: pointer; font-size: 13px;
+}
+.controls button#playBtn:hover { background: #3a3a44; }
+.fps { font-size: 12px; color: #c9c9d2; }
+.fps input { width: 48px; background: #15151a; color: #e6e6e6; border: 1px solid #3a3a42; border-radius: 4px; padding: 2px 4px; }
