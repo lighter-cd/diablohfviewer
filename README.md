@@ -138,7 +138,25 @@ out/recover_phase0.exe [devilutionx_root] [mpq_root]
 - 当前恢复 **2,080** 个真实文件名（DIABDAT 1224 / hfmonk 291 / spawn 315 /
   hellfire 171 / devilutionx 63 / …），其中 TRN 调色板约 115 个。覆盖
   plrgfx/monsters/missiles/items/objects/towners 及 TRN 调色板等运行时拼接族。
-- 各家族的命名公式、DevilutionX 数据源与已验证扩展名见 `docs/RUNTIME_FILENAME_RULES.md`。
+  - 各家族的命名公式、DevilutionX 数据源与已验证扩展名见 `docs/RUNTIME_FILENAME_RULES.md`。
+
+- **批量提取已验证文件**：`recover_phase0` 产出的 2,080 个名（见 `recovered.json` /
+  `recovered/*.txt`）可一键抽取到本地，便于后续解码/查看。`mpq-info/batch_extract.cpp`
+  读取 `recovered.json`（已含每个名对应的 MPQ 路径），逐档案 `extractToFile` 到
+  `out/extracted/<档案>/<原名>`（原名含 `\` 子目录会自动建目录）。
+
+  ```bash
+  g++ -I 3rdparty -I 3rdparty/StormLib/src -I src -std=c++17 \
+      mpq-info/batch_extract.cpp src/engine/archive.cpp \
+      3rdparty/StormLib/build/libStormLib.a \
+      -lws2_32 -lwininet -static-libgcc -static-libstdc++ \
+      -o out/batch_extract.exe
+  out/batch_extract.exe                  # 默认读 recovered.json，输出 out/extracted
+  # out/batch_extract.exe [recovered.json] [out_root]   # 可覆盖路径
+  ```
+
+  - 源码路径：`mpq-info/batch_extract.cpp`；产物：`out/extracted/`（运行产物，不入库）。
+  - 已验证可一次性抽取全部 2,080 个文件，0 失败。
 
 ## 开发文档
 
