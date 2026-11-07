@@ -55,3 +55,7 @@
 ## 2026-11-07 16:01:28
 - 补充文档同步：将 docs/PROJECT.md 阶段 1 清单四项标记完成（.pal/.cel/.cl2/PCX 解码 + 精灵→PNG 离屏渲染），并补开发者向细节（源码文件、无依赖 zlib 的 png.cpp、帧宽需按 DevilutionX 动画表传入的注意点、单测位置）。本轮仅文档，无源码改动；修正此前仅更新 README §5 而未更新 docs/PROJECT.md 的文档同步疏漏。
 - 涉及: docs/PROJECT.md
+
+## 2026-11-07 16:38:44
+- 提交此前遗留的 .gitignore 改动：新增 out/render/ 忽略项（与既有 out/extracted/ 一致，render_sprite 渲染产物不入库）。AGENTS.md 另有一处未暂存改动（一行规则澄清），不在本轮范围内，未纳入。
+- 涉及: .gitignore
