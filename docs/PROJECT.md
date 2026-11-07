@@ -400,8 +400,10 @@ DiabloHFConverter/
 - [x] **后端：新增 `sprite.list`**：读 `recovered.json` + DevilutionX 数据表，枚举真实存在的
       精灵名并按 家族/职业/动作 归类（前端据此建目录树）。`mpq.list` 仅给占位名，不足以浏览。
       已加入 `integration_tests.cpp` 断言分类正确。
-- [ ] **前端壳（web/，TS+Canvas）**：连 `ws://localhost:<port>` → `tools/list` →
-      `sprite.list` 取目录 → `sprite.decode` 取 RGBA → Canvas 绘制；先做"选精灵→看单帧"。
+- [x] **前端壳（web/，JS ES Module+Canvas，零构建）**：连 `ws://localhost:18765` →
+      `sprite.list` 取目录 → 点击即 `sprite.decode` 取 RGBA → Canvas 绘制；先做"选精灵→看单帧"
+      （Frame 滑块翻帧）。环境无 TypeScript 工具链，故用纯 JS ES Module（模块划分与计划一致，
+      需静态服务器托管，不能用 file://）。详 `web/README.md`、`docs/ARCHITECTURE.md` §10.3。
 - [ ] **（可选保真）`sprite.decode` 应用 TRN**：职业 TRN（`plrgfx/<class>.trn`）+ 每精灵 TRN
       （`GetPlayerGraphicTRN`），提升颜色正确度；首版可仅用 `diablo.pal` 跑通链路。
 - [ ] 枚举各职业所有动画模式（stand/walk/attack/hit/death/idle…，对应 `as/st/aw/wl/at/ht/dt…`）。

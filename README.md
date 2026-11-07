@@ -4,7 +4,7 @@ Diablo 1 / Hellfire 的 MPQ 研究与精灵查看工具。**后端为纯 C/C++ �
 不依赖 Node.js 运行时；通过两种传输对外提供工具：
 
 - **stdio**：给 AI Agent（Claude Desktop / CLI 工具）用的标准 JSON-RPC 2.0。
-- **WebSocket 桥**：给浏览器前端（TS / Canvas / WebGL）用，复用同一套 tool handler。
+- **WebSocket 桥**：给浏览器前端（`web/`，JS ES Module + Canvas）用，复用同一套 tool handler。
 
 前端只负责把服务端解码好的 RGBA 帧画出来；所有 MPQ 读取与解码都在本地 C/C++ 服务端完成。
 
@@ -18,6 +18,7 @@ Diablo 1 / Hellfire 的 MPQ 研究与精灵查看工具。**后端为纯 C/C++ �
 | `src/mcp/` | MCP 服务端（jsonrpc / stdio / ws 桥） |
 | `3rdparty/StormLib/` | StormLib 源码（git submodule；构建脚本见仓库根 `build-stormlib.sh`） |
 | `mpq-info/` | MPQ 文件名恢复字典与产出（参考数据，非代码） |
+| `web/` | 浏览器前端查看器（`src/*.js` ES Module + Canvas，零构建，连 WS 桥） |
 | `docs/` | 开发者文档（ARCHITECTURE.md / PROJECT.md） |
 
 ## 构建
@@ -44,6 +45,18 @@ build-mcp/mcp-server.exe --stdio                 # 给 AI Agent
 build-mcp/mcp-server.exe --ws 18765              # 给浏览器前端
 build-mcp/mcp-server.exe --stdio --ws 18765      # 同时启用
 ```
+
+### Web 精灵查看器（阶段 2）
+
+后端起 WS 桥后，用静态服务器托管 `web/` 目录即可在浏览器查看精灵（前端不读 MPQ）：
+
+```bash
+build-mcp/mcp-server.exe --ws 18765          # 1) 后端 WS 桥（端口 18765）
+cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经 http，不能用 file://）
+#    浏览器打开 http://localhost:8000/ ，点 Connect → 选精灵 → 看帧
+```
+
+查看器结构见 `web/README.md`；与后端契约、已知限制见 `docs/ARCHITECTURE.md` §10.3。
 
 ## 工具一览（使用者角度）
 

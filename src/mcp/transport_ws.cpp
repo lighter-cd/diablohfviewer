@@ -127,10 +127,15 @@ bool doHandshake(SOCKET s) {
         if (head.size() > 16 * 1024) return false;   // guard
     }
 
-    // Extract Sec-WebSocket-Key.
+    // Extract Sec-WebSocket-Key. Browsers send it as "Sec-WebSocket-Key:" with
+    // mixed case, so search case-insensitively but copy the value from the
+    // original header (the base64 key itself is case-sensitive).
     std::string key;
+    std::string headLower = head;
+    for (char& c : headLower)
+        if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
     const std::string tag = "sec-websocket-key:";
-    size_t p = head.find(tag);
+    size_t p = headLower.find(tag);
     if (p == std::string::npos) return false;
     p += tag.size();
     while (p < head.size() && (head[p] == ' ' || head[p] == '\t')) p++;

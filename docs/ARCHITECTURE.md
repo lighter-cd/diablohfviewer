@@ -365,31 +365,45 @@ build-mcp/mcp-server.exe --stdio --ws 18765      # 同时
    - 可加参数 `apply_trn:true`，从 MPQ 取对应 `.trn`（256 字节色彩变换表）后作用于帧
      再返回。第一版前端可先只用 `diablo.pal` 跑通链路，TRN 作为保真增强后续补。
 
-### 10.3 前端目录结构（TS + Canvas，仅前端构建，无 Node 运行服务）
+### 10.3 前端目录结构（JS ES Module + Canvas，零构建，无 Node 运行服务）
+
+> 阶段 2 脚手架已落地（见 `web/`）。实现要点：**纯 JavaScript ES Module**，浏览器
+> 原生加载，**无需 tsc/npm 构建**——环境无 TypeScript 工具链，故用 ES Module 替代
+> 计划里的 `.ts`（模块划分、职责与计划一致）。运行只需一个静态文件服务器。
 
 ```
 web/                              # 浏览器前端（不读 MPQ/文件，仅 WebSocket 调后端）
-├── index.html                    # 入口：<canvas> + 目录树 + 方向/帧控制
+├── index.html                    # 入口：连接栏 + 目录树(<ul>) + Canvas + 控制条
+├── styles.css                   # 极简暗色样式
 ├── src/
-│   ├── client.ts                 # WS 客户端：tools/list / tools/call，id 配对并发
-│   ├── viewer.ts                 # Canvas 绘制：atob→ImageData→putImageData
-│   └── catalog.ts                # 用 sprite.list 建 职业×护甲×武器×动作 树
-├── dist/                        # tsc 编译产物（静态 JS，可直接 file:// 或 http 打开）
-└── build.sh                     # tsc --outDir dist（仅前端构建，产生的仍是静态文件）
+│   ├── client.js                 # McpClient：WS + JSON-RPC（id 配对，并发安全）
+│   ├── catalog.js                # sprite.list 结果 → family→class→type 树 → 可点击 DOM
+│   ├── viewer.js                 # rgba_base64 → atob→ImageData→putImageData（最近邻放大）
+│   └── main.js                   # 编排：connect → sprite.list → 点击 → sprite.decode → 绘制
+└── README.md                     # 开发者说明 + 运行步骤 + 与后端契约
 ```
 
-- 前端**不引入 Node 作为运行服务**；`dist/` 是纯静态文件，用任意静态服务器
-  （`python -m http.server` 等）或本地 `file://` 打开，连 `ws://localhost:18765`。
+- 前端**不引入 Node 作为运行服务**：`web/` 是纯静态文件，用任意静态服务器
+  （`python -m http.server 8000`，从 `web/` 目录起；或 `npx serve .`）托管，浏览器
+  打开 `http://localhost:8000/`，连 `ws://localhost:18765`（后端 `mcp-server --ws 18765`）。
+- `ES module`（`type="module"`）不能在 `file://` 下加载，必须经 http 托管；
+  WebSocket 从 http 页连 `ws://localhost` 不受 mixed-content 限制。
 - 绘制用 Canvas 2D `ImageData`（rgba_base64 即原始像素，最灵活）；如后续要 3D/滤镜
   再考虑 WebGL，但不在阶段 2 范围。
+
+**已知契约缺口（留作后端小改进）**：`sprite.list` 返回的 `archive` 是档案*名*（如
+`DIABDAT.MPQ`），而 `sprite.decode` 需档案*路径*。当前骨架用界面 Archive 输入框手动
+填路径；理想是 `sprite.list` 一并返回 `archive_path`，或 `sprite.decode` 接受档案名
+自动解析。
 
 ### 10.4 工作顺序（建议）
 
 1. 后端：`sprite.decode` 加 `width:"auto"`（复用 render_sprite 查表）→ ✅ 已完成（三套件测试通过）。
 2. 后端：新增 `sprite.list`（读 recovered.json + 数据表）→ ✅ 已完成（三套件测试通过）。
 3. 后端（可选）：`sprite.decode` 加 `apply_trn` 上色。
-4. 前端：脚手架 `web/`，`client.ts` 连 WS → `tools/list` → `sprite.list` 取目录 →
-   `sprite.decode` 取 RGBA → `viewer.ts` 绘制；先做"选精灵 → 看单帧"。
+4. 前端：脚手架 `web/`（✅ 已落地，纯 JS ES Module，零构建）：`client.js` 连 WS →
+   `sprite.list` 取目录 → 点击即 `sprite.decode` 取 RGBA → `viewer.js` 绘制；
+   先做"选精灵 → 看单帧"（Frame 滑块翻帧）。后续叠加 8 方向播放 / 装备组合浏览。
 5. 查看器能力叠加（阶段 2/3 目标）：
    - 8 方向切换（玩家固定 8 方向，按 `帧数/8` 切分；怪物方向数另查动画表）。
    - 装备组合浏览（前缀 `c+a+w` 枚举：D1 武器/护甲已 bake 进文件名，非独立图层，

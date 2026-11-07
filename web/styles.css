@@ -1,0 +1,64 @@
+/* web/styles.css — minimal layout for the Sprite Viewer skeleton. */
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font: 14px/1.4 system-ui, "Segoe UI", sans-serif;
+  background: #1b1b1f;
+  color: #e6e6e6;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  background: #26262c;
+  border-bottom: 1px solid #3a3a42;
+}
+header h1 { font-size: 16px; margin: 0; }
+.conn { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+
+.status { padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+.status.ok { background: #1f5132; color: #b6f0c8; }
+.status.bad { background: #5a1f1f; color: #f0b6b6; }
+
+main { display: flex; height: calc(100vh - 52px); }
+
+.catalog {
+  width: 320px;
+  flex: 0 0 320px;
+  overflow: auto;
+  padding: 10px 12px;
+  background: #202027;
+  border-right: 1px solid #3a3a42;
+}
+.catalog ul { list-style: none; margin: 0; padding-left: 14px; }
+.catalog > ul { padding-left: 0; }
+.cat-family { font-weight: 700; margin: 6px 0 2px; color: #ffd479; }
+.cat-class  { color: #9fd0ff; }
+.cat-sprite { cursor: pointer; padding: 1px 4px; border-radius: 4px; }
+.cat-sprite:hover { background: #33333c; }
+.cat-sprite.selected { background: #3a5a8a; color: #fff; }
+
+.stage { flex: 1; display: flex; flex-direction: column; padding: 12px; }
+.controls {
+  display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
+  padding-bottom: 10px; border-bottom: 1px solid #3a3a42;
+}
+.controls label { display: flex; align-items: center; gap: 6px; }
+.controls input[type="text"], .controls input:not([type="range"]) {
+  background: #15151a; color: #e6e6e6; border: 1px solid #3a3a42;
+  border-radius: 4px; padding: 3px 6px;
+}
+.meta { margin-left: auto; color: #b9b9c2; font-size: 12px; }
+.meta.err { color: #f0a0a0; }
+
+.canvas-wrap {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  background:
+    repeating-conic-gradient(#2a2a30 0% 25%, #242429 0% 50%) 50% / 24px 24px;
+  margin-top: 12px; border-radius: 6px;
+}
+canvas { background: transparent; image-rendering: pixelated; }

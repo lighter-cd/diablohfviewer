@@ -1,0 +1,62 @@
+<!doctype html>
+<!--
+  DiabloHFConverter Sprite Viewer (web frontend skeleton).
+
+  This page never touches MPQ files or the filesystem itself — it talks to the
+  local `mcp-server` WebSocket bridge (default ws://localhost:18765), which
+  exposes sprite.list / sprite.decode / palette.load.
+
+  Run:
+    1) start the backend:  mcp-server.exe --ws 18765
+    2) serve this folder:  python -m http.server 8000   (from the web/ dir)
+    3) open:               http://localhost:8000/
+
+  (A plain file:// open will not load ES modules; use a static server.)
+-->
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DiabloHFConverter · Sprite Viewer</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Sprite Viewer</h1>
+    <div class="conn">
+      <input id="wsUrl" value="ws://localhost:18765" size="28" />
+      <button id="connectBtn">Connect</button>
+      <span id="status" class="status">disconnected</span>
+    </div>
+  </header>
+
+  <main>
+    <aside id="catalog" class="catalog">
+      <em>点击 Connect 加载精灵目录…</em>
+    </aside>
+
+    <section class="stage">
+      <div class="controls">
+        <label>Archive
+          <input id="archive"
+                 value="D:/work/xt/diablo/DevilutionX-Hell Fire/devilutionx.mpq"
+                 size="42" />
+        </label>
+        <label>Palette
+          <input id="palette" value="gendata\cut2.pal" size="20" />
+        </label>
+        <label>Frame
+          <input id="frame" type="range" min="0" max="0" value="0" />
+          <span id="frameNo">0 / 0</span>
+        </label>
+        <span id="meta" class="meta"></span>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="canvas" width="96" height="96"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
