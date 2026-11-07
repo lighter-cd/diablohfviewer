@@ -287,8 +287,11 @@ DiabloHFConverter/
     - `items.cpp:2428` → `items\{ItemDropNames[i]}.cel`（掉落/背包精灵，由 `LoadCel` 加载，
       `ItemDropNames` 为 `items.cpp:230` 的 44 项固定游戏常量；另含 `items\duricons.cel`、
       `items\map\mapztown.cel` 两个 HUD 静态精灵；已确认存为 **.cel**）
-  - **效果**：真实文件名恢复数由静态字典的 **196** 提升至 **1,940**
-    （DIABDAT 1161 / hfmonk 291 / spawn 252 / hellfire 157 / devilutionx 63 / …）。
+    - `objects.cpp:3720` → `objects\{ObjMasterLoadList[i]}.cel`（地牢场景/互动物件，由
+      `LoadCelWithStatus` 加载；`ObjMasterLoadList` 取自 `objdat.tsv` 的 `file` 列，去重后
+      共 62 个；已确认存为 **.cel**）
+  - **效果**：真实文件名恢复数由静态字典的 **196** 提升至 **2,055**
+    （DIABDAT 1214 / hfmonk 291 / spawn 305 / hellfire 166 / devilutionx 63 / …）。
     构建与运行见仓库根 `README.md` §测试 第 4 项。
   - 注：无 listfile 时 `list` 仅能给占位名（`FileNNNNNNN.xxx`），故文件名恢复依赖
     上述字典校验法；一旦覆盖率足够高，亦可把这些名作为 listfile 喂给 StormLib。

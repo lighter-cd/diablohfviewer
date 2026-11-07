@@ -19,3 +19,7 @@
 ## 2026-11-07 13:55:02
 - 扩展 recover_phase0.cpp 支持 items：按 items.cpp:2428 公式生成 items\{ItemDropNames[i]}.cel 候选（44 项固定常量 + duricons/map\mapztown 两个 HUD 精灵，已确认存为 .cel），真实文件名恢复数由 1859 提升至 1940；同步更新 PROJECT.md 与 README.md。
 - 涉及: mpq-info/recover_phase0.cpp, docs/PROJECT.md, README.md
+
+## 2026-11-07 13:58:56
+- 扩展 recover_phase0.cpp 支持 objects：按 objects.cpp:3720 公式读取 objdat.tsv 的 file 列生成 objects\{name}.cel 候选（62 个，已确认存为 .cel），真实文件名恢复数由 1940 提升至 2055；同步更新 PROJECT.md 与 README.md。
+- 涉及: mpq-info/recover_phase0.cpp, docs/PROJECT.md, README.md

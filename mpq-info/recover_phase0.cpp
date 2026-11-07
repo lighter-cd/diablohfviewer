@@ -219,6 +219,19 @@ static void genItems(std::set<std::string>& out) {
         out.insert("items\\" + std::string(e) + ".cel");
 }
 
+// Object (dungeon scenery / interactables) sprites: Source/objects.cpp:3720 ->
+// objects\{ObjMasterLoadList[i]}, loaded via LoadCelWithStatus (CEL format).
+// The names are the unique "file" column of objdat.tsv. Empirically verified:
+// the stored extension is .cel.
+static void genObjects(std::set<std::string>& out,
+                       const std::vector<fs::path>& objFiles) {
+    for (const auto& f : objFiles) {
+        auto names = readColumnByName(f, "file");
+        for (const auto& n : names)
+            out.insert("objects\\" + n + ".cel");
+    }
+}
+
 // Merge the static harvest dictionary (one candidate per line) into `out`.
 static void mergeHarvest(std::set<std::string>& out, const fs::path& harvest) {
     std::ifstream f(harvest);
@@ -284,6 +297,12 @@ int main(int argc, char** argv) {
 
     // Item drop / HUD sprites (fixed game constant from items.cpp).
     genItems(candidates);
+
+    // Object sprites (objdat.tsv "file" column).
+    std::vector<fs::path> objFiles = {
+        devRoot / "assets" / "txtdata" / "objects" / "objdat.tsv",
+    };
+    genObjects(candidates, objFiles);
 
     // --- Merge static harvest dictionary ---
     mergeHarvest(candidates, dictDir / "diablo1-harvest.txt");
