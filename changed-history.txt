@@ -120,3 +120,8 @@
 - 让状态栏 meta 显示「当前帧」尺寸而非整张 sheet 尺寸：此前 meta 用的是 sprite.decode 返回的整表宽高（如 bluexfr.cl2 的 160×2432=19 帧总和），用户以为高度异常。改为在 showFrame 中按当前帧 currentFrames[idx] 的 f.width×f.height 刷新 meta（格式：<名> <格式> 帧 WxH <帧数> frames），拖动 Frame 滑块时逐帧更新；为此新增 lastRes 状态暂存上次解码结果供 meta 重建。仅前端 web/src/main.js 改动，无 C++ 改动。
 - 涉及: web/src/main.js
 - 验证：node --check（ES module 语法）通过；后端 unit/core/integration 三套件仍全 PASS（无 C++ 改动）。
+
+## 2026-11-07 22:11:16
+- 修复上一轮引入的运行时错误：移除 lastFrameIdx 变量声明时漏删了 onSelectSprite 里的赋值 `lastFrameIdx = 0;`，而 ES module 为严格模式，对未声明变量赋值会抛 ReferenceError，被 sprite.decode 的 catch 包成「解码失败：lastFrameIdx is not defined」，导致每次选精灵都报错、画面空白。删去该行残留赋值。仅前端 web/src/main.js 改动，无 C++ 改动。
+- 涉及: web/src/main.js
+- 验证：grep 确认全文件已无 lastFrameIdx 引用；node --check（ES module 语法）通过；后端三套件仍全 PASS。

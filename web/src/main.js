@@ -154,7 +154,6 @@ async function onSelectSprite(sprite) {
     hideError();
     currentFrames = res.frames;
     lastRes = res;
-    lastFrameIdx = 0;
     const max = currentFrames.length - 1;
     const slider = $("frame");
     slider.max = String(max);
