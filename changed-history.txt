@@ -35,3 +35,7 @@
 ## 2026-11-07 14:17:51
 - 新增 docs/RUNTIME_FILENAME_RULES.md：系统记录 plrgfx/monsters/missiles/items/objects/towners 六大家族及 TRN 调色板的运行时文件名拼接规则（DevilutionX 源码位置、数据表列、已验证扩展名、与 recover_phase0.cpp 生成函数的映射）；同步在 PROJECT.md 阶段0 与 README 中加引用。本轮仅文档，无源码改动。
 - 涉及: docs/RUNTIME_FILENAME_RULES.md, docs/PROJECT.md, README.md
+
+## 2026-11-07 15:04:37
+- 重写 docs/PROJECT.md 阶段0 的“剩余空白（后续可选）”含糊段落，改为进度评估（明确 100% 非必须）+ 各标准项进度表 + 后续建议；并同步修正 TRN 计数（~115→111 行/85 唯一名）保持一致。
+- 涉及: docs/PROJECT.md

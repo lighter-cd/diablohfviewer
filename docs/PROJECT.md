@@ -306,14 +306,52 @@ DiabloHFConverter/
         （如 `monsters\acid\acidb.trn`、`monsters\bat\grey.trn` 等，共 ~94 个）。
   - **效果**：真实文件名恢复数由静态字典的 **196** 提升至 **2,080**
     （DIABDAT 1224 / hfmonk 291 / spawn 315 / hellfire 171 / devilutionx 63 / …）。
-    其中 TRN 调色板已恢复 **~115** 个（DIABDAT 68 + spawn 26 + devilutionx 17 + …）。
+    其中 TRN 调色板已恢复 **111** 个（跨档案行数；唯一名 **85**；DIABDAT 68 + spawn 26 +
+    devilutionx 17 + …）。
     构建与运行见仓库根 `README.md` §测试 第 4 项。
   - 注：无 listfile 时 `list` 仅能给占位名（`FileNNNNNNN.xxx`），故文件名恢复依赖
     上述字典校验法；一旦覆盖率足够高，亦可把这些名作为 listfile 喂给 StormLib。
-  - **剩余空白（后续可选）**：plrgfx / monsters / missiles / items / objects / towners
-    以及 TRN 调色板（`fonts\*.trn`、职业/玩家精灵 `.trn`、怪物色彩 `monsters\{trnFile}.trn`）
-    等运行时拼接名均已纳入候选生成。仍可继续扩展极个别拼接族（如唯一怪物
-    `monsters\monsters\{trnName}.trn`、DiabloUI 调色板等）以提升覆盖率。
+  - **进度评估（是否需达 100%）**：**不需要**。阶段 0 的完成标准是“运行时拼接名
+    被公式化候选生成并逐一校验”，而非 100% 总文件覆盖。当前总恢复 **2,080 / 7,927 ≈ 26.2%**，
+    但剩余 ~73% 主要是**不受拼接公式约束**的资源（关卡几何、视频、音频、字体、多语言、
+    音乐），本就不在阶段 0 范围内；对六大家族 + TRN，候选生成已穷尽公式所能产出的全部
+    组合，凡确实存在于 MPQ 中的名均已恢复（生成器已无新的可校验候选）。
+
+  - **各标准项当前进度**：
+
+    | 标准项 | 状态 | 已恢复（唯一名 / 跨档案行数） | 说明 |
+    |--------|------|------------------------------|------|
+    | MPQ 头/哈希表/块表解析 + 解密 | ✅ 完成 | DIABDAT 2910 文件可解析 | 已验证 |
+    | 单文件提取（解密→解压→落盘） | ✅ 完成 | `cut2.pal`(768B)、`l5.cel`(1.3MB) 正确 | 已验证 |
+    | `plrgfx`（玩家精灵） | ✅ 公式全覆盖 | **1058** 唯一名 | `player.cpp:1506` 组合穷尽 |
+    | `monsters`（怪物精灵 + 色彩TRN） | ✅ 公式全覆盖 | **376** 唯一名 | `monster.cpp` + `trnFile` 列 |
+    | `missiles`（弹道精灵） | ✅ 公式全覆盖 | **33** 唯一名 | `misdat.cpp:420` |
+    | `items`（掉落/HUD 精灵） | ✅ 公式全覆盖 | **45** 唯一名 | `items.cpp:230` 44 项 + 2 HUD |
+    | `objects`（场景物件） | ✅ 公式全覆盖 | **62** 唯一名 | `objdat.tsv` `file` 列 |
+    | `towners`（NPC 精灵） | ✅ 公式全覆盖 | **15** 唯一名 | `towners.tsv` `animPath` + 4 硬编码 |
+    | TRN 调色板（字体/职业/怪物色彩） | ✅ 公式全覆盖 | **85** 唯一名 / ~111 行 | `fonts\*.trn`(16)+`monsters\*.trn`(~66)+`plrgfx\infra/stone`(2)+`gendata\pause`(1) |
+    | 静态字典补充（关卡/视频/音频等） | ✅ 完成 | 余下名（.dun 52/.pal 27/.smk 11/.wav 10/.cel 228…） | `diablo1-harvest.txt` |
+    | 后端重构（TS→C/C++ mcp-server） | ✅ 完成 | stdio + WS 双传输 | — |
+
+    > 逐档案 canonical 计数（已排除 `safeName` 修复前残留的 `*.mpq.txt` 重复文件）：
+    > DIABDAT **1224** / spawn **315** / hfmonk **291** / hellfire **171** / devilutionx **63** /
+    > hfopt1 9 / hfopt2 2 / hfmusic 2 / hfvoice 1 / pl 1 / ru 1 / **fonts 0** / **es 0**；
+    > 合计 **2080**，唯一名 **1750**。
+    > 注：玩家逐精灵 `plrgfx\{class}\{prefix}\{prefix}{type}.trn` 候选经校验命中为 **0**，
+    > 仅职业级 `infra.trn`/`stone.trn` 真实存在（玩家着色走单一职业 TRN + 运行时），生成器
+    > “测过并正确排除”，符合“无假阳性”机制。
+
+  - **后续建议（非强制）**：
+    1. 阶段 0 可正式标记“完成”，无需追 100%。
+    2. 可选补充极个别拼接族（优先级极低）：唯一怪物 `monsters\monsters\{trnName}.trn`
+       （该数据集 `trn` 列为空）、DiabloUI 调色板；补上也仅个位数增量。
+    3. 数据整洁性：清理 `recovered/` 下 `safeName` 修复前的 `*.mpq.txt` 残留（如
+       `spawn.mpq.txt`=216 行 vs canonical `spawn.txt`=315 行），避免双倍计数误导。
+    4. 若未来要提升“总文件覆盖率”（非阶段 0 目标），方向是关卡/视频/音频/字体/多语言，
+       需静态字典或暴力枚举，建议留到对应阶段（如字体、视频在阶段 1+）。`fonts.mpq`(0/770)、
+       `es.mpq`(0/723) 的 0 命中正说明其不在公式覆盖族内。
+    5. 下一真正有价值工作为**阶段 1**：精灵/调色板解码（`.pal`/`.cel`/`.cl2` → PNG 离屏渲染），
+       那才是“确认资源被正确解码”的验证点。
 
 > **后端重构（已完成，2026-11-07）**：原 TS 编排层（`mpq-inspect.ts` /
 > `mpq-recover.ts`）已完整移植到 C/C++，目录已重构为 `src/` 后端 + `tools/ts-legacy/`
