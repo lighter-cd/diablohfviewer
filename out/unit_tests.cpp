@@ -450,6 +450,9 @@ static void testSpriteWidth()
         if (wm <= 0) { allOk = false; ok = false; printf("  autoWidth monster expected >0 got %d (%s)\n", wm, dbg.c_str()); }
         int wi = decoders::sprite_width::autoWidth("items\\armor2.cel", dev, dbg);
         if (wi != -1) { allOk = false; ok = false; printf("  autoWidth items should fail (no width table)\n"); }
+        // DevilutionX quirk: MPQ folder "sorceror" maps to class dir "sorcerer".
+        int ws = decoders::sprite_width::autoWidth("plrgfx\\sorceror\\sha\\shaas.cl2", dev, dbg);
+        if (ws != 96) { allOk = false; ok = false; printf("  autoWidth sorceror(->sorcerer) stand expected 96 got %d (%s)\n", ws, dbg.c_str()); }
     } else {
         printf("  (sprite_width autoWidth: SKIP, DevilutionX not found at %s)\n", dev.string().c_str());
     }

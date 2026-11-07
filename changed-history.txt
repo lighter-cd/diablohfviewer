@@ -130,3 +130,8 @@
 - 阶段 2 角色查看器落地：新增「浏览模式」切换（目录浏览 / 角色查看器），角色面板按 职业→动作→盔甲/武器 选择器拼 plrgfx\{class}\{c}{a}{w}\{c}{a}{w}{type}.cl2 解码（装备组合即文件名枚举，无 alpha 合成）；8 方向动画播放（玩家 CL2 方向优先，按 总帧数/方向数 切分，方向滑块+帧滑块+▶播放/⏸+fps 速度，方向数可选 1/2/4/8，plrgfx 默认 8）；索引由 sprite.list(family:"plrgfx") 一次性构建，仅暴露 MPQ 真实存在的组合；技能特效 lm/fm/qm 作为可浏览动画纳入动作下拉。改动 web/index.html + web/src/main.js + web/styles.css，后端无改动；计划已落地到 docs/PROJECT.md（阶段2 勾除相关项）、web/README.md、docs/ARCHITECTURE.md §10.4。
 - 涉及: web/index.html, web/src/main.js, web/styles.css, web/README.md, docs/ARCHITECTURE.md, docs/PROJECT.md
 - 验证：node --check（main.js ES module 语法）通过；WS 端到端确认 plrgfx 共 1141 个精灵（classes: rogue/sorceror/warrior/monk），warrior Stand(wluas.cl2) 解码 80 帧 → 8 方向每方向 10 帧；后端 unit/core/integration 三套件全 PASS（无 C++ 改动）。
+
+## 2026-11-07 22:37:51
+- 修复法师（sorceror）精灵全部解码失败：根因是 autoWidth 按 MPQ 路径 token 拼宽度表路径 `classes/sorceror/sprites.tsv`，但 DevilutionX 的**职业数据目录实为 `sorcerer`（带 e）**，而 MPQ 内精灵目录是 `sorceror`（带 o），导致找不到宽度表、抛 "auto width failed" 被包成 "tool execution failed"。在 src/decoders/sprite_width.cpp 的 plrgfx 分支加别名映射 sorceror→sorcerer（其余职业目录与 MPQ 名 1:1 无需映射）。out/unit_tests.cpp 新增回归用例（autoWidth("plrgfx\\sorceror\\sha\\shaas.cl2") 期望 96）。重新构建 mcp-server 并重启 WS 桥（18765）。
+- 涉及: src/decoders/sprite_width.cpp, out/unit_tests.cpp, out/unit_tests.exe, out/core_tests.exe, out/integration_tests.exe
+- 验证：重建并重跑 unit/core/integration 三套件全 PASS（sprite_width 含新 sorceror 用例）；WS 端到端确认 plrgfx\sorceror\sha\shaas.cl2 现可解码 64 帧（8 方向×8 帧/方向）。

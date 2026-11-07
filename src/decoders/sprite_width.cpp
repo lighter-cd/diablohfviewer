@@ -195,7 +195,14 @@ int autoWidth(const std::string& spritePath, const std::filesystem::path& devRoo
             dbg = "unknown player type code '" + type + "'";
             return -1;
         }
-        std::filesystem::path sp = classesRoot / classPath / "sprites.tsv";
+        // DevilutionX quirk: the in-MPQ sorcerer sprite folder is spelled
+        // "sorceror" (with an 'o') but the class data directory is "sorcerer"
+        // (with an 'e'). Map the MPQ path token to the real directory so the
+        // width table can be located; other classes match their folder 1:1.
+        std::string dirName = classPath;
+        if (classPath == "sorceror")
+            dirName = "sorcerer";
+        std::filesystem::path sp = classesRoot / dirName / "sprites.tsv";
         auto kv = readKV(sp);
         auto it = kv.find(col);
         if (it == kv.end()) {
