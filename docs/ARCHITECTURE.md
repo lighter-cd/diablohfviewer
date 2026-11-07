@@ -143,7 +143,7 @@ public:
 | `mpq.dump`     | `{archive,name,max_bytes?}` | `{name,size,preview_hex}`（前 N 字节十六进制预览；移植 mpqextract `dump`） | 0 |
 | `palette.load` | `{archive,name}` | `{name,count,colors:[[r,g,b]×256],rgba_base64}` | ✅ |
 | `sprite.decode`| `{archive,name,palette?,frame?,width?}` | `{name,format,width,height,frame_count,palette_resolved,frames:[{index,width,height,rgba_base64}]}`（`.clx` 直解；`.cel`/`.cl2` 经 `celToClx`/`cl2ToClx` 转 CLX 后解；`.pcx` 走内置解码。格式由扩展名自动探测。`width` 为 `.cel`/`.cl2` 必需，支持 `width:"auto"` 按路径自动查表） | ✅ |
-| `sprite.list`  | `{dict?,devilutionx_root?,family?,class?}` | `{count,sprites:[{name,archive,family,class,type,width}]}`（从 `recovered.json` + DevilutionX 数据表枚举**真实存在的**精灵名并分类 family/class/type、带自动帧宽，供前端建目录树；无 listfile 时 `mpq.list` 给的是占位名，故需此工具） | ✅ |
+| `sprite.list`  | `{dict?,devilutionx_root?,family?,class?}` | `{count,sprites:[{name,archive,archive_path,family,class,type,width}]}`（从 `recovered.json` + DevilutionX 数据表枚举**真实存在的**精灵名并分类 family/class/type、带自动帧宽，供前端建目录树；`archive_path` 直接取自 recovered.json 的档案 `path`，前端无需再手动填 MPQ 路径；无 listfile 时 `mpq.list` 给的是占位名，故需此工具） | ✅ |
 | `map.build`    | `{archive,dun,...}` | `{tiles:[...],width,height}` | 4 |
 
 > **PCX 已并入 `sprite.decode`**（按 `.pcx` 扩展名自动路由），不再单独设 `pcx.decode` 工具。
@@ -391,10 +391,10 @@ web/                              # 浏览器前端（不读 MPQ/文件，仅 We
 - 绘制用 Canvas 2D `ImageData`（rgba_base64 即原始像素，最灵活）；如后续要 3D/滤镜
   再考虑 WebGL，但不在阶段 2 范围。
 
-**已知契约缺口（留作后端小改进）**：`sprite.list` 返回的 `archive` 是档案*名*（如
-`DIABDAT.MPQ`），而 `sprite.decode` 需档案*路径*。当前骨架用界面 Archive 输入框手动
-填路径；理想是 `sprite.list` 一并返回 `archive_path`，或 `sprite.decode` 接受档案名
-自动解析。
+**契约说明**：`sprite.list` 每条精灵除 `archive`（档案名，如 `DIABDAT.MPQ`）外，
+还返回 `archive_path`（recovered.json 里该档案的 `path` 字段，即可直用于
+`sprite.decode` 的 MPQ 路径）。前端优先用 `archive_path`，仅在缺失时回退到界面
+Archive 输入框。这样点选精灵即可直接解码，无需用户手填路径。
 
 ### 10.4 工作顺序（建议）
 

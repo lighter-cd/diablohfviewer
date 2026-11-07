@@ -378,6 +378,7 @@ mcp::ToolResult toolSpriteList(const mcp::json& params)
     if (dict.contains("archives") && dict["archives"].is_array()) {
         for (auto& arch : dict["archives"]) {
             std::string archName = arch.value("name", "");
+            std::string archPath = arch.value("path", "");
             if (!arch.contains("recovered") || !arch["recovered"].is_array())
                 continue;
             for (auto& e : arch["recovered"]) {
@@ -399,6 +400,7 @@ mcp::ToolResult toolSpriteList(const mcp::json& params)
                 sprites.push_back(mcp::json{
                     { "name", name },
                     { "archive", archName },
+                    { "archive_path", archPath },
                     { "family", si.family },
                     { "class", si.cls },
                     { "type", si.type },

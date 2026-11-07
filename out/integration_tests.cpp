@@ -235,7 +235,7 @@ static void testSpriteList() {
     std::string dictPath = "out/_it_sprite_dict.json";
     {
         std::ofstream d(dictPath);
-        d << "{ \"archives\": [ { \"name\": \"DIABDAT.MPQ\", \"recovered\": [ ";
+        d << "{ \"archives\": [ { \"name\": \"DIABDAT.MPQ\", \"path\": \"D:/fixtures/DIABDAT.MPQ\", \"recovered\": [ ";
         d << "{ \"name\": \"plrgfx\\\\warrior\\\\wha\\\\whaas.cl2\", \"size\": 1 }, ";
         d << "{ \"name\": \"plrgfx\\\\warrior\\\\wha\\\\whaat.cl2\", \"size\": 1 }, ";
         d << "{ \"name\": \"items\\\\armor2.cel\", \"size\": 1 }, ";
@@ -257,6 +257,12 @@ static void testSpriteList() {
     }
     CHECK(nWarrior == 2, "sprite.list classified 2 warrior plrgfx sprites");
     CHECK(nItems == 1, "sprite.list classified 1 items sprite");
+    // archive_path is surfaced from recovered.json so the frontend need not ask.
+    bool hasPath = false;
+    for (auto& s : lst["sprites"])
+        if (s.value("archive_path", std::string()) == "D:/fixtures/DIABDAT.MPQ")
+            hasPath = true;
+    CHECK(hasPath, "sprite.list surfaces archive_path from recovered.json");
 
     printf("sprite_tools (list): %s\n", allOk ? "PASS" : "FAIL");
 }

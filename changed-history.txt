@@ -86,3 +86,8 @@
 - 创建 web 前端项目骨架（阶段 2 第 4 步）：web/index.html + web/styles.css + web/src/{client.js,viewer.js,catalog.js,main.js} + web/README.md。纯 JavaScript ES Module（环境无 TypeScript 工具链，故替代计划的 .ts，模块划分一致），零构建，用任意静态服务器托管即可，连 mcp-server WS 桥（默认 ws://localhost:18765）；实现 connect → sprite.list 建 family/class/type 目录树 → 点击 sprite.decode 解码 → Canvas 绘制单帧（Frame 滑块翻帧）。同时修复 WS 桥一处真实 bug：transport_ws.cpp 的 Sec-WebSocket-Key 解析原为大小写敏感，浏览器发的是混合大小写 Sec-WebSocket-Key:，会导致 accept 计算错误、握手被浏览器拒绝；改为大小写不敏感查找后，用浏览器风格请求验证握手返回正确 101 + Sec-WebSocket-Accept。README/ARCHITECTURE/PROJECT 同步：前端改为 JS ES Module、补运行步骤与已知契约缺口（sprite.list 返回档案名而非路径，前端用 Archive 输入框填路径）。
 - 涉及: web/index.html, web/styles.css, web/src/client.js, web/src/viewer.js, web/src/catalog.js, web/src/main.js, web/README.md, src/mcp/transport_ws.cpp, README.md, docs/ARCHITECTURE.md, docs/PROJECT.md
 - 验证：unit/core/integration 三套件全 PASS；用原生 WebSocket 帧（客户端掩码）对 mcp-server --ws 18765 做完整 JSON-RPC 往返，tools/call sprite.list 经 WS 返回 count=340，与 stdio 路径一致，前端数据通路端到端通。
+
+## 2026-11-07 19:45:57
+- 让 sprite.list 返回 archive_path：recovered.json 每个档案本就有 path 字段（如 D:/work/xt/diablo/DevilutionX-Hell Fire\DIABDAT.MPQ），toolSpriteList 将其作为 archive_path 随每条精灵一并返回；前端 main.js 优先用 sprite.archive_path 作为 sprite.decode 的 archive，仅在缺失时回退到界面 Archive 输入框。同步更新 integration_tests.cpp（合成 dict 带 path 并断言 archive_path 被透传）、ARCHITECTURE §4 工具表与 §10.3 契约说明、web/README.md 已知限制（原"需手填路径"已解决）。
+- 涉及: src/tools/sprite_tools.cpp, out/integration_tests.cpp, docs/ARCHITECTURE.md, web/README.md, web/src/main.js
+- 验证：unit/core/integration 三套件全 PASS；mcp-server --stdio 经 tools/call sprite.list 对 plrgfx/warrior 返回含 archive_path="D:/work/xt/diablo/DevilutionX-Hell Fire\DIABDAT.MPQ" 的条目。

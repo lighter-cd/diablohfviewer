@@ -40,7 +40,10 @@ async function loadCatalog() {
 }
 
 async function onSelectSprite(sprite) {
-  const archive = $("archive").value.trim();
+  // Prefer the archive path the backend already knows (so the user doesn't have
+  // to type it); fall back to the manual Archive input if it's missing.
+  const archive = (sprite.archive_path && sprite.archive_path.trim()) ||
+                  $("archive").value.trim();
   const palette = $("palette").value.trim();
   setMeta("decoding " + sprite.name + " …");
   try {

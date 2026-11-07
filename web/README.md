@@ -49,9 +49,8 @@ web/
 
 ## 已知限制（后续打磨）
 
-- `sprite.list` 返回的 `archive` 是档案**名**（如 `DIABDAT.MPQ`），而
-  `sprite.decode` 需要档案**路径**。本骨架用界面上的 Archive 输入框手动指定
-  MPQ 路径（默认指向本地 DevilutionX 安装）。理想做法是让 `sprite.list` 同时
-  返回 `archive_path`，或 `sprite.decode` 接受档案名自动解析——留作后端小改进。
-- Palette 同样由界面输入（默认 `gendata\cut2.pal`）；不同家族精灵适用不同调色板，
+- `sprite.list` 现已一并返回 `archive_path`（取自 recovered.json 的档案 `path`），
+  `main.js` 优先用它作为 `sprite.decode` 的 `archive`，仅在缺失时回退到界面 Archive
+  输入框——点选精灵即可直接解码，无需手填路径。（早期版本需手动填路径，已解决。）
+- Palette 目前仍由界面输入（默认 `gendata\cut2.pal`）；不同家族精灵适用不同调色板，
   后续可随目录树自动选择。
