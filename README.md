@@ -135,8 +135,9 @@ out/recover_phase0.exe [devilutionx_root] [mpq_root]
   `mpq_root = D:/work/xt/diablo/DevilutionX-Hell Fire`（均可用参数覆盖）。
 - 源码路径：`mpq-info/recover_phase0.cpp`；产出：`mpq-info/dict/recovered.json`
   （汇总）与 `mpq-info/dict/recovered/<档案>.txt`（每行 `name<TAB>size`）。
-- 当前恢复 **2,055** 个真实文件名（DIABDAT 1214 / hfmonk 291 / spawn 305 /
-  hellfire 166 / devilutionx 63 / …）。扩展 towners 等拼接名可继续提升覆盖率。
+- 当前恢复 **2,080** 个真实文件名（DIABDAT 1224 / hfmonk 291 / spawn 315 /
+  hellfire 171 / devilutionx 63 / …）。覆盖 plrgfx/monsters/missiles/items/objects/towners
+  等运行时拼接族，仍可继续扩展其它拼接族（TRN 调色板、字体等）提升覆盖率。
 
 ## 开发文档
 

@@ -232,6 +232,28 @@ static void genObjects(std::set<std::string>& out,
     }
 }
 
+// Towner (NPC) sprites: Source/towners.cpp:130 ->
+// LoadTownerAnimations(towner, entry.animPath, ...) where animPath is the full
+// path (e.g. "towners\girl\girlw1") from the "animPath" column of towners.tsv.
+// A few gendered/cow variants are hardcoded literals in towners.cpp. Loaded via
+// LoadCel (CEL format). Empirically verified: the stored extension is .cel.
+static void genTowners(std::set<std::string>& out,
+                       const std::vector<fs::path>& twnFiles) {
+    static const char* kExtras[] = {
+        "towners\\farmer\\cfrmrn2",
+        "towners\\farmer\\mfrmrn2",
+        "towners\\girl\\girls1",
+        "towners\\animals\\cow",
+    };
+    for (const auto& f : twnFiles) {
+        auto paths = readColumnByName(f, "animPath");
+        for (const auto& p : paths)
+            out.insert(p + ".cel");
+    }
+    for (const char* e : kExtras)
+        out.insert(std::string(e) + ".cel");
+}
+
 // Merge the static harvest dictionary (one candidate per line) into `out`.
 static void mergeHarvest(std::set<std::string>& out, const fs::path& harvest) {
     std::ifstream f(harvest);
@@ -303,6 +325,13 @@ int main(int argc, char** argv) {
         devRoot / "assets" / "txtdata" / "objects" / "objdat.tsv",
     };
     genObjects(candidates, objFiles);
+
+    // Towner (NPC) sprites (towners.tsv "animPath" column + hardcoded variants).
+    std::vector<fs::path> twnFiles = {
+        devRoot / "assets" / "txtdata" / "towners" / "towners.tsv",
+        devRoot / "mods" / "hf" / "txtdata" / "towners" / "towners.tsv",
+    };
+    genTowners(candidates, twnFiles);
 
     // --- Merge static harvest dictionary ---
     mergeHarvest(candidates, dictDir / "diablo1-harvest.txt");

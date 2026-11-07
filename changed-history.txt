@@ -23,3 +23,7 @@
 ## 2026-11-07 13:58:56
 - 扩展 recover_phase0.cpp 支持 objects：按 objects.cpp:3720 公式读取 objdat.tsv 的 file 列生成 objects\{name}.cel 候选（62 个，已确认存为 .cel），真实文件名恢复数由 1940 提升至 2055；同步更新 PROJECT.md 与 README.md。
 - 涉及: mpq-info/recover_phase0.cpp, docs/PROJECT.md, README.md
+
+## 2026-11-07 14:02:15
+- 扩展 recover_phase0.cpp 支持 towners：按 towners.cpp:130 读取 towners.tsv 的 animPath 列生成 towners\{...}.cel 候选（12 个 + 4 个硬编码变体，已确认存为 .cel），真实文件名恢复数由 2055 提升至 2080；同步更新 PROJECT.md 与 README.md，阶段 0 主要拼接族已全部覆盖。
+- 涉及: mpq-info/recover_phase0.cpp, docs/PROJECT.md, README.md

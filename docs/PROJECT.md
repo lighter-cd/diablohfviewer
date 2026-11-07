@@ -290,13 +290,17 @@ DiabloHFConverter/
     - `objects.cpp:3720` → `objects\{ObjMasterLoadList[i]}.cel`（地牢场景/互动物件，由
       `LoadCelWithStatus` 加载；`ObjMasterLoadList` 取自 `objdat.tsv` 的 `file` 列，去重后
       共 62 个；已确认存为 **.cel**）
-  - **效果**：真实文件名恢复数由静态字典的 **196** 提升至 **2,055**
-    （DIABDAT 1214 / hfmonk 291 / spawn 305 / hellfire 166 / devilutionx 63 / …）。
+    - `towners.cpp:130` → `towners\{...}.cel`（城镇 NPC 精灵，由 `LoadTownerAnimations`
+      经 `LoadCel` 加载；路径取自 `towners.tsv` 的 `animPath` 列，另含 `farmer\cfrmrn2` /
+      `farmer\mfrmrn2` / `girl\girls1` / `animals\cow` 等硬编码变体；已确认存为 **.cel**）
+  - **效果**：真实文件名恢复数由静态字典的 **196** 提升至 **2,080**
+    （DIABDAT 1224 / hfmonk 291 / spawn 315 / hellfire 171 / devilutionx 63 / …）。
     构建与运行见仓库根 `README.md` §测试 第 4 项。
   - 注：无 listfile 时 `list` 仅能给占位名（`FileNNNNNNN.xxx`），故文件名恢复依赖
     上述字典校验法；一旦覆盖率足够高，亦可把这些名作为 listfile 喂给 StormLib。
-  - **剩余空白（后续可选）**：items / objects / towners 等运行时拼接名尚未纳入候选生成，
-    仍可继续按同类公式扩展 `recover_phase0.cpp` 提升覆盖率。
+  - **剩余空白（后续可选）**：plrgfx / monsters / missiles / items / objects / towners
+    等运行时拼接名均已纳入候选生成。仍可继续扩展其它拼接族（如 `missiles` 的附加帧、
+    各 `TRN` 调色板表、字体 `fonts\*.trn` 等）以提升覆盖率。
 
 > **后端重构（已完成，2026-11-07）**：原 TS 编排层（`mpq-inspect.ts` /
 > `mpq-recover.ts`）已完整移植到 C/C++，目录已重构为 `src/` 后端 + `tools/ts-legacy/`
