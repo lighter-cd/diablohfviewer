@@ -40,10 +40,13 @@ async function loadCatalog() {
 }
 
 async function onSelectSprite(sprite) {
-  // Prefer the archive path the backend already knows (so the user doesn't have
-  // to type it); fall back to the manual Archive input if it's missing.
-  const archive = (sprite.archive_path && sprite.archive_path.trim()) ||
-                  $("archive").value.trim();
+  // sprite.list already returns the MPQ path per sprite (archive_path), so we
+  // use it directly — no manual Archive input needed.
+  const archive = (sprite.archive_path || "").trim();
+  if (!archive) {
+    setMeta("sprite " + sprite.name + " has no archive_path; cannot decode", true);
+    return;
+  }
   const palette = $("palette").value.trim();
   setMeta("decoding " + sprite.name + " …");
   try {

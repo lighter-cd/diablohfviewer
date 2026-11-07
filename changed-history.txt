@@ -91,3 +91,7 @@
 - 让 sprite.list 返回 archive_path：recovered.json 每个档案本就有 path 字段（如 D:/work/xt/diablo/DevilutionX-Hell Fire\DIABDAT.MPQ），toolSpriteList 将其作为 archive_path 随每条精灵一并返回；前端 main.js 优先用 sprite.archive_path 作为 sprite.decode 的 archive，仅在缺失时回退到界面 Archive 输入框。同步更新 integration_tests.cpp（合成 dict 带 path 并断言 archive_path 被透传）、ARCHITECTURE §4 工具表与 §10.3 契约说明、web/README.md 已知限制（原"需手填路径"已解决）。
 - 涉及: src/tools/sprite_tools.cpp, out/integration_tests.cpp, docs/ARCHITECTURE.md, web/README.md, web/src/main.js
 - 验证：unit/core/integration 三套件全 PASS；mcp-server --stdio 经 tools/call sprite.list 对 plrgfx/warrior 返回含 archive_path="D:/work/xt/diablo/DevilutionX-Hell Fire\DIABDAT.MPQ" 的条目。
+
+## 2026-11-07 19:52:58
+- 清理 web 前端的 Archive 输入框：sprite.list 已稳定返回 archive_path，前端不再需要手动填 MPQ 路径。从 index.html 删除 Archive <input>，main.js 的 onSelectSprite 改为直接使用 sprite.archive_path（缺失时状态栏报错），去掉对界面输入框的回退。同步更新 web/README.md 与 docs/ARCHITECTURE.md §10.3 的相关说明（去掉"回退到 Archive 输入框"措辞）。本轮仅前端与文档，无 C++ 改动，三套件测试仍全 PASS。
+- 涉及: web/index.html, web/src/main.js, web/README.md, docs/ARCHITECTURE.md

@@ -393,8 +393,8 @@ web/                              # 浏览器前端（不读 MPQ/文件，仅 We
 
 **契约说明**：`sprite.list` 每条精灵除 `archive`（档案名，如 `DIABDAT.MPQ`）外，
 还返回 `archive_path`（recovered.json 里该档案的 `path` 字段，即可直用于
-`sprite.decode` 的 MPQ 路径）。前端优先用 `archive_path`，仅在缺失时回退到界面
-Archive 输入框。这样点选精灵即可直接解码，无需用户手填路径。
+`sprite.decode` 的 MPQ 路径）。前端 `main.js` 直接用 `archive_path` 解码，界面已无
+Archive 输入框——点选精灵即可直接解码，无需用户手填路径（缺失时状态栏报错）。
 
 ### 10.4 工作顺序（建议）
 
