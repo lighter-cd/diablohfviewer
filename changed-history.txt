@@ -67,3 +67,7 @@
 ## 2026-11-07 17:33:53
 - 为 render_sprite 实现帧宽自动查表：<width> 传 `auto` 时按精灵路径判定家族（plrgfx/monsters/missiles/objects/towners），分别从 sprites.tsv/monstdat.tsv/missile_sprites.tsv/objdat.tsv/towners.tsv 取宽；items(CEL) 无宽度表仍手填。同步更新 README §5 与 docs/PROJECT.md 阶段1 说明。
 - 涉及: mpq-info/render_sprite.cpp, README.md, docs/PROJECT.md
+
+## 2026-11-07 17:59:56
+- 细化阶段 2 计划文档：在 ARCHITECTURE.md 新增 §10「前端引用后端（阶段 2 查看器）」，含后端需补的 3 项（sprite.decode 加 width:"auto"、新增 sprite.list、可选 TRN 上色）、前端 web/ TS+Canvas 目录结构与工作顺序；并修正 §6 WS 契约中 rgba_base64 实为原始 RGBA（非 PNG data URL）的说明、§4 工具表补 sprite.list 与 auto-width。PROJECT.md 阶段 2 改写为「Web 查看器经 WS 调后端」交付形态与后端优先子步骤。
+- 涉及: docs/ARCHITECTURE.md, docs/PROJECT.md

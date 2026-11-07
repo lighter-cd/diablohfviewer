@@ -142,7 +142,8 @@ public:
 | `mpq.recover`  | `{archive,dict_path}` | `{recovered:[{name,size}]}`（移植 mpq-recover） | 0 |
 | `mpq.dump`     | `{archive,name,max_bytes?}` | `{name,size,preview_hex}`（前 N 字节十六进制预览；移植 mpqextract `dump`） | 0 |
 | `palette.load` | `{archive,name}` | `{name,count,colors:[[r,g,b]×256],rgba_base64}` | ✅ |
-| `sprite.decode`| `{archive,name,palette?,frame?}` | `{name,format,width,height,frame_count,palette_resolved,frames:[{index,width,height,rgba_base64}]}`（`.clx` 直解；`.cel`/`.cl2` 经 `celToClx`/`cl2ToClx` 转 CLX 后解；`.pcx` 走内置解码。格式由扩展名自动探测） | ✅ |
+| `sprite.decode`| `{archive,name,palette?,frame?,width?}` | `{name,format,width,height,frame_count,palette_resolved,frames:[{index,width,height,rgba_base64}]}`（`.clx` 直解；`.cel`/`.cl2` 经 `celToClx`/`cl2ToClx` 转 CLX 后解；`.pcx` 走内置解码。格式由扩展名自动探测。`width` 为 `.cel`/`.cl2` 必需，阶段 2 起支持 `width:"auto"` 按路径自动查表） | ✅ |
+| `sprite.list`  | `{archive?,family?,class?}` | `{sprites:[{name,archive,family,class,type,width,frames?}]}`（从 `recovered.json` + DevilutionX 数据表枚举**真实存在的**精灵名，供前端建目录树；无 listfile 时 `mpq.list` 给的是占位名，故需此工具） | 阶段 2（计划中） |
 | `map.build`    | `{archive,dun,...}` | `{tiles:[...],width,height}` | 4 |
 
 > **PCX 已并入 `sprite.decode`**（按 `.pcx` 扩展名自动路由），不再单独设 `pcx.decode` 工具。
@@ -192,15 +193,35 @@ mcp-server --stdio --ws 18765      # 同时（开发调试最方便）
 3. **响应**（Server→前端）：
    ```json
    {"jsonrpc":"2.0","id":1,
-    "result":{"width":64,"height":64,"frames":8,
-              "rgba_base64":"iVBORw0KGgoAAAANSUhEUg..."}}
+    "result":{"name":"items\\helm.clx","format":"clx","width":64,"height":64,
+              "frame_count":8,"palette_resolved":true,
+              "frames":[{"index":0,"width":64,"height":64,
+                         "rgba_base64":"AQIDBAUG..."}]}}
    ```
-   图像类工具返回 `rgba_base64` 为 **PNG data URL**（`data:image/png;base64,...`），
-   前端直接 `new Image()` 或 `ImageData` 绘制。
+   `rgba_base64` 是**原始 RGBA8 字节**（非 PNG）的 base64，长度 = `width*height*4`。
+   前端用 `atob` → `Uint8ClampedArray` → `new ImageData(arr,w,h)` 直接绘制（无需 PNG 解码，
+   也便于做透明/调色板后处理）。若未来需要 PNG，可改取 `src/decoders/png.cpp::writePNG`
+   的 base64（`data:image/png;base64,...`），但 RGBA 对查看器更灵活。
 4. **错误**：`{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"..."}}`。
 5. **列举工具**：`{"method":"tools/list"}` → `result.tools[]`（含 name/description/schema）。
+6. **枚举精灵（阶段 2 新工具 `sprite.list`）**：
+   ```json
+   {"jsonrpc":"2.0","id":2,"method":"tools/call",
+    "params":{"name":"sprite.list","arguments":{"family":"plrgfx","class":"warrior"}}}
+   // → result.sprites[] 含每件精灵的 name / width / type，前端据此建 职业×护甲×武器×动作 树
+   ```
+7. **自动取宽（阶段 2 增强 `sprite.decode`）**：
+   ```json
+   {"jsonrpc":"2.0","id":3,"method":"tools/call",
+    "params":{"name":"sprite.decode",
+              "arguments":{"archive":"DIABDAT.MPQ",
+                           "name":"plrgfx\\warrior\\wlu\\wluas.cl2",
+                           "width":"auto"}}}
+   // width:"auto" 由 Server 按路径查 DevilutionX 数据表取宽，前端无需自带宽度表
+   ```
 
-> 契约与 stdio 完全一致 = 同一套 `dispatch`，前端无需特殊适配。
+> 契约与 stdio 完全一致 = 同一套 `dispatch`，前端无需特殊适配。rgba 为原始像素，
+> 前端负责 ImageData 组装与 Canvas 绘制。
 
 ---
 
@@ -306,3 +327,75 @@ build-mcp/mcp-server.exe --stdio                 # 给 AI Agent
 build-mcp/mcp-server.exe --ws 18765              # 给浏览器前端
 build-mcp/mcp-server.exe --stdio --ws 18765      # 同时
 ```
+
+---
+
+## 10. 前端引用后端（阶段 2：角色 / 怪物查看器）
+
+> 目标：浏览器里的**可视化查看器**，通过 WebSocket 调用本地 `mcp-server` 的
+> `sprite.*` 工具拿到 RGBA 帧并绘制，自身**不读 MPQ、不碰文件系统**。这是把
+> 阶段 1 的解码能力变成"可看"的下一步，也是阶段 2/3 查看器目标的天然载体。
+
+### 10.1 当前已具备（无需重造）
+
+- `mcp-server` 已带 **WS 桥**（`--ws <port>`，自研 RFC6455），与 stdio 共用同一套 tool `dispatch`。
+- 后端已注册 `palette.load` 与 `sprite.decode`（`src/tools/sprite_tools.cpp`）：
+  `sprite.decode` 能从 MPQ 抽出 `.clx/.cl2/.cel/.pcx` 并解码成
+  `frames:[{index,width,height,rgba_base64}]`，前端用 `ImageData` 直接画。
+- 因此"前端引用后端"的主干链路**已经打通**，缺的是让前端"好用"的少量后端补齐 + 前端壳。
+
+### 10.2 后端需先补齐的 3 项（纯 C/C++，可独立验证）
+
+1. **`sprite.decode` 支持 `width:"auto"`**（高优先）
+   - 现 `sprite.decode` 对 `.cl2/.cel` 强制要求手填 `width`（`sprite_tools.cpp:169/175`）。
+   - 复用 `mpq-info/render_sprite.cpp` 刚实现的路径→家族→宽度表查表逻辑
+     （plrgfx→`sprites.tsv`、monsters→`monstdat.tsv`、missiles→`missile_sprites.tsv`、
+     objects→`objdat.tsv`、towners→`towners.tsv`；items 无表仍手填）。
+   - 实现位置：把 `autoWidth()` 抽成 `src/tools/sprite_tools.cpp` 内的静态函数（或
+     提到 `src/decoders/` 共享），`width` 参数为 `"auto"` 或非正时调用。
+2. **新增 `sprite.list` 工具**（高优先）
+   - `mpq.list` 在无 listfile 时只给占位名 `FileNNNNNNN.xxx`，前端无法据此浏览。
+   - `sprite.list` 改读 `mpq-info/dict/recovered.json` + DevilutionX 数据表，枚举
+     **真实存在**的精灵名，并按家族/职业/动作归类，返回
+     `{sprites:[{name,archive,family,class,type,width,frames?}]}`。
+   - 前端据此建"职业 × 护甲 × 武器 × 动作"目录树，点击即 `sprite.decode`。
+3. **（可选，保真度）TRN 上色**
+   - `sprite.decode` 现只解析基Palette，未应用职业 TRN（`plrgfx/<class>.trn`，`GetClassTRN`）
+     与每精灵 TRN（`GetPlayerGraphicTRN`）。
+   - 可加参数 `apply_trn:true`，从 MPQ 取对应 `.trn`（256 字节色彩变换表）后作用于帧
+     再返回。第一版前端可先只用 `diablo.pal` 跑通链路，TRN 作为保真增强后续补。
+
+### 10.3 前端目录结构（TS + Canvas，仅前端构建，无 Node 运行服务）
+
+```
+web/                              # 浏览器前端（不读 MPQ/文件，仅 WebSocket 调后端）
+├── index.html                    # 入口：<canvas> + 目录树 + 方向/帧控制
+├── src/
+│   ├── client.ts                 # WS 客户端：tools/list / tools/call，id 配对并发
+│   ├── viewer.ts                 # Canvas 绘制：atob→ImageData→putImageData
+│   └── catalog.ts                # 用 sprite.list 建 职业×护甲×武器×动作 树
+├── dist/                        # tsc 编译产物（静态 JS，可直接 file:// 或 http 打开）
+└── build.sh                     # tsc --outDir dist（仅前端构建，产生的仍是静态文件）
+```
+
+- 前端**不引入 Node 作为运行服务**；`dist/` 是纯静态文件，用任意静态服务器
+  （`python -m http.server` 等）或本地 `file://` 打开，连 `ws://localhost:18765`。
+- 绘制用 Canvas 2D `ImageData`（rgba_base64 即原始像素，最灵活）；如后续要 3D/滤镜
+  再考虑 WebGL，但不在阶段 2 范围。
+
+### 10.4 工作顺序（建议）
+
+1. 后端：`sprite.decode` 加 `width:"auto"`（复用 render_sprite 查表）→ 跑三套件测试。
+2. 后端：新增 `sprite.list`（读 recovered.json + 数据表）→ 跑三套件测试。
+3. 后端（可选）：`sprite.decode` 加 `apply_trn` 上色。
+4. 前端：脚手架 `web/`，`client.ts` 连 WS → `tools/list` → `sprite.list` 取目录 →
+   `sprite.decode` 取 RGBA → `viewer.ts` 绘制；先做"选精灵 → 看单帧"。
+5. 查看器能力叠加（阶段 2/3 目标）：
+   - 8 方向切换（玩家固定 8 方向，按 `帧数/8` 切分；怪物方向数另查动画表）。
+   - 装备组合浏览（前缀 `c+a+w` 枚举：D1 武器/护甲已 bake 进文件名，非独立图层，
+     直接枚举前缀即可，无需通用合成器）。
+   - 技能特效叠加（`lm`/`fm`/`qm` 等特效精灵本就在 plrgfx 前缀枚举内）。
+   - 怪物/NPC 查看器（阶段 3）复用同一 `sprite.list` + `sprite.decode` 链路，仅家族不同。
+
+> 该顺序让"列清单 → 渲染 → 显示"尽快端到端跑通，且后端每一步都可独立单测，
+> 符合项目"先理解、再使用；CLI / 可验证产出优先"的章程。

@@ -385,9 +385,27 @@ DiabloHFConverter/
     构建与运行见仓库根 `README.md` §1（解码器单测）与 §5（精灵渲染）。
 
 ### 阶段 2：角色查看器（目标 2）
-- [ ] 枚举各职业所有动画模式（walk/attack/spellcast/hit/death/idle…）。
-- [ ] 装备图层叠加（武器/盔甲/头盔/盾牌）。
-- [ ] 技能特效叠加层渲染。
+
+> **交付形态（2026-11-07 确定）**：以**浏览器查看器**实现，通过 WebSocket 调用本地
+> `mcp-server` 的 `sprite.*` 工具取 RGBA 帧绘制；前端不读 MPQ/文件。后端主干（WS 桥 +
+> `palette.load`/`sprite.decode`）已具备，详见 `docs/ARCHITECTURE.md` §10。先补两件
+> 后端小事，再写前端壳——避免一上来就搭动画/合成框架。
+> 关键认知：D1 的武器/护甲已 **bake 进文件名前缀**（`{c}{a}{w}`），"装备图层叠加"=
+> **枚举前缀组合**，不是 alpha 合成多张图，勿过度设计通用合成器。
+
+- [ ] **后端：`sprite.decode` 支持 `width:"auto"`**：复用 `render_sprite` 的路径→家族→
+      宽度表查表（plrgfx→`sprites.tsv`、monsters→`monstdat.tsv`、missiles→
+      `missile_sprites.tsv`、objects→`objdat.tsv`、towners→`towners.tsv`；items 无表仍手填）。
+- [ ] **后端：新增 `sprite.list`**：读 `recovered.json` + DevilutionX 数据表，枚举真实存在的
+      精灵名并按 家族/职业/动作 归类（前端据此建目录树）。`mpq.list` 仅给占位名，不足以浏览。
+- [ ] **前端壳（web/，TS+Canvas）**：连 `ws://localhost:<port>` → `tools/list` →
+      `sprite.list` 取目录 → `sprite.decode` 取 RGBA → Canvas 绘制；先做"选精灵→看单帧"。
+- [ ] **（可选保真）`sprite.decode` 应用 TRN**：职业 TRN（`plrgfx/<class>.trn`）+ 每精灵 TRN
+      （`GetPlayerGraphicTRN`），提升颜色正确度；首版可仅用 `diablo.pal` 跑通链路。
+- [ ] 枚举各职业所有动画模式（stand/walk/attack/hit/death/idle…，对应 `as/st/aw/wl/at/ht/dt…`）。
+- [ ] 8 方向切换（玩家固定 8 方向，按 `帧数/8` 切分；怪物方向数另查动画表）。
+- [ ] 装备组合浏览（前缀 `c+a+w` 枚举：武器/护甲变化 = 不同文件名，直接枚举即可）。
+- [ ] 技能特效叠加层渲染（`lm`/`fm`/`qm` 等特效精灵本就在 plrgfx 前缀枚举内）。
 - [ ] 产出：按“职业 × 动作 × 装备 × 技能特效”组合的查看数据。
 
 ### 阶段 3：怪物 / NPC 查看器（目标 3）
