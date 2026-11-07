@@ -157,6 +157,10 @@ static void genPlayers(std::set<std::string>& out, const fs::path& classesRoot) 
                     std::string name = "plrgfx\\" + cpath + "\\" + prefix + "\\" +
                                        prefix + t + ".cl2";
                     out.insert(name);
+                    // Per-sprite TRN palette variant: GetPlayerGraphicTRN builds
+                    // pszName + ".trn" for every player graphic (optional colour TRN).
+                    out.insert("plrgfx\\" + cpath + "\\" + prefix + "\\" +
+                               prefix + t + ".trn");
                 }
             }
         }
@@ -254,6 +258,41 @@ static void genTowners(std::set<std::string>& out,
         out.insert(std::string(e) + ".cel");
 }
 
+// TRN palette files (256-byte colour transformation tables). Two systematic
+// families:
+//  1. Font TRNs: Source/engine/render/text_render.cpp fixed list -> fonts\{name}.trn
+//  2. Class / global TRNs:
+//       - GetClassTRN: plrgfx\{sprites.tsv trn field}.trn  (e.g. plrgfx\warrior.trn)
+//       - literals (lighting.cpp / trn.cpp): plrgfx\infra.trn, plrgfx\stone.trn,
+//         gendata\pause.trn
+// (Per-sprite player TRNs are emitted inside genPlayers as "{sprite}.trn".)
+static void genFontTrn(std::set<std::string>& out) {
+    static const char* kFontTrn[] = {
+        "black",      "white",       "whitegold",  "red",       "blue",
+        "orange",     "yellow",      "buttonface", "buttonpushed", "gamedialogwhite",
+        "gamedialogyellow", "gamedialogred", "goldui", "grayui",
+        "golduis",    "grayuis"};
+    for (const char* n : kFontTrn)
+        out.insert("fonts\\" + std::string(n) + ".trn");
+}
+
+static void genClassTrn(std::set<std::string>& out, const fs::path& classesRoot) {
+    std::error_code ec;
+    if (fs::exists(classesRoot, ec)) {
+        for (const auto& dirEntry : fs::directory_iterator(classesRoot, ec)) {
+            if (!dirEntry.is_directory())
+                continue;
+            auto kv = readKV(dirEntry.path() / "sprites.tsv");
+            auto it = kv.find("trn");
+            if (it != kv.end() && !it->second.empty())
+                out.insert("plrgfx\\" + it->second + ".trn");
+        }
+    }
+    out.insert("plrgfx\\infra.trn");
+    out.insert("plrgfx\\stone.trn");
+    out.insert("gendata\\pause.trn");
+}
+
 // Merge the static harvest dictionary (one candidate per line) into `out`.
 static void mergeHarvest(std::set<std::string>& out, const fs::path& harvest) {
     std::ifstream f(harvest);
@@ -332,6 +371,10 @@ int main(int argc, char** argv) {
         devRoot / "mods" / "hf" / "txtdata" / "towners" / "towners.tsv",
     };
     genTowners(candidates, twnFiles);
+
+    // TRN palette files: font TRNs (fixed list) + class/global TRNs.
+    genFontTrn(candidates);
+    genClassTrn(candidates, classesRoot);
 
     // --- Merge static harvest dictionary ---
     mergeHarvest(candidates, dictDir / "diablo1-harvest.txt");

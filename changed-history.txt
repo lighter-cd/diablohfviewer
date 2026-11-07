@@ -27,3 +27,7 @@
 ## 2026-11-07 14:02:15
 - 扩展 recover_phase0.cpp 支持 towners：按 towners.cpp:130 读取 towners.tsv 的 animPath 列生成 towners\{...}.cel 候选（12 个 + 4 个硬编码变体，已确认存为 .cel），真实文件名恢复数由 2055 提升至 2080；同步更新 PROJECT.md 与 README.md，阶段 0 主要拼接族已全部覆盖。
 - 涉及: mpq-info/recover_phase0.cpp, docs/PROJECT.md, README.md
+
+## 2026-11-07 14:13:44
+- 扩展 recover_phase0.cpp 支持 TRN 调色板：新增字体调色板 fonts\{name}.trn（text_render.cpp 固定清单）、职业/全局调色板 plrgfx\{trn}.trn / infra / stone / pause.trn、以及玩家每精灵 .trn 变体（GetPlayerGraphicTRN）；怪物色彩 TRN 已由 monsters 公式经 trnFile 列覆盖（约 94 个）。总恢复数维持 2080（TRN 族此前已被 harvest/trnFile 覆盖，本次使 TRN 候选改由公式派生、不再依赖手抄字典），TRN 调色板共恢复约 115 个。
+- 涉及: mpq-info/recover_phase0.cpp, docs/PROJECT.md, README.md

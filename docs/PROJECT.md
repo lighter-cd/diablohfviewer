@@ -293,14 +293,24 @@ DiabloHFConverter/
     - `towners.cpp:130` → `towners\{...}.cel`（城镇 NPC 精灵，由 `LoadTownerAnimations`
       经 `LoadCel` 加载；路径取自 `towners.tsv` 的 `animPath` 列，另含 `farmer\cfrmrn2` /
       `farmer\mfrmrn2` / `girl\girls1` / `animals\cow` 等硬编码变体；已确认存为 **.cel**）
+    - **TRN 调色板（256 字节色彩变换表）**：
+      - `fonts\{name}.trn`：`text_render.cpp` 中的固定字体调色板清单（black/white/red/…）。
+      - `plrgfx\{sprites.tsv 的 trn 字段}.trn`：职业调色板（`GetClassTRN`），另含字面量
+        `plrgfx\infra.trn` / `plrgfx\stone.trn` / `gendata\pause.trn`（`lighting.cpp`/`trn.cpp`）。
+      - 每个玩家精灵的 `plrgfx\{class}\{prefix}\{prefix}{type}.trn` 变体
+        （`GetPlayerGraphicTRN` 构造 `pszName + ".trn"`）。
+      - 怪物色彩 TRN `monsters\{trnFile}.trn` 已由上列 `monsters` 公式经 `trnFile` 列覆盖
+        （如 `monsters\acid\acidb.trn`、`monsters\bat\grey.trn` 等，共 ~94 个）。
   - **效果**：真实文件名恢复数由静态字典的 **196** 提升至 **2,080**
     （DIABDAT 1224 / hfmonk 291 / spawn 315 / hellfire 171 / devilutionx 63 / …）。
+    其中 TRN 调色板已恢复 **~115** 个（DIABDAT 68 + spawn 26 + devilutionx 17 + …）。
     构建与运行见仓库根 `README.md` §测试 第 4 项。
   - 注：无 listfile 时 `list` 仅能给占位名（`FileNNNNNNN.xxx`），故文件名恢复依赖
     上述字典校验法；一旦覆盖率足够高，亦可把这些名作为 listfile 喂给 StormLib。
   - **剩余空白（后续可选）**：plrgfx / monsters / missiles / items / objects / towners
-    等运行时拼接名均已纳入候选生成。仍可继续扩展其它拼接族（如 `missiles` 的附加帧、
-    各 `TRN` 调色板表、字体 `fonts\*.trn` 等）以提升覆盖率。
+    以及 TRN 调色板（`fonts\*.trn`、职业/玩家精灵 `.trn`、怪物色彩 `monsters\{trnFile}.trn`）
+    等运行时拼接名均已纳入候选生成。仍可继续扩展极个别拼接族（如唯一怪物
+    `monsters\monsters\{trnName}.trn`、DiabloUI 调色板等）以提升覆盖率。
 
 > **后端重构（已完成，2026-11-07）**：原 TS 编排层（`mpq-inspect.ts` /
 > `mpq-recover.ts`）已完整移植到 C/C++，目录已重构为 `src/` 后端 + `tools/ts-legacy/`
