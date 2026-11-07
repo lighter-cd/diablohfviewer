@@ -36,3 +36,33 @@ export function fitCanvas(canvas, displaySize) {
   canvas.style.height = ch * scale + "px";
   canvas.style.imageRendering = "pixelated";
 }
+
+// Draw a base frame with zero or more overlay layers alpha-composited on top.
+// Each overlay is { rgba, w, h, dx, dy, enabled }; overlays are blended with
+// normal source-over alpha (their transparent pixels leave the base intact).
+// Used for effect overlays (player lm/fm/qm, monster special, or any sprite the
+// user picks) — these are separate sprite files in Diablo, not baked in.
+export function drawComposite(canvas, baseRgba, baseW, baseH, overlays) {
+  const ctx = canvas.getContext("2d");
+  canvas.width = baseW;
+  canvas.height = baseH;
+  ctx.clearRect(0, 0, baseW, baseH);
+
+  const baseBytes = base64ToBytes(baseRgba);
+  const baseImg = ctx.createImageData(baseW, baseH);
+  baseImg.data.set(baseBytes.subarray(0, baseW * baseH * 4));
+  ctx.putImageData(baseImg, 0, 0);
+
+  for (const ov of overlays || []) {
+    if (!ov || !ov.enabled) continue;
+    const w = ov.w, h = ov.h;
+    const off = document.createElement("canvas");
+    off.width = w;
+    off.height = h;
+    const octx = off.getContext("2d");
+    const img = octx.createImageData(w, h);
+    img.data.set(base64ToBytes(ov.rgba).subarray(0, w * h * 4));
+    octx.putImageData(img, 0, 0);
+    ctx.drawImage(off, ov.dx || 0, ov.dy || 0);
+  }
+}

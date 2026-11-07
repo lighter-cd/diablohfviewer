@@ -405,6 +405,19 @@ build-mcp/mcp-server.exe --stdio --ws 18765      # 同时
      `monsters\zombie\zombien.cl2` 且 `frames_per_dir==11`；`testSpriteDecodeMonster`
      对真实 MPQ 断言 `directions==8` / `frame_count==88`）。
 
+5. **（特效叠加层 alpha 合成）**（已实现，2026-11-08）
+   - 通用叠加子系统：任一浏览模式选中基础精灵后，画布下方「特效叠加层」面板（默认折叠）可把任意
+     特效精灵解码为独立图层，按 `(dir, frame)` 对齐后 alpha 合成到底图当前帧上。
+     - 快速加：角色模式列出 `plrgfx\{c}\{caw}\{caw}{lm/fm/qm}.cl2`（闪电/火/魔法）；
+       怪物模式列出该怪物的 Special `s` 动画（把动画字母 `n/w/a/h/d` 换成 `s`）。
+     - 通用加：下拉列出当前目录全部精灵，可任意选取做底图叠加。
+     - 每层可启用/停用、设 `x/y` 偏移、移除；meta 行显示「· 叠加层 N」。
+   - 前端：`web/src/viewer.js` 的 `drawComposite(canvas, 底图RGBA, w, h, 叠加数组)`（每叠加层建离屏
+     Canvas 后 `drawImage` 源 alpha）；叠加层状态在 `web/src/main.js`（`overlayLayers`、`lastDecodeArgs`，
+     `buildDecodeArgs` 复用基础精灵的调色板/TRN 构造解码参数）。切换基础精灵时清空叠加并刷新快速加按钮。
+   - 覆盖用户要求的四类作用域：怪物查看器里的怪物、角色查看器里的技能、通用底图+叠加选取器、
+     monster 的 Special 动画。
+
 ### 10.3 前端目录结构（JS ES Module + Canvas，零构建，无 Node 运行服务）
 
 > 阶段 2 脚手架已落地（见 `web/`）。实现要点：**纯 JavaScript ES Module**，浏览器
@@ -460,8 +473,9 @@ Archive 输入框——点选精灵即可直接解码，无需用户手填路径
      `plrgfx\{class}\{c}{a}{w}\{c}{a}{w}{type}.cl2` 并解码；仅暴露 MPQ 真实存在的组合。
    - 8 方向：玩家 CL2 为**方向优先**（8 方向 × N 帧），前端按 `总帧数 / 方向数` 切分，
      提供方向滑块 + 帧滑块 + ▶播放/⏸ + fps 速度；方向数可选 1/2/4/8（plrgfx 默认 8）。
-   - 装备/特效**不做 alpha 合成**（D1 把武器/护甲 bake 进文件名前缀，组合浏览=枚举文件名）；
-     技能特效（`lm`/`fm`/`qm`）作为可浏览动画纳入动作下拉。
+   - 装备**不做 alpha 合成**（D1 把武器/护甲 bake 进文件名前缀，组合浏览=枚举文件名）；
+     技能特效（`lm`/`fm`/`qm`）作为可浏览动画纳入动作下拉，并可通过「特效叠加层（alpha 合成）」
+     面板（见 §10.2 第 5 项）按图层叠加到底图上。
    - 改动 `web/index.html` + `web/src/main.js` + `web/styles.css`，**后端无改动**。
 6. 查看器能力复用（阶段 3 目标，已实现）：
    - 怪物/NPC 查看器复用同一 `sprite.list` + `sprite.decode` 链路，仅家族不同；
