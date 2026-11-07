@@ -92,7 +92,8 @@ src/
 > 旧的独立工具 `mpqextract`（曾位于 `tools/c/`）与 `tools/*.ts`（含 `ts-legacy/`）已随
 > “TS→C 迁移 + 目录重构”**全部移除**：其能力（`list/extract/verify/checklist/dump` 及文件名
 > 恢复）均已落在 `src/` 后端的 `mpq.*` 工具中，单一 `mcp-server.exe` 即为唯一入口。
-> StormLib 静态库的构建脚本现位于 `3rdparty/StormLib/build.sh`；MPQ 文件名恢复用的字典与
+> StormLib 静态库的构建脚本现位于仓库根 `build-stormlib.sh`（StormLib 本身以 git submodule
+> 形式 vendored 于 `3rdparty/StormLib`）；MPQ 文件名恢复用的字典与
 > 原始路径清单等参考数据现集中在 `mpq-info/`（原 `tools/`）。
 
 ---
@@ -229,7 +230,7 @@ mcp-server --stdio --ws 18765      # 同时（开发调试最方便）
 ## 8. 构建（CMake + MinGW-w64）
 
 `CMakeLists.txt` 要点：
-- 生成器：`cmake -G "MinGW Makefiles"`（StormLib 已由 `3rdparty/StormLib/build.sh` 预编译为
+- 生成器：`cmake -G "MinGW Makefiles"`（StormLib 已由仓库根 `build-stormlib.sh` 预编译为
   `3rdparty/StormLib/build/libStormLib.a`，CMake 直接链接该静态库）。
 - 主目标 `mcp-server`：编译 `src/**` + 链接 `libStormLib.a` + `ws2_32` + `wininet`。
 - `nlohmann/json` 以 include 目录（`3rdparty/`）方式加入，无需编译。
@@ -288,7 +289,7 @@ cmake --build . --target mcp-server
 
 ```bash
 # 1) 先构建 StormLib（若尚未构建）
-bash 3rdparty/StormLib/build.sh
+bash build-stormlib.sh
 
 # 2) 构建 mcp-server
 cmake -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -S . -B build-mcp

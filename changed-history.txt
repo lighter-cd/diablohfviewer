@@ -3,3 +3,7 @@
 ## 2026-11-07 13:09:15
 - 落地 AGENTS.md 铁律并逐项补齐合规缺口：新增 README.md（使用者视角：构建/运行/工具/测试）；补全单元测试 out/unit_tests.cpp（覆盖 base64/palette/各解码器，替换旧 decode_test.cpp）；修复 src/tools/base64.h 解码逆表偏移 2 位导致 decode 失败的 bug；补 .gitignore 并清理源自其它项目的误置文件。
 - 涉及: README.md, AGENTS.md, out/unit_tests.cpp, out/decode_test.cpp(删), src/tools/base64.h, .gitignore, changed-history.tools996.txt, docs/ARCHITECTURE.md, docs/PROJECT.md
+
+## 2026-11-07 13:17:26
+- 将 3rdparty/StormLib 改造为正式 git submodule（pin 至上游 commit 116135c），将其 build.sh 移出 submodule 至仓库根 build-stormlib.sh（submodule 指向上游，无法承载本地构建脚本）；同步更新 .gitmodules、README/ARCHITECTURE/PROJECT/CMakeLists 的引用，并验证 submodule 构建 + mcp-server 链接通过。
+- 涉及: .gitmodules, build-stormlib.sh, 3rdparty/StormLib(build.sh删), README.md, docs/ARCHITECTURE.md, docs/PROJECT.md, CMakeLists.txt, .gitignore

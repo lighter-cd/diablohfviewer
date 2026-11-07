@@ -203,7 +203,8 @@ D:\work\xt\diablo\DevilutionX\
 - `3rdparty/StormLib/`：vendored 的 StormLib（DevilutionX `mpqfs` 的上游，Diablo 1
   兼容），用 `-DSTORM_USE_BUNDLED_LIBRARIES=ON` 自包含编译（无需外部依赖），产物
   `3rdparty/StormLib/build/libStormLib.a`。
-- `3rdparty/StormLib/build.sh`：仅构建上述 StormLib 静态库（不再构建任何独立 CLI —— 旧的
+- `build-stormlib.sh`（仓库根）：仅构建上述 StormLib 静态库（StormLib 以 git submodule vendored
+  于 `3rdparty/StormLib`；不再构建任何独立 CLI —— 旧的
   `mpqextract` 独立工具已退役，其能力全部并入 `src/` 后端的 `mpq.*` 工具）。
 
 **目标后端（`src/`，已落地并验证，详见 `docs/ARCHITECTURE.md`）**

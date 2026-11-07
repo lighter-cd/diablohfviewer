@@ -15,8 +15,8 @@ cmake_install.cmake
 Makefile
 *.cmake
 
-# ---------- StormLib（vendored，独立 git 仓库）构建产物 ----------
-# 由 3rdparty/StormLib/build.sh 生成，重新运行即可重建。
+# ---------- StormLib（git submodule @ 3rdparty/StormLib）构建产物 ----------
+# 3rdparty/StormLib 已是 submodule，其 build/ 由 build-stormlib.sh 生成、重新运行即可重建。
 3rdparty/StormLib/build/
 
 # ---------- 运行产物 out/（构建/运行生成物，不入库） ----------

@@ -11,14 +11,14 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # ---- StormLib (prebuilt static lib) ----------------------------------------
-# Build it once with:  bash 3rdparty/StormLib/build.sh
+# Build it once with:  bash build-stormlib.sh
 # (CMake -G "MinGW Makefiles" -DSTORM_USE_BUNDLED_LIBRARIES=ON)
 set(SL_DIR      "${CMAKE_SOURCE_DIR}/3rdparty/StormLib")
 set(SL_LIB      "${SL_DIR}/build/libStormLib.a")
 if(NOT EXISTS "${SL_LIB}")
   message(FATAL_ERROR
     "StormLib not built yet. Run:\n"
-    "    bash 3rdparty/StormLib/build.sh\n"
+    "    bash build-stormlib.sh\n"
     "then re-run cmake.")
 endif()
 

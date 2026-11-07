@@ -16,16 +16,18 @@ Diablo 1 / Hellfire 的 MPQ 研究与精灵查看工具。**后端为纯 C/C++ �
 | `src/decoders/` | 格式解码器（palette / clx / cel / cl2 / pcx） |
 | `src/tools/` | Tool Registry + `mpq_tools` + `sprite_tools` |
 | `src/mcp/` | MCP 服务端（jsonrpc / stdio / ws 桥） |
-| `3rdparty/StormLib/` | vendored StormLib（构建脚本 `3rdparty/StormLib/build.sh`） |
+| `3rdparty/StormLib/` | StormLib 源码（git submodule；构建脚本见仓库根 `build-stormlib.sh`） |
 | `mpq-info/` | MPQ 文件名恢复字典与产出（参考数据，非代码） |
 | `docs/` | 开发者文档（ARCHITECTURE.md / PROJECT.md） |
 
 ## 构建
 
-先构建 StormLib 静态库（仅需一次，产物 `3rdparty/StormLib/build/libStormLib.a`）：
+先构建 StormLib 静态库（仅需一次，产物 `3rdparty/StormLib/build/libStormLib.a`）。
+StormLib 以 git submodule 形式 vendored 在 `3rdparty/StormLib`，首次克隆后请先
+`git submodule update --init` 拉取源码，再用仓库根的脚本构建：
 
 ```bash
-bash 3rdparty/StormLib/build.sh
+bash build-stormlib.sh
 ```
 
 再构建 mcp-server：
