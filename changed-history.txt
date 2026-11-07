@@ -31,3 +31,7 @@
 ## 2026-11-07 14:13:44
 - 扩展 recover_phase0.cpp 支持 TRN 调色板：新增字体调色板 fonts\{name}.trn（text_render.cpp 固定清单）、职业/全局调色板 plrgfx\{trn}.trn / infra / stone / pause.trn、以及玩家每精灵 .trn 变体（GetPlayerGraphicTRN）；怪物色彩 TRN 已由 monsters 公式经 trnFile 列覆盖（约 94 个）。总恢复数维持 2080（TRN 族此前已被 harvest/trnFile 覆盖，本次使 TRN 候选改由公式派生、不再依赖手抄字典），TRN 调色板共恢复约 115 个。
 - 涉及: mpq-info/recover_phase0.cpp, docs/PROJECT.md, README.md
+
+## 2026-11-07 14:17:51
+- 新增 docs/RUNTIME_FILENAME_RULES.md：系统记录 plrgfx/monsters/missiles/items/objects/towners 六大家族及 TRN 调色板的运行时文件名拼接规则（DevilutionX 源码位置、数据表列、已验证扩展名、与 recover_phase0.cpp 生成函数的映射）；同步在 PROJECT.md 阶段0 与 README 中加引用。本轮仅文档，无源码改动。
+- 涉及: docs/RUNTIME_FILENAME_RULES.md, docs/PROJECT.md, README.md

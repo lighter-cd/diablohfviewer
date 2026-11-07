@@ -290,6 +290,9 @@ DiabloHFConverter/
     - `objects.cpp:3720` → `objects\{ObjMasterLoadList[i]}.cel`（地牢场景/互动物件，由
       `LoadCelWithStatus` 加载；`ObjMasterLoadList` 取自 `objdat.tsv` 的 `file` 列，去重后
       共 62 个；已确认存为 **.cel**）
+    - **规则文档**：上述六大家族（plrgfx / monsters / missiles / items / objects / towners）
+      及 TRN 调色板的完整命名公式、DevilutionX 数据源、已验证扩展名与 `recover_phase0.cpp`
+      函数映射，见 **`docs/RUNTIME_FILENAME_RULES.md`**。
     - `towners.cpp:130` → `towners\{...}.cel`（城镇 NPC 精灵，由 `LoadTownerAnimations`
       经 `LoadCel` 加载；路径取自 `towners.tsv` 的 `animPath` 列，另含 `farmer\cfrmrn2` /
       `farmer\mfrmrn2` / `girl\girls1` / `animals\cow` 等硬编码变体；已确认存为 **.cel**）

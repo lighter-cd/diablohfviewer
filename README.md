@@ -138,6 +138,7 @@ out/recover_phase0.exe [devilutionx_root] [mpq_root]
 - 当前恢复 **2,080** 个真实文件名（DIABDAT 1224 / hfmonk 291 / spawn 315 /
   hellfire 171 / devilutionx 63 / …），其中 TRN 调色板约 115 个。覆盖
   plrgfx/monsters/missiles/items/objects/towners 及 TRN 调色板等运行时拼接族。
+- 各家族的命名公式、DevilutionX 数据源与已验证扩展名见 `docs/RUNTIME_FILENAME_RULES.md`。
 
 ## 开发文档
 
