@@ -56,7 +56,8 @@ Desktop.ini
 # ---------- 日志 ----------
 *.log
 
-# ---------- 疑似外来文件（来自其他项目，不应入库） ----------
-# 内容指向 packages/tools-996 / 996pc / Qdrant / mir2 等无关项目，
-# 与本项目无关；确认无用后可径直删除此文件。
-changed-history.txt
+# ---------- 外来文件（来自其他项目，不应入库） ----------
+# changed-history.tools996.txt 是误置入本仓库的其他项目改动日志，已另行保管；
+# 本项目的改动历史记录在 changed-history.txt（入库，不忽略）。
+changed-history.tools996.txt
+

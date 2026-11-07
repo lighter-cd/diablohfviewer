@@ -1,0 +1,5 @@
+# 改动历史（每次改动后追加）
+
+## 2026-11-07 13:09:15
+- 落地 AGENTS.md 铁律并逐项补齐合规缺口：新增 README.md（使用者视角：构建/运行/工具/测试）；补全单元测试 out/unit_tests.cpp（覆盖 base64/palette/各解码器，替换旧 decode_test.cpp）；修复 src/tools/base64.h 解码逆表偏移 2 位导致 decode 失败的 bug；补 .gitignore 并清理源自其它项目的误置文件。
+- 涉及: README.md, AGENTS.md, out/unit_tests.cpp, out/decode_test.cpp(删), src/tools/base64.h, .gitignore, changed-history.tools996.txt, docs/ARCHITECTURE.md, docs/PROJECT.md
