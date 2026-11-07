@@ -34,7 +34,11 @@ void decodeClxFrameData(const uint8_t* src, size_t srcSize,
                 int w     = 0xBF - control; // 1..63
                 uint8_t color = *p++;
                 for (int k = 0; k < w && curX < static_cast<int>(width) && curY < static_cast<int>(height); ++k) {
-                    int idx          = (curY * static_cast<int>(width) + curX) * 4;
+                    // CLX/CEL/CL2 store rows bottom-to-top (DevilutionX renders
+                    // "backwards"); map the first data row to the bottom of the
+                    // buffer so the RGBA output is top-down (row 0 = top).
+                    int outRow = (static_cast<int>(height) - 1) - curY;
+                    int idx          = (outRow * static_cast<int>(width) + curX) * 4;
                     outRGBA[idx]     = palRGB[static_cast<size_t>(color) * 3];
                     outRGBA[idx + 1] = palRGB[static_cast<size_t>(color) * 3 + 1];
                     outRGBA[idx + 2] = palRGB[static_cast<size_t>(color) * 3 + 2];
@@ -47,7 +51,11 @@ void decodeClxFrameData(const uint8_t* src, size_t srcSize,
                 int w = -static_cast<int>(static_cast<int8_t>(control)); // 1..65
                 for (int k = 0; k < w && curX < static_cast<int>(width) && curY < static_cast<int>(height); ++k) {
                     uint8_t color = *p++;
-                    int idx          = (curY * static_cast<int>(width) + curX) * 4;
+                    // CLX/CEL/CL2 store rows bottom-to-top (DevilutionX renders
+                    // "backwards"); map the first data row to the bottom of the
+                    // buffer so the RGBA output is top-down (row 0 = top).
+                    int outRow = (static_cast<int>(height) - 1) - curY;
+                    int idx          = (outRow * static_cast<int>(width) + curX) * 4;
                     outRGBA[idx]     = palRGB[static_cast<size_t>(color) * 3];
                     outRGBA[idx + 1] = palRGB[static_cast<size_t>(color) * 3 + 1];
                     outRGBA[idx + 2] = palRGB[static_cast<size_t>(color) * 3 + 2];

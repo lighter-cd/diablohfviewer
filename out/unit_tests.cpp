@@ -87,14 +87,16 @@ static void testClxDecode()
     if (f.width != 4 || f.height != 2) { printf("CLX decode: FAIL dims %dx%d\n", f.width, f.height); allOk = false; }
     if (f.rgba.size() != 4 * 2 * 4) { printf("CLX decode: FAIL rgba size %zu\n", f.rgba.size()); allOk = false; }
 
-    chkPx(f.rgba, 4, 0, 0, 15, 16, 17, 255);  // color 5
-    chkPx(f.rgba, 4, 1, 0, 0, 0, 0, 0);        // transparent
-    chkPx(f.rgba, 4, 2, 0, 21, 22, 23, 255);   // color 7
-    chkPx(f.rgba, 4, 3, 0, 21, 22, 23, 255);
-    chkPx(f.rgba, 4, 0, 1, 27, 28, 29, 255);   // color 9
-    chkPx(f.rgba, 4, 1, 1, 27, 28, 29, 255);
-    chkPx(f.rgba, 4, 2, 1, 27, 28, 29, 255);
-    chkPx(f.rgba, 4, 3, 1, 27, 28, 29, 255);
+    // CLX rows are stored bottom-to-top: data row 0 (color 5/7) lands at output
+    // BOTTOM (row 1); data row 1 (color 9) lands at output TOP (row 0).
+    chkPx(f.rgba, 4, 0, 1, 15, 16, 17, 255);  // color 5 (data row 0 -> bottom)
+    chkPx(f.rgba, 4, 1, 1, 0, 0, 0, 0);        // transparent
+    chkPx(f.rgba, 4, 2, 1, 21, 22, 23, 255);   // color 7
+    chkPx(f.rgba, 4, 3, 1, 21, 22, 23, 255);
+    chkPx(f.rgba, 4, 0, 0, 27, 28, 29, 255);   // color 9 (data row 1 -> top)
+    chkPx(f.rgba, 4, 1, 0, 27, 28, 29, 255);
+    chkPx(f.rgba, 4, 2, 0, 27, 28, 29, 255);
+    chkPx(f.rgba, 4, 3, 0, 27, 28, 29, 255);
 
     // CL2-frame "fill" run: control 0xBE (fill width 1) with a color byte.
     std::vector<uint8_t> buf2(27);
@@ -130,12 +132,13 @@ static void testCelRoundTrip()
     if (clx.empty()) { printf("CEL round-trip: FAIL (empty CLX)\n"); allOk = false; return; }
     auto fr = decodeClx(clx, std::vector<uint8_t>(pal, pal + 256 * 3));
     if (fr.size() != 1) { printf("CEL round-trip: FAIL (frames=%zu)\n", fr.size()); allOk = false; return; }
-    chkPx(fr[0].rgba, 4, 0, 0, 15, 16, 17, 255);
-    chkPx(fr[0].rgba, 4, 3, 0, 15, 16, 17, 255);
-    chkPx(fr[0].rgba, 4, 0, 1, 0, 0, 0, 0);
-    chkPx(fr[0].rgba, 4, 1, 1, 0, 0, 0, 0);
-    chkPx(fr[0].rgba, 4, 2, 1, 21, 22, 23, 255);
-    chkPx(fr[0].rgba, 4, 3, 1, 21, 22, 23, 255);
+    // Flipped rows: old data row0 ([5,5,5,5]) -> new row1; old row1 ([.,.,7,7]) -> new row0.
+    chkPx(fr[0].rgba, 4, 0, 0, 0, 0, 0, 0);
+    chkPx(fr[0].rgba, 4, 1, 0, 0, 0, 0, 0);
+    chkPx(fr[0].rgba, 4, 2, 0, 21, 22, 23, 255);
+    chkPx(fr[0].rgba, 4, 3, 0, 21, 22, 23, 255);
+    chkPx(fr[0].rgba, 4, 0, 1, 15, 16, 17, 255);
+    chkPx(fr[0].rgba, 4, 3, 1, 15, 16, 17, 255);
     if (fr[0].width != 4 || fr[0].height != 2) { printf("CEL round-trip: FAIL dims\n"); allOk = false; }
     printf("CEL round-trip: %s\n", allOk ? "PASS" : "FAIL");
 }
@@ -158,12 +161,13 @@ static void testCl2RoundTrip()
     auto clx = cl2ToClx(cb.data(), cb.size(), 4);
     auto fr = decodeClx(clx, std::vector<uint8_t>(pal, pal + 256 * 3));
     if (fr.size() != 1) { printf("CL2 round-trip: FAIL (frames=%zu)\n", fr.size()); allOk = false; return; }
-    chkPx(fr[0].rgba, 4, 0, 0, 15, 16, 17, 255);
-    chkPx(fr[0].rgba, 4, 3, 0, 15, 16, 17, 255);
-    chkPx(fr[0].rgba, 4, 0, 1, 0, 0, 0, 0);
-    chkPx(fr[0].rgba, 4, 1, 1, 0, 0, 0, 0);
-    chkPx(fr[0].rgba, 4, 2, 1, 21, 22, 23, 255);
-    chkPx(fr[0].rgba, 4, 3, 1, 21, 22, 23, 255);
+    // Flipped rows: old data row0 ([5,5,5,5]) -> new row1; old row1 ([.,.,7,7]) -> new row0.
+    chkPx(fr[0].rgba, 4, 0, 0, 0, 0, 0, 0);
+    chkPx(fr[0].rgba, 4, 1, 0, 0, 0, 0, 0);
+    chkPx(fr[0].rgba, 4, 2, 0, 21, 22, 23, 255);
+    chkPx(fr[0].rgba, 4, 3, 0, 21, 22, 23, 255);
+    chkPx(fr[0].rgba, 4, 0, 1, 15, 16, 17, 255);
+    chkPx(fr[0].rgba, 4, 3, 1, 15, 16, 17, 255);
     if (fr[0].width != 4 || fr[0].height != 2) { printf("CL2 round-trip: FAIL dims\n"); allOk = false; }
     printf("CL2 round-trip: %s\n", allOk ? "PASS" : "FAIL");
 }

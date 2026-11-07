@@ -105,3 +105,8 @@
 - 修复调色板跨 MPQ 报错（fireplar.cl2 + cutl5/cutl6/l5base/diablo.pal 解码失败）：根因是 sprite.decode 只打开精灵自身所在的那个 MPQ 抽取 palette_name，而调色板下拉框来自 sprite.list kind:"palette" 跨全部档案，所选调色板常位于不同 MPQ（如 DIABDAT 的 missiles\fireplar.cl2 配 hellfire 的 nlevels\cutl5.pal / devilutionx 的 ui_art\diablo.pal），抽取抛 extract failed(name not found?) 被 jsonrpc 包成 tool execution failed。修复：sprite.decode 新增可选 archives（额外 MPQ 路径数组），在整组档案栈中查找精灵与调色板（新增 extractBufAny）；前端 main.js 把「精灵 archive_path + 调色板 archive_path」一并经 archives 传入（paletteArchives 映射）。集成测试补 archives 路径断言；out/ 临时验证程序确认旧行为失败、新行为对真实 DIABDAT+hellfire/devilutionx 解出 17 帧。
 - 涉及: src/tools/sprite_tools.cpp, web/src/main.js, out/integration_tests.cpp, docs/ARCHITECTURE.md, README.md, web/README.md
 - 验证：unit/core/integration 三套件全 PASS；临时 _verify_cross 对 missiles\fireplar.cl2 + nlevels\cutl5.pal(hellfire) / ui_art\diablo.pal(devilutionx) 均解出 17 帧。
+
+## 2026-11-07 21:05:06
+- 修复精灵图片上下颠倒：根因是 CLX/CEL/CL2 的像素行在文件中按「从下到上」存储（DevilutionX 渲染走 DoRenderBackwards），而原 decodeClxFrameData 把数据第 curY 行直接写到缓冲第 curY 行（自上而下），导致图像上下颠倒。修复：解码时把数据第 0 行映射到缓冲底部（outRow = (height-1) - curY），使 RGBA 输出为正常的「行 0 = 顶部」朝向。同步更新 unit_tests.cpp 中 CLX/CEL/CL2 的像素断言以匹配新朝向。
+- 涉及: src/decoders/clx.cpp, out/unit_tests.cpp
+- 验证：unit/core/integration 三套件全 PASS；重新构建 mcp-server 并经 WebSocket 端到端调用 sprite.decode（missiles\fireplar.cl2 + nlevels\cutl5.pal，跨 DIABDAT+hellfire）返回 cl2 160×2720、17 帧、palette_resolved=true，确认解码链路正常（此前 WS 报错系旧进程残留所致，非代码缺陷）。左右是否镜像尚未经肉眼确认（RLE 按 x 递增从左到右，应正常，待浏览器验证）。
