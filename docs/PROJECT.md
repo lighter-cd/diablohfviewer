@@ -381,14 +381,17 @@ DiabloHFConverter/
     `towners.tsv`(`animWidth`) 取宽；`items`(CEL) 无宽度表，仍需手填。`towners/animals/cow.cel`
     是 `towners.cpp` 硬编码特例，不在 TSV 中，自动查表会回退到手动宽度。
   - 调色板用任意 256 色 `.pal` 即可出形，选对游戏调色板则颜色正确。
-  - 单测：`out/unit_tests.cpp` 含 CLX/CEL/CL2 round-trip、**CL2 畸形/截断输入拒绝**、PCX、
-    palette、**PNG write round-trip**；构建与运行见仓库根 `README.md` §1（解码器单测）与
-    §5（精灵渲染）。
+  - 单测：`out/unit_tests.cpp` 含 CLX/CEL/CL2 round-trip、**CL2/CEL 畸形输入与错误 `width`
+    拒绝**、PCX、palette、**PNG write round-trip**；构建与运行见仓库根 `README.md` §1
+    （解码器单测）与 §5（精灵渲染）。
   - [x] 修复 CL2 解码器越界崩溃（2026-11-08）：`src/decoders/cl2.cpp` 对所有文件偏移做边界
     校验、帧循环改为 `src < frameEnd`、坏数据抛异常转干净 JSON-RPC error。根因
     `cl2.cpp:24` 无边界的头部探测 + `cl2.cpp:64` 的 `!=` 循环让残缺 CL2
     （`monsters\darkmage\dmagew.cl2`，96 字节 stub）越界读触发 SIGSEGV。回归测试
     `testCl2RejectsMalformed`（单元）与 `testSpriteDecodeRejectsTruncatedCl2`（端到端）。
+  - [x] 修复 CEL 解码器错误 `width` 崩溃（2026-11-08）：`src/decoders/cel.cpp` 同样加偏移
+    校验、`src < srcEnd`、`int remaining`（原 `unsigned` 会下溢空转），错误宽度
+    （`cow.cel` 传 64/96/160）不再 SIGSEGV。回归测试 `testCelRejectsMalformed`。
 
 ### 阶段 2：角色查看器（目标 2）
 
@@ -457,6 +460,15 @@ DiabloHFConverter/
       `/` 与 `\` 混用使同一 MPQ 被打开两次报 `cannot open archive`）。回归测试
       `testSpriteDecodeCrossArchive` 断言「单 MPQ 失败 / 全栈成功」；全量 325 条合成目录中
       116 条由此修好（用户报告的 6 条全部由失败转 OK）。
+- [x] 修复目录幽灵条目与 cow 宽度（2026-11-08）：
+      - `synthesizeMonsters` 排除 `worm\worm`（4 个 `availability=Never` 的 beta 占位怪物共用，
+        MPQ 无对应 CL2，共 5 条）。**不按 `availability` 过滤**——其余 15 个 Never suffix
+        （golem / unrav / diablo …）都真实存在，误删会丢真实精灵。
+      - `synthesizeTowners` 从 `TOWN_COW` 行读取 `animWidth=128` 填入硬编码的
+        `towners\animals\cow.cel`；`autoWidth` 增加 `TOWN_COW` 回退（cow 的 `animPath` 为空、
+        CEL 路径只在 `towners.cpp` 硬编码），使 `width:"auto"` 能解码（96 帧）。
+      - 回归测试 `testSpriteListCatalogFixes`（目录过滤 + 宽度）与 `testSpriteDecodeCow`（auto
+        解码 + 错误宽度不崩）。全量 320 条回归 ok=319，仅剩 dmagew 残缺 CL2 的预期干净错误。
 
 ### 特效叠加层（alpha 合成）
 - 通用叠加子系统：在任一浏览模式下选中基础精灵后，右侧「特效叠加层」面板（默认折叠，点「展开」）可把

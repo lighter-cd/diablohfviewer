@@ -306,9 +306,17 @@ cmake --build . --target mcp-server
      （`monsters\darkmage\dmagew.cl2`，DIABDAT.MPQ 内的 stub）会让 `src` 越过缓冲区触发
      SIGSEGV，连带同批 stdio 请求全部丢失；修复后返回 `invalid CL2: ...`，全量 325 条
      回归 `NO RESPONSE` 由 15 降为 0。
+   - **`celToClx` 输入校验**（2026-11-08）：`src/decoders/cel.cpp` 同样加 `[data, data+size)`
+     偏移校验、`src < srcEnd`、以及 `int remaining`（原 `unsigned` 在超宽 run 时下溢空转），
+     错误 `frameWidth`（如 `cow.cel` 传 64/96/160）不再 SIGSEGV。
+   - **目录合成修数据**（2026-11-08）：`synthesizeMonsters` 排除 `worm\worm`（beta 占位、
+     MPQ 无 CL2；不按 `availability` 过滤以免误删 golem/unrav 等 15 个真实 Never 条目）；
+     `synthesizeTowners` 从 `TOWN_COW` 行取 `animWidth=128` 填入硬编码 cow，
+     `autoWidth` 增加 `TOWN_COW` 回退使 `cow.cel` 的 `width:"auto"` 可解码。
    - **单元验证**（三套件，均 PASS，见 `README.md` §测试）：
-     - `out/unit_tests.cpp`：CLX 解码、CEL→CLX / CL2→CLX 往返、**CL2 畸形/截断输入拒绝**
-       （`testCl2RejectsMalformed`）、PCX 内嵌调色板、调色板加载、base64 编解码（无需 MPQ）。
+     - `out/unit_tests.cpp`：CLX 解码、CEL→CLX / CL2→CLX 往返、**CL2/CEL 畸形输入与错误
+       width 拒绝**（`testCl2RejectsMalformed` / `testCelRejectsMalformed`）、PCX 内嵌调色板、
+       调色板加载、base64 编解码（无需 MPQ）。
      - `out/core_tests.cpp`：`ToolRegistry` 注册/重名/分发/异常/`list`，`handleRequest`
        的 `tools/list`/`tools/call` 与各错误码（无需 MPQ）。
      - `out/integration_tests.cpp`：`engine::Archive` 全链路（open/list/verify/querySize/

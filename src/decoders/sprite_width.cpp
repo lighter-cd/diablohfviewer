@@ -262,6 +262,19 @@ int autoWidth(const std::string& spritePath, const std::filesystem::path& devRoo
                 return atoi(w.c_str());
             }
         }
+        // The cow has no animPath (its CEL is hardcoded in DevilutionX's
+        // towners.cpp and cows share a sprite sheet), but its width IS tabulated
+        // on the TOWN_COW rows (animWidth=128). Fall back to that instead of
+        // failing width:"auto" for towners\animals\cow.cel.
+        if (rel == "towners\\animals\\cow") {
+            for (const auto& f : twnFiles) {
+                std::string w = lookupInTsv(f, "type", "TOWN_COW", "animWidth");
+                if (!w.empty()) {
+                    dbg = "towner TOWN_COW animWidth=" + w;
+                    return atoi(w.c_str());
+                }
+            }
+        }
         dbg = "towner '" + rel + "' not found in towners";
         return -1;
     }

@@ -570,6 +570,15 @@ mcp::json synthesizeMonsters(const std::filesystem::path& devRoot) {
             std::string suffix = parts[ciSuffix];
             if (suffix.empty())
                 continue;
+            // monstdat.tsv keeps 4 unused beta monsters (Wyrm / Cave Slug /
+            // Devil Wyrm / Devourer) that all share the `worm\worm` suffix. No
+            // MPQ ships these CL2s, so they would appear in the catalog but
+            // always fail to decode. Do NOT filter on availability=Never here:
+            // 15 other Never suffixes (golem, unrav, diablo, ...) DO have real
+            // CL2 files and must stay in the catalog.
+            static const std::set<std::string> kNoSpriteSuffixes = {"worm\\worm"};
+            if (kNoSpriteSuffixes.count(suffix))
+                continue;
             // frames[6] is comma-separated: Stand,Walk,Attack,GotHit,Death,Special.
             std::vector<std::string> fr;
             std::string cur;
@@ -610,6 +619,9 @@ mcp::json synthesizeMonsters(const std::filesystem::path& devRoot) {
 mcp::json synthesizeTowners(const std::filesystem::path& devRoot) {
     mcp::json out = mcp::json::array();
     std::set<std::string> seen;
+    // TOWN_COW rows in towners.tsv have an empty animPath but a valid animWidth
+    // (128). Capture it for the hardcoded cow entry below.
+    int cowWidth = 0;
     const std::vector<std::filesystem::path> files = {
         devRoot / "assets" / "txtdata" / "towners" / "towners.tsv",
         devRoot / "mods" / "hf" / "txtdata" / "towners" / "towners.tsv"};
@@ -624,6 +636,7 @@ mcp::json synthesizeTowners(const std::filesystem::path& devRoot) {
         int ciPath = tsvCol(header, "animPath");
         int ciW = tsvCol(header, "animWidth");
         int ciName = tsvCol(header, "name");
+        int ciType = tsvCol(header, "type");
         if (ciPath < 0)
             continue;
         while (std::getline(in, line)) {
@@ -633,11 +646,17 @@ mcp::json synthesizeTowners(const std::filesystem::path& devRoot) {
             if ((int)parts.size() <= ciPath)
                 continue;
             std::string path = parts[ciPath];
-            if (path.empty())
-                continue;
             int w = (ciW >= 0 && (int)parts.size() > ciW)
                         ? std::atoi(parts[ciW].c_str())
                         : 0;
+            if (path.empty()) {
+                // TOWN_COW has no animPath (its CEL is hardcoded in towners.cpp)
+                // but does carry animWidth — remember it for the cow entry.
+                if (ciType >= 0 && (int)parts.size() > ciType &&
+                    parts[ciType] == "TOWN_COW" && w > 0)
+                    cowWidth = w;
+                continue;
+            }
             std::string name = path + ".cel";
             if (!seen.insert(name).second)
                 continue;
@@ -655,8 +674,8 @@ mcp::json synthesizeTowners(const std::filesystem::path& devRoot) {
         }
     }
     // The cow is hardcoded in DevilutionX towners.cpp (towners/animals/cow.cel);
-    // it is not in towners.tsv, so add it explicitly. Width is not tabulated —
-    // autoWidth falls back, so leave width 0 and let the viewer pass width:"auto".
+    // its towners.tsv rows have an empty animPath but animWidth=128, which we
+    // captured above. Carry the real width so the viewer/decoder can use it.
     {
         std::string name = "towners\\animals\\cow.cel";
         if (seen.insert(name).second)
@@ -666,7 +685,7 @@ mcp::json synthesizeTowners(const std::filesystem::path& devRoot) {
                                     {"type", ""},
                                     {"anim", "Idle"},
                                     {"frames_per_dir", 1},
-                                    {"width", 0}});
+                                    {"width", cowWidth > 0 ? cowWidth : 128}});
     }
     return out;
 }

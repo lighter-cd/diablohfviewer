@@ -628,6 +628,84 @@ static void testSpriteDecodeRejectsTruncatedCl2() {
     printf("sprite_tools (truncated CL2): %s\n", allOk ? "PASS" : "FAIL");
 }
 
+// sprite.list catalog fixes: the hardcoded cow carries its real width (128),
+// ghost `worm\worm` entries are gone, but other availability=Never monsters
+// (golem, unrav) must NOT be over-filtered.
+static void testSpriteListCatalogFixes() {
+    ToolRegistry reg;
+    tools::registerSpriteTools(reg);
+    auto list = [&](const std::string& fam) -> json {
+        auto resp = handleRequest(reg, json{
+            {"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/call"},
+            {"params", json{{"name", "sprite.list"},
+                            {"arguments", json{{"family", fam}}}}}});
+        CHECK(resp.has_value(), "catalog fixes: sprite.list returns a response");
+        return resp ? resp->value("result", json::object()) : json::object();
+    };
+
+    json twn = list("towners");
+    json twnSprites = twn.value("sprites", json::array());
+    bool cowFound = false;
+    for (auto& s : twnSprites) {
+        if (s.value("name", "") == "towners\\animals\\cow.cel") {
+            cowFound = true;
+            CHECK(s.value("width", 0) == 128, "cow.cel catalog width == 128");
+        }
+    }
+    CHECK(cowFound, "towner catalog still includes the hardcoded cow");
+
+    json mon = list("monsters");
+    json monSprites = mon.value("sprites", json::array());
+    bool hasWorm = false, hasGolem = false, hasUnrav = false;
+    for (auto& s : monSprites) {
+        std::string n = s.value("name", "");
+        if (n.rfind("monsters\\worm\\worm", 0) == 0) hasWorm = true;
+        if (n == "monsters\\golem\\golemw.cl2") hasGolem = true;
+        if (n == "monsters\\unrav\\unravw.cl2") hasUnrav = true;
+    }
+    CHECK(!hasWorm, "ghost worm\\worm entries excluded from monster catalog");
+    CHECK(hasGolem, "availability=Never golem stays (not over-filtered)");
+    CHECK(hasUnrav, "availability=Never unrav stays (not over-filtered)");
+    printf("sprite_tools (catalog fixes): %s\n", allOk ? "PASS" : "FAIL");
+}
+
+// cow.cel must decode with width:"auto" (its animWidth is on the TOWN_COW
+// rows, not animPath), and a wrong width must be rejected cleanly rather than
+// crashing the process with SIGSEGV.
+static void testSpriteDecodeCow() {
+    std::string mpq = findMonsterMpq();
+    if (mpq.empty()) {
+        printf("  (skipped cow decode; no MPQ fixture)\n");
+        return;
+    }
+    ToolRegistry reg;
+    tools::registerMpqTools(reg);
+    tools::registerSpriteTools(reg);
+    auto call = [&](const json& args) -> json {
+        auto resp = handleRequest(reg, json{
+            {"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/call"},
+            {"params", json{{"name", "sprite.decode"}, {"arguments", args}}}});
+        return resp ? *resp : json::object();
+    };
+
+    json autoResp = call(json{{"archive", mpq},
+                              {"name", "towners\\animals\\cow.cel"},
+                              {"width", "auto"},
+                              {"palette_name", "gendata\\cut2.pal"}});
+    CHECK(!autoResp.contains("error"), "cow width:auto has no JSON-RPC error");
+    json dec = autoResp.value("result", json::object());
+    CHECK(dec.value("format", std::string()) == "cel", "cow decodes as cel");
+    CHECK(dec.value("frame_count", 0) == 96, "cow frame_count == 96");
+
+    json bad = call(json{{"archive", mpq},
+                         {"name", "towners\\animals\\cow.cel"},
+                         {"width", 64},
+                         {"palette_name", "gendata\\cut2.pal"}});
+    CHECK(bad.is_object() && (bad.contains("result") || bad.contains("error")),
+          "cow with bad width returns a response (no SIGSEGV)");
+    printf("sprite_tools (cow width): %s\n", allOk ? "PASS" : "FAIL");
+}
+
 int main() {
     printf("=== DiabloHFConverter integration tests (engine + mpq_tools + sprite_tools) ===\n");
     testNormalize();
@@ -656,6 +734,8 @@ int main() {
     testSpriteDecodeMonster();
     testSpriteDecodeCrossArchive();
     testSpriteDecodeRejectsTruncatedCl2();
+    testSpriteListCatalogFixes();
+    testSpriteDecodeCow();
     printf("=== %s ===\n", allOk ? "ALL PASS" : "FAILURES PRESENT");
     return allOk ? 0 : 1;
 }

@@ -144,6 +144,55 @@ static void testCelRoundTrip()
 }
 
 // ---------------------------------------------------------------------------
+// decoders: malformed CEL / wrong frameWidth must be rejected, never SIGSEGV.
+// Regression for towners\animals\cow.cel decoded with width 64/96/160.
+// ---------------------------------------------------------------------------
+static void testCelRejectsMalformed()
+{
+    auto w32 = [](std::vector<uint8_t>& b, size_t o, uint32_t v) { WriteLE32(&b[o], v); };
+    auto w16 = [](std::vector<uint8_t>& b, size_t o, uint16_t v) { WriteLE16(&b[o], v); };
+    auto expectThrow = [](const std::vector<uint8_t>& b, uint16_t w, const char* label) {
+        bool threw = false;
+        try {
+            auto clx = celToClx(b.data(), b.size(), w);
+            (void)clx;
+        } catch (const std::runtime_error&) {
+            threw = true;
+        }
+        if (!threw) {
+            printf("  %s: FAIL (no exception)\n", label);
+            allOk = false;
+        }
+    };
+
+    expectThrow(std::vector<uint8_t>(0), 4, "empty CEL rejected");
+    expectThrow(std::vector<uint8_t>(3, 0), 4, "3-byte CEL rejected");
+
+    // The same valid 4-wide CEL as testCelRoundTrip, but with a wrong width:
+    // src used to run past srcEnd and crash (SIGSEGV).
+    std::vector<uint8_t> cb(35);
+    w32(cb, 0, 1); w32(cb, 4, 16); w32(cb, 8, 35); w32(cb, 12, 35);
+    w16(cb, 16, 10);
+    uint8_t celpix[] = { 0x04, 5, 5, 5, 5, 0xFE, 0x02, 7, 7 };
+    memcpy(&cb[26], celpix, sizeof(celpix));
+    expectThrow(cb, 64, "wrong frameWidth rejected (no SIGSEGV)");
+
+    // Non-monotonic frame offsets.
+    std::vector<uint8_t> nonMono(24, 0);
+    w32(nonMono, 0, 2); w32(nonMono, 4, 16);
+    w32(nonMono, 8, 8); w32(nonMono, 12, 24);
+    expectThrow(nonMono, 4, "non-monotonic frame offsets rejected");
+
+    // Frame offset past EOF.
+    std::vector<uint8_t> pastEof(16, 0);
+    w32(pastEof, 0, 1); w32(pastEof, 4, 999999);
+    w32(pastEof, 8, 16); w32(pastEof, 12, 16);
+    expectThrow(pastEof, 4, "frame offset past EOF rejected");
+
+    printf("CEL malformed-input: %s\n", allOk ? "PASS" : "FAIL");
+}
+
+// ---------------------------------------------------------------------------
 // decoders: CL2 -> CLX -> decode round trip
 // ---------------------------------------------------------------------------
 static void testCl2RoundTrip()
@@ -525,6 +574,7 @@ int main()
     printf("=== DiabloHFConverter unit tests ===\n");
     testClxDecode();
     testCelRoundTrip();
+    testCelRejectsMalformed();
     testCl2RoundTrip();
     testCl2RejectsMalformed();
     testPcxDecode();
