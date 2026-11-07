@@ -51,3 +51,7 @@
 ## 2026-11-07 15:48:32
 - 新增 src/decoders/png.cpp + png.h：无依赖 zlib 的自带 PNG 写入器（存储块 deflate + adler32/crc32），将 DecodedFrame 的 RGBA 输出为 PNG；并新增 mpq-info/render_sprite.cpp，串联 CL2/CEL→CLX→RGBA→PNG，把 out/extracted 中已抽取精灵渲染为 PNG（需按 DevilutionX 动画表传入帧宽，如 warrior Stand=96）。验证：warrior 立姿渲染为 96×96 战士精灵（80 帧=8 方向×10 均可解码无错位）。PNG 编码器含 round-trip 单元测试；README §1 构建命令与 §5 使用说明同步更新。
 - 涉及: src/decoders/png.cpp, src/decoders/png.h, mpq-info/render_sprite.cpp, README.md, out/unit_tests.cpp, .gitignore
+
+## 2026-11-07 16:01:28
+- 补充文档同步：将 docs/PROJECT.md 阶段 1 清单四项标记完成（.pal/.cel/.cl2/PCX 解码 + 精灵→PNG 离屏渲染），并补开发者向细节（源码文件、无依赖 zlib 的 png.cpp、帧宽需按 DevilutionX 动画表传入的注意点、单测位置）。本轮仅文档，无源码改动；修正此前仅更新 README §5 而未更新 docs/PROJECT.md 的文档同步疏漏。
+- 涉及: docs/PROJECT.md

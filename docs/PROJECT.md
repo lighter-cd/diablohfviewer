@@ -361,11 +361,23 @@ DiabloHFConverter/
 > `mpq.recover`（DIABDAT 静态字典已恢复 81 个真实文件名）。详见
 > `docs/ARCHITECTURE.md`。阶段 1+ 的解码器（`src/decoders/`）待实现。
 
-### 阶段 1：精灵与调色板解码
-- [ ] 解码 `.pal` 调色板。
-- [ ] 解码 `.cel` / `.cl2`（含帧组、RLE、透明），移植 `load_cel` / `load_cl2`。
-- [ ] PCX 解码（`load_pcx`）。
-- [ ] 产出：任意精灵 → PNG 的离屏渲染。
+### 阶段 1：精灵与调色板解码（基本完成，2026-11-07）
+- [x] 解码 `.pal` 调色板：`src/decoders/palette.cpp`（`loadPalette` 256×3→RGB、`paletteToRGBA`）。
+- [x] 解码 `.cel` / `.cl2`（含帧组、RLE、透明）：`cl2.cpp`/`cel.cpp` 将 CEL/CL2 移植为 CLX
+     （`cl2ToClx`/`celToClx`，忠实移植 DevilutionX `Cl2ToClx`/`CelToClx`），由 `clx.cpp` 的
+      `decodeClx`/`decodeClxList` 处理帧组（sheet）、CL2 帧 RLE 与透明（alpha=0），
+      输出 `DecodedFrame`（RGBA8，4B/px，行主序）。
+- [x] PCX 解码：`src/decoders/pcx.cpp`（`decodePcx`，含内嵌调色板）。
+- [x] 产出：任意精灵 → PNG 的离屏渲染：`src/decoders/png.cpp`（`writePNG`，**无依赖 zlib** 的
+      存储块 deflate 编码器）+ `mpq-info/render_sprite.cpp`（串联 CL2/CEL→CLX→RGBA→PNG，
+      把 `out/extracted/` 中已抽取精灵渲染为 PNG）。已验证 `plrgfx\warrior\wlu\wluas.cl2`
+      渲染为 96×96 战士立姿（80 帧 = 8 方向×10 均可解码无错位）。
+  - **注意**：CL2/CEL 文件**不存储帧宽**，渲染时需按 DevilutionX 动画表传入 `width`
+    （如 warrior Stand=96、Attack/Death=128，见各 `sprites.tsv` 的 `stand`/`attack`… 列；
+    怪物/导弹/物品/物件/NPC 各有对应宽度）。调色板用任意 256 色 `.pal` 即可出形，
+    选对游戏调色板则颜色正确。
+  - 单测：`out/unit_tests.cpp` 含 CLX/CEL/CL2 round-trip、PCX、palette、**PNG write round-trip**；
+    构建与运行见仓库根 `README.md` §1（解码器单测）与 §5（精灵渲染）。
 
 ### 阶段 2：角色查看器（目标 2）
 - [ ] 枚举各职业所有动画模式（walk/attack/spellcast/hit/death/idle…）。
