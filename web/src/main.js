@@ -18,6 +18,10 @@ const DECODABLE = new Set(["cl2", "cel", "clx", "pcx"]);
 const client = new McpClient();
 let currentFrames = null;   // last decode result frames, for the frame slider
 let lastSprite = null;      // last selected sprite (re-decode when palette changes)
+// Map palette name -> owning MPQ path (from sprite.list kind:"palette"). Used to
+// tell sprite.decode which extra MPQ holds the palette, since a palette often
+// lives in a different MPQ than the sprite (e.g. Hellfire palette on a DIABDAT sprite).
+const paletteArchives = new Map();
 
 client.onStatus = (connected) => {
   const s = $("status");
@@ -82,6 +86,7 @@ async function loadPalettes() {
       opt.value = p.name;
       opt.textContent = basename(p.name);
       opt.title = p.name;
+      paletteArchives.set(p.name, p.archive_path || "");
       sel.appendChild(opt);
     }
   } catch (e) {
@@ -115,10 +120,19 @@ async function onSelectSprite(sprite) {
     return;
   }
 
+  // The palette may live in a different MPQ than the sprite (e.g. Hellfire
+  // palette on a DIABDAT sprite). Pass the sprite's archive plus the palette's
+  // owning archive so sprite.decode can resolve it across the MPQ stack.
+  const paletteArchive = paletteArchives.get(palette) || "";
+  const archives = [archive];
+  if (paletteArchive && !archives.includes(paletteArchive))
+    archives.push(paletteArchive);
+
   setMeta("decoding " + sprite.name + " …");
   try {
     const res = await client.callTool("sprite.decode", {
       archive,
+      archives,
       name: sprite.name,
       width: "auto",
       palette_name: palette,

@@ -142,13 +142,17 @@ public:
 | `mpq.recover`  | `{archive,dict_path}` | `{recovered:[{name,size}]}`（移植 mpq-recover） | 0 |
 | `mpq.dump`     | `{archive,name,max_bytes?}` | `{name,size,preview_hex}`（前 N 字节十六进制预览；移植 mpqextract `dump`） | 0 |
 | `palette.load` | `{archive,name}` | `{name,count,colors:[[r,g,b]×256],rgba_base64}` | ✅ |
-| `sprite.decode`| `{archive,name,palette?,frame?,width?}` | `{name,format,width,height,frame_count,palette_resolved,frames:[{index,width,height,rgba_base64}]}`（`.clx` 直解；`.cel`/`.cl2` 经 `celToClx`/`cl2ToClx` 转 CLX 后解；`.pcx` 走内置解码。格式由扩展名自动探测。`width` 为 `.cel`/`.cl2` 必需，支持 `width:"auto"` 按路径自动查表） | ✅ |
+| `sprite.decode`| `{archive,name,archives?,palette?,frame?,width?}` | `{name,format,width,height,frame_count,palette_resolved,frames:[{index,width,height,rgba_base64}]}`（`.clx` 直解；`.cel`/`.cl2` 经 `celToClx`/`cl2ToClx` 转 CLX 后解；`.pcx` 走内置解码。格式由扩展名自动探测。`width` 为 `.cel`/`.cl2` 必需，支持 `width:"auto"` 按路径自动查表。`archives` 为额外 MPQ 路径数组，精灵/调色板可来自与 `archive` 不同的 MPQ，前端据此跨档案解析调色板） | ✅ |
 | `sprite.list`  | `{dict?,devilutionx_root?,family?,class?,kind?}` | `{count,sprites:[{name,archive,archive_path,family,class,type,width}]}`（从 `recovered.json` + DevilutionX 数据表枚举**真实存在的**精灵名并分类 family/class/type、带自动帧宽，供前端建目录树；`archive_path` 直接取自 recovered.json 的档案 `path`，前端无需再手动填 MPQ 路径；`kind` 默认 `sprite`（CL2/CEL），可传 `palette` 仅列 `.pal` 调色板、`all` 两者都列，用于前端调色板下拉框；无 listfile 时 `mpq.list` 给的是占位名，故需此工具） | ✅ |
 | `map.build`    | `{archive,dun,...}` | `{tiles:[...],width,height}` | 4 |
 
 > **PCX 已并入 `sprite.decode`**（按 `.pcx` 扩展名自动路由），不再单独设 `pcx.decode` 工具。
 > `sprite.decode` 的调色板解析优先级：`palette`（base64 或名称）→ 文件内嵌（PCX）→ 同目录
 > `<base>.pal`；都找不到则报错。返回中 `palette_resolved` 标记是否成功解析到调色板。
+> **跨 MPQ 调色板**：精灵与其调色板常不在同一档案（如 DIABDAT 的 `missiles\fireplar.cl2` 配
+> hellfire 的 `nlevels\cutl5.pal`）。前端把「精灵所在 MPQ + 调色板所在 MPQ」一并经 `archives`
+> 传入，`sprite.decode` 在整组档案栈中查找；缺省只查 `archive`（旧行为，跨档案会报
+> `extract failed (name not found?)`）。
 > 工具名用点分命名空间，便于 Agent 理解分组，也方便前端按前缀路由 UI。
 
 ---

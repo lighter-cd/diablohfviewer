@@ -331,6 +331,20 @@ static void testSpriteDecode(const std::string& mpq) {
               dec["frames"][0].value("height", 0) > 0,
           "sprite.decode frame has positive width/height");
 
+    // Exercise the new `archives` parameter (extra MPQ stack): pass the same MPQ
+    // again so the dedupe + extractBufAny path is exercised. Cross-MPQ resolution
+    // (palette in a *different* MPQ than the sprite) is verified manually with
+    // DIABDAT + hellfire MPQs, since this suite has a single fixture.
+    json dec2 = call("sprite.decode",
+                     json{{"archive", mpq},
+                          {"archives", json::array({mpq})},
+                          {"name", clxName},
+                          {"palette_name", palName}});
+    CHECK(dec2.value("format", std::string()) == "clx",
+          "sprite.decode with archives param still decodes");
+    CHECK(dec2.value("frame_count", 0) > 0,
+          "sprite.decode with archives param frame_count > 0");
+
     printf("sprite_tools (decode): %s\n", allOk ? "PASS" : "FAIL");
 }
 

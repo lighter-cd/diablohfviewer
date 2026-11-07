@@ -100,3 +100,8 @@
 - 涉及: src/tools/sprite_tools.cpp, out/integration_tests.cpp, README.md, web/index.html, web/styles.css, web/src/main.js, web/README.md, docs/ARCHITECTURE.md
 - 验证：unit/core/integration 三套件全 PASS；sprite.list kind:"palette" 对真实 recovered.json 返回 27 个 .pal，kind:"all" 含精灵+调色板。
 - 涉及: web/index.html, web/src/main.js, web/README.md, docs/ARCHITECTURE.md
+
+## 2026-11-07 20:41:52
+- 修复调色板跨 MPQ 报错（fireplar.cl2 + cutl5/cutl6/l5base/diablo.pal 解码失败）：根因是 sprite.decode 只打开精灵自身所在的那个 MPQ 抽取 palette_name，而调色板下拉框来自 sprite.list kind:"palette" 跨全部档案，所选调色板常位于不同 MPQ（如 DIABDAT 的 missiles\fireplar.cl2 配 hellfire 的 nlevels\cutl5.pal / devilutionx 的 ui_art\diablo.pal），抽取抛 extract failed(name not found?) 被 jsonrpc 包成 tool execution failed。修复：sprite.decode 新增可选 archives（额外 MPQ 路径数组），在整组档案栈中查找精灵与调色板（新增 extractBufAny）；前端 main.js 把「精灵 archive_path + 调色板 archive_path」一并经 archives 传入（paletteArchives 映射）。集成测试补 archives 路径断言；out/ 临时验证程序确认旧行为失败、新行为对真实 DIABDAT+hellfire/devilutionx 解出 17 帧。
+- 涉及: src/tools/sprite_tools.cpp, web/src/main.js, out/integration_tests.cpp, docs/ARCHITECTURE.md, README.md, web/README.md
+- 验证：unit/core/integration 三套件全 PASS；临时 _verify_cross 对 missiles\fireplar.cl2 + nlevels\cutl5.pal(hellfire) / ui_art\diablo.pal(devilutionx) 均解出 17 帧。

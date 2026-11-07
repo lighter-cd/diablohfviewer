@@ -52,6 +52,21 @@ std::vector<uint8_t> extractBuf(engine::Archive& a, const std::string& name)
     return buf;
 }
 
+// Try each archive in turn until one yields the file. A palette (or the sprite
+// itself) may live in a *different* MPQ than the one the sprite was listed from
+// — e.g. a Hellfire palette applied to a DIABDAT sprite — so sprite.decode must
+// be able to search an archive stack, not just the sprite's own archive.
+std::vector<uint8_t> extractBufAny(const std::vector<engine::Archive>& archs,
+                                   const std::string& name)
+{
+    for (auto& a : archs) {
+        std::vector<uint8_t> buf;
+        if (a.extract(name, buf))
+            return buf;
+    }
+    throw std::runtime_error("extract failed (name not found?): " + name);
+}
+
 std::string toLower(std::string s)
 {
     std::transform(s.begin(), s.end(), s.begin(),
@@ -89,7 +104,8 @@ std::vector<uint8_t> paletteFromBytes(const std::vector<uint8_t>& raw)
 //   3. embeddedPal        (e.g. a PCX-embedded palette)
 //   4. <base>.pal         (same directory/stem as the sprite)
 // Throws if nothing usable is found.
-std::vector<uint8_t> resolvePalette(engine::Archive& a, const mcp::json& params,
+std::vector<uint8_t> resolvePalette(const std::vector<engine::Archive>& archs,
+                                    const mcp::json& params,
                                     const std::string& spriteName,
                                     const std::vector<uint8_t>* embeddedPal)
 {
@@ -101,7 +117,7 @@ std::vector<uint8_t> resolvePalette(engine::Archive& a, const mcp::json& params,
     }
     if (params.contains("palette_name") && params["palette_name"].is_string()) {
         std::string pn = params["palette_name"].get<std::string>();
-        auto pal = decoders::loadPalette(extractBuf(a, pn));
+        auto pal = decoders::loadPalette(extractBufAny(archs, pn));
         if (pal.size() == 256 * 3)
             return pal;
         throw std::runtime_error("palette not valid: " + pn);
@@ -109,7 +125,7 @@ std::vector<uint8_t> resolvePalette(engine::Archive& a, const mcp::json& params,
     if (embeddedPal && embeddedPal->size() == 256 * 3)
         return *embeddedPal;
 
-    // Try <base>.pal alongside the sprite.
+    // Try <base>.pal alongside the sprite (search the whole archive stack).
     std::string base = spriteName;
     auto pos = base.find_last_of("\\/");
     std::string dir  = (pos == std::string::npos) ? "" : base.substr(0, pos + 1);
@@ -117,10 +133,12 @@ std::vector<uint8_t> resolvePalette(engine::Archive& a, const mcp::json& params,
     auto dot = file.find_last_of('.');
     std::string stem = (dot == std::string::npos) ? file : file.substr(0, dot);
     std::string palName = dir + stem + ".pal";
-    if (a.verify(palName)) {
-        auto pal = decoders::loadPalette(extractBuf(a, palName));
+    try {
+        auto pal = decoders::loadPalette(extractBufAny(archs, palName));
         if (pal.size() == 256 * 3)
             return pal;
+    } catch (const std::exception&) {
+        // fall through to the "not found" error below
     }
     throw std::runtime_error(
         "no palette supplied and none found (pass palette_name or palette_b64); tried " + palName);
@@ -155,8 +173,26 @@ mcp::ToolResult toolSpriteDecode(const mcp::json& params)
 {
     std::string archive = reqStr(params, "archive");
     std::string name    = reqStr(params, "name");
-    auto a = openOrThrow(archive);
-    auto buf = extractBuf(a, name);
+
+    // Build the archive stack: the sprite's own archive first, plus any extra
+    // MPQs supplied via `archives` (e.g. the MPQ that holds the chosen palette).
+    // This lets a palette in a different MPQ than the sprite still be resolved.
+    std::vector<std::string> paths;
+    paths.push_back(archive);
+    if (params.contains("archives") && params["archives"].is_array()) {
+        for (auto& ap : params["archives"]) {
+            if (!ap.is_string())
+                continue;
+            std::string p = ap.get<std::string>();
+            if (std::find(paths.begin(), paths.end(), p) == paths.end())
+                paths.push_back(p);
+        }
+    }
+    std::vector<engine::Archive> archs;
+    for (auto& p : paths)
+        archs.push_back(openOrThrow(p));
+
+    auto buf = extractBufAny(archs, name);
 
     std::string lower = toLower(name);
     std::vector<uint8_t> clxBytes;
@@ -214,7 +250,7 @@ mcp::ToolResult toolSpriteDecode(const mcp::json& params)
     if (format == "pcx") {
         // Prefer an explicitly supplied palette; otherwise keep the embedded one.
         try {
-            std::vector<uint8_t> pal = resolvePalette(a, params, name, &embeddedPal);
+            std::vector<uint8_t> pal = resolvePalette(archs, params, name, &embeddedPal);
             decoders::DecodedFrame fr;
             decoders::decodePcx(buf, fr, nullptr, &pal);
             frames.clear();
@@ -224,7 +260,7 @@ mcp::ToolResult toolSpriteDecode(const mcp::json& params)
             havePal = !embeddedPal.empty();
         }
     } else {
-        std::vector<uint8_t> pal = resolvePalette(a, params, name, nullptr);
+        std::vector<uint8_t> pal = resolvePalette(archs, params, name, nullptr);
         havePal = true;
         frames = decoders::decodeClx(clxBytes, pal);
     }
@@ -456,10 +492,15 @@ void registerSpriteTools(ToolRegistry& reg)
         "frontend can render. CEL/CL2 need a 'width'; PCX/CLX read their own "
         "dimensions. The palette comes from palette_name, palette_b64, an embedded "
         "PCX palette, or <name>.pal alongside the sprite. Pass 'frame' to get one "
-        "frame only.",
+        "frame only. The palette (or sprite) may live in a *different* MPQ than "
+        "'archive'; pass 'archives' (array of extra MPQ paths) to search the whole "
+        "stack for it.",
         json{ { "type", "object" },
               { "properties",
                 json{ { "archive", json{ { "type", "string" } } },
+                      { "archives", json{ { "type", "array" },
+                                          { "items", json{ { "type", "string" } } },
+                                          { "description", "extra MPQ paths to search for the sprite/palette (e.g. the MPQ holding the chosen palette); the sprite's 'archive' is always included" } } },
                       { "name",
                         json{ { "type", "string" },
                               { "description", "in-archive sprite name, e.g. data\\health.clx" } } },

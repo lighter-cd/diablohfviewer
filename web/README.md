@@ -47,13 +47,19 @@ web/
   `rgba_base64` 为**原始 RGBA8**（`w*h*4` 字节），不是 PNG data URL。
 - `width:"auto"` 由后端按精灵路径自动查 DevilutionX 数据表取帧宽。
 - `sprite.list` 支持 `kind`：`sprite`（默认，CL2/CEL）/ `palette`（仅 `.pal`）/ `all`。
-  前端用 `kind:"palette"` 拉取档案内全部调色板填入下拉框。
+  前端用 `kind:"palette"` 拉取**全部 MPQ** 内的 `.pal`（每条带 `archive_path`）填入下拉框。
+- `sprite.decode` 额外接受 `archives`（额外 MPQ 路径数组）：精灵与其调色板常不在同一档案
+  （如 DIABDAT 的 `missiles\fireplar.cl2` 配 hellfire 的 `nlevels\cutl5.pal`）。前端把
+  「精灵所在 MPQ + 调色板所在 MPQ」一并传入，`sprite.decode` 在档案栈中查找；若只传 `archive`
+  而调色板在别的档案，会报 `extract failed (name not found?)`。
 
 ## 交互细节
 
 - **当前资源路径**：点选精灵后，主视窗顶部醒目显示其完整 in-archive 路径（`currentName`）。
-- **调色板下拉框**：连接后由 `sprite.list(kind:"palette")` 填充档案内全部 `.pal`；切换即对该
-  精灵重新解码（无需手填路径）。不同家族精灵适用不同调色板，可手动切换观察。
+- **调色板下拉框**：连接后由 `sprite.list(kind:"palette")` 填充全部 MPQ 的 `.pal`；切换即对该
+  精灵重新解码（无需手填路径）。`main.js` 按选中调色板的 `archive_path` 连同精灵的 `archive`
+  一并经 `sprite.decode` 的 `archives` 传入，因此**即使调色板在另一个 MPQ 也能正确上色**。
+  不同家族精灵适用不同调色板，可手动切换观察。
 - **错误显式提示**：遇到暂不支持的格式、缺 `archive_path`、或解码失败，主视窗会以红色错误条
   （`errorBanner`）明确提示原因，而不会静默无反应。
 

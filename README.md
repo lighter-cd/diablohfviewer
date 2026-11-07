@@ -68,7 +68,7 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
 | `mpq.recover` | 用字典 `dict_path` 恢复真实文件名 |
 | `mpq.dump` | 前 N 字节十六进制预览 |
 | `palette.load` | 加载 `.pal` 调色板为 RGBA（`src/decoders/palette.cpp`） |
-| `sprite.decode` | 解码 `.clx` / `.cel` / `.cl2` / `.pcx` 精灵为 RGBA 帧；`.cl2`/`.cel` 传 `width` 整数或 `"auto"` 自动按路径查表（`src/tools/sprite_tools.cpp`） |
+| `sprite.decode` | 解码 `.clx` / `.cel` / `.cl2` / `.pcx` 精灵为 RGBA 帧；`.cl2`/`.cel` 传 `width` 整数或 `"auto"` 自动按路径查表。可选 `archives`（额外 MPQ 路径数组）：精灵/调色板可来自与 `archive` 不同的 MPQ，用于跨档案解析调色板（`src/tools/sprite_tools.cpp`） |
 | `sprite.list` | 枚举 `recovered.json` 中真实存在的精灵名（按 family/class/type 分类并带自动帧宽），供前端建目录树（`src/tools/sprite_tools.cpp`） |
 
 请求示例（JSON-RPC 2.0，stdio 与 WS 同构）：
