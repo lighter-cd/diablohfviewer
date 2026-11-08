@@ -15,6 +15,7 @@
 #include "tools/registry.h"
 #include "tools/mpq_tools.h"
 #include "tools/sprite_tools.h"
+#include "tools/map_tools.h"
 
 #include <string>
 #include <thread>
@@ -65,6 +66,7 @@ int main(int argc, char** argv) {
     mcp::ToolRegistry reg;
     mcp::tools::registerMpqTools(reg);
     mcp::tools::registerSpriteTools(reg);
+    mcp::tools::registerMapTools(reg);
     fprintf(stderr, "[main] registered %zu tool(s)\n", reg.size());
 
     if (useWs) {

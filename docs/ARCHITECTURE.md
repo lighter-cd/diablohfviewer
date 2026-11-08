@@ -5,6 +5,8 @@
 > 当前 StormLib 引擎（vendored 于 `3rdparty/StormLib`）已验证可用，是本协议架构的“引擎底座”；
 > 阶段 1 解码器（`src/decoders/{palette,clx,cel,cl2,pcx}` + `sprite_tools`）已实现并通过
 > 单元 + 端到端验证，前端可经 `sprite.decode` 拿到 RGBA 帧绘制精灵。
+> 阶段 4 地图管线（TIL/MIN/DUN/SOL + level CEL 重编码 + 等距合成，`src/decoders/level_*.cpp`
+> + `src/tools/map_tools.cpp` 的 `map.build`）已于 2026-11-08 落地并配齐单元/集成测试。
 
 ---
 
@@ -72,13 +74,17 @@ src/
 │   ├── cl2.*            #   .cl2 编译型动画 -> 帧组（含 cl2_to_clx 思路）
 │   ├── clx.*            #   .clx DevilutionX 内部格式
 │   ├── pcx.*            #   .pcx PC Paintbrush 静态图
-│   └── level.*          #   TIL/MIN/DUN 拼接 -> 瓦片地图（阶段 4）
+│   ├── png.*            #   PNG 写入（stored zlib，无 -lz 依赖）
+│   ├── level.h          #   关卡数据结构 + 解析器/渲染器声明（TileType/LevelCelBlock/DunFile…）
+│   ├── level_decode.cpp #   loadTil/loadMin/loadDun/loadSol + buildMicroGrid（DRLG_LPass3）
+│   ├── level_cel.cpp    #   reencodeLevelCel + decodeReencodedFrame（Square/三角/梯形）
+│   └── level_render.cpp #   renderMicroTile/renderMap（等距合成 + SOL/DUN 标志网格）
 │
-├── tools/               # 工具注册表：把 engine + decoders 组合成“工具”
+├── tools/               # 工具注册表：把 engine + decoders 组合成"工具"
 │   ├── registry.h/.cpp  #   工具注册、按名分发、参数 schema、返回 JSON
 │   ├── mpq_tools.*      #   mpq.list / mpq.extract / mpq.verify / mpq.recover / mpq.dump
 │   ├── sprite_tools.*   #   sprite.decode / palette.load
-│   └── map_tools.*      #   map.build（阶段 4）
+│   └── map_tools.*      #   map.build（阶段 4，已落地）
 │
 ├── mcp/                 # MCP 服务端：传输 + 协议分派
 │   ├── server.h/.cpp    #   初始化 registry、启动传输
@@ -145,7 +151,7 @@ public:
 | `sprite.decode`| `{archive,name,archives?,palette?,frame?,width?}` | `{name,format,width,height,frame_count,palette_resolved,frames:[{index,width,height,rgba_base64}]}`（`.clx` 直解；`.cel`/`.cl2` 经 `celToClx`/`cl2ToClx` 转 CLX 后解；`.pcx` 走内置解码。格式由扩展名自动探测。`width` 为 `.cel`/`.cl2` 必需，支持 `width:"auto"` 按路径自动查表。`archives` 为额外 MPQ 路径数组，精灵/调色板可来自与 `archive` 不同的 MPQ，前端据此跨档案解析调色板） | ✅ |
 | `sprite.list`  | `{dict?,devilutionx_root?,family?,class?,kind?}` | `{count,sprites:[{name,archive,archive_path,family,class,type,width}]}`（从 `recovered.json` + DevilutionX 数据表枚举**真实存在的**精灵名并分类 family/class/type、带自动帧宽，供前端建目录树；`archive_path` 直接取自 recovered.json 的档案 `path`，前端无需再手动填 MPQ 路径；`kind` 默认 `sprite`（CL2/CEL），可传 `palette` 仅列 `.pal` 调色板、`all` 两者都列，用于前端调色板下拉框；无 listfile 时 `mpq.list` 给的是占位名，故需此工具） | ✅ |
 | `spell.list`   | `{devilutionx_root?,source?,id?}` | `{count,spell_count,monster_attack_count,ability_count,trap_count,cast_action_map,impact_catalog[],spells[],monster_attacks[],abilities[],traps[]}`（从 `spelldat`/`misdat`/`missile_sprites`/`monstdat` 四表 join 出**玩家技能与怪物远程攻击的有序阶段目录**：`stages[]` 固定 `cast→projectile→impact→debuff`；每层 `L={kind,role,anchor,confidence,...}`，`sprite` 层带编号 `missiles\{name}{N}.cl2` 文件清单 + 显式 `width` + `frames`，`trn` 层带 `trn:{name,preset,apply_to}`；`impact_catalog` 为候选命中特效。**每条 `spells[]`/`monster_attacks[]` 额外带 `name_zh`（中文名，取自 `Translations/zh_TW.po` → `zh_CN.po` 的 `msgctxt "spell"`，无翻译则回退英文名）、`description`（按已解析的阶段链 + 玩家法力/智力消耗合成的中文说明），以及**法术级别参数**：`level`（`spelldat.bookLevel` 法术阶）、`staff_level`、`mana_cost`、`mana_multiplier`（每升 1 级训练减的法力）、`min_mana`、与 `mana_by_level`（按 `GetManaAmount` 公式算出的 1..bookLevel 各级基础法力 `{level, mana}`，含 `min_mana` 下限、未乘职业系数）；另含 `visual_by_level`（玩家 1..bookLevel / 怪物 1..16 各级视觉参数：持续时间 `duration_ticks`/`duration_sec`、弹速 `speed`、范围 `range_tiles`/`radius_tiles`、弹射物数 `count` 及法术特有字段如 `segments`/`wall_length_tiles`，含角色/地下城层依赖项标 `_note`，无级别缩放为空；键因各法术硬编码公式而不同，由 `spell_visual_model.h` 逐法术转录）；**怪物攻击除 `GetMissileType()` 的 14 类 AI 外**，还包含**在 AI 函数内直接 `AddMissile` 的形态**（`monsterAttackForms()`，转录自 `CounselorAi`/`BatAi`/`MegaAi`：Counselor 按智力 0..3 → Firebolt/ChargedBolt/LightningControl/Fireball，外加近身 Flash 双层；Familiar → Lightning；Gloom → Rhino 冲撞；Mega → InfernoControl）。这些形态各自独立成条（`id` = `AI` 或 `AI.variant`），并带 `variant`（形态名）与 `condition`（中文触发条件），`monsters` 按智力/怪物 id 精确收窄。**`unique_monstdat.tsv` 会作为额外怪物行合并**（唯一怪的 `ai`/`intelligence` 覆盖基础怪），因此 Hork Demon（唯一怪 `ai=HorkDemon`）的 `HorkSpawn`、Zhar/Lazarus（`ZharAi`/`LazarusAi` 委托 `CounselorAi`，`normalizedMonsterAi()` 归一为 Counselor）以及 Red Vex/Black Jade（`LazarusSuccubus`）都能正确归属。`abilities[]` 另列**引擎级怪物特殊能力**（`monsterAbilities()`：`Blink` 受重击瞬移、`AcidPuddle` 酸液怪死亡留池、`Hidden` 潜行系隐身），每条带 `monsters`/`trigger`/`source_ref`；Diablo 1 / Hellfire **没有** Diablo 2 式词缀（Thunderstorm / Waller / Vortex / Shielding 在引擎中不存在）。`traps[]` 列**陷阱法术**（`trapSpecs()`，转录自 `objects.cpp`）：`OBJ_TRAPL/R` 墙陷阱按 `GenerateRnd((effLevel/3)+1)` 依次解锁 Arrow / Firebolt(≥3 层) / LightningControl(≥6 层)；`OBJ_TCHEST1..3` 带陷阱宝箱按类型 0..2 发 Arrow/FireArrow/Nova，地狱火扩到 0..5 追加 RingOfFire/StealPotions/StealMana；地狱火的 `OBJ_FLAMEHOLE`/`OBJ_FLAMELVR` 喷火口与火焰拉杆为对象火焰动画 + 直接伤害（伤害类型记 `FireWallControl`，无 missile 图形）。每条 `traps[]` 带 `objects`（宿主 `OBJ_*`）、`trigger`、`source_ref`。当前实测 `spell_count=51`、`monster_attack_count=25`、`ability_count=3`、`trap_count=10`） | ✅ |
-| `map.build`    | `{archive,dun,...}` | `{tiles:[...],width,height}` | 4 |
+| `map.build`    | `{archive,cel,til,min,sol,dun,palette?,archives?,micro_len?,blocks?,out?}`（L1 例：`levels/l1data/l1.cel/til/min/sol` + `levels/l1data/rnd2.dun`） | `{image_path,preview_path,meta_path,preview_base64,width,height,grid_width,grid_height,micro_len,frame_count,micro_count,solid_count,transparent_count}`；写完整地图 PNG + ≤400px 预览 PNG + 每格标志 sidecar JSON 到 `out/maps/`；`meta` 含 `solid`/`transparent`/`block_light`/`block_missile` 四个 `grid_width×grid_height` 数组 | ✅ |
 
 > **PCX 已并入 `sprite.decode`**（按 `.pcx` 扩展名自动路由），不再单独设 `pcx.decode` 工具。
 > `sprite.decode` 的调色板解析优先级：`palette`（base64 或名称）→ 文件内嵌（PCX）→ 同目录
@@ -339,7 +345,9 @@ cmake --build . --target mcp-server
    - **端到端验证**：`palette.load` 对 `devilutionx.mpq` 的 `gendata\cut2.pal` 返回 256 色
      + 合法 RGBA base64；`sprite.decode` 对 `devilutionx.mpq` 的 `data\health.clx` +
      `ui_art\diablo.pal` 返回正确 264×19 RGBA 帧。
-8. **地图（阶段 4，待实现）**：`src/decoders/level` + `map.build`。
+8. **地图（阶段 4，已完成 2026-11-08）**：`src/decoders/level_*.cpp` + `src/tools/map_tools.cpp`
+   的 `map.build`（在 `main.cpp` 调 `registerMapTools(reg)`，stdio + WS 双传输复用同一套
+   handler）。详见 §9.2。
 
 > 第 2–6 步即用户选定的 “option B”：(1) 后端重构为 C tools/mcp 模块、
 > (2) 移植 mpq-recover/mpq-inspect 到 C、(3) 脚手架 C MCP Server（stdio + WS 桥）。
@@ -360,6 +368,54 @@ build-mcp/mcp-server.exe --stdio                 # 给 AI Agent
 build-mcp/mcp-server.exe --ws 18765              # 给浏览器前端
 build-mcp/mcp-server.exe --stdio --ws 18765      # 同时
 ```
+
+### 9.2 关卡地图管线（阶段 4，`map.build`）
+
+忠实移植 DevilutionX `Source/levels/` 的拼装与 `Source/engine/render/dun_render.cpp` 的等距合成，
+后端纯 C/C++，无 Node 运行时。全链路：
+
+```
+MPQ 抽取
+  levels/l1data/l1.til ─► loadTil    ─► megatiles[]  (每 8B = 4 个 micro1..micro4, uint16 LE)
+  levels/l1data/l1.min ─► loadMin    ─► micros[]     (每 piece 10/16 个 LevelCelBlock,
+                                                    data 低12位=1-based帧号, 高3位=TileType)
+  levels/l1data/*.dun  ─► loadDun    ─► DunFile     (width/height + tileLayer + 可选透明层)
+  levels/l1data/l1.sol ─► loadSol    ─► solFlags[]  (MAXTILES=1379 字节标志位)
+  gendata/cut2.pal     ─► loadPalette/paletteToRGBA ─► RGBA[256] (1024B)
+  levels/l1data/l1.cel ──┐
+                         ├─► buildMicroGrid(dun, megatiles) → (2w)×(2h) 1-based 微瓦片索引网格
+                         │     (DRLG_LPass3：每个兆瓦片展开为 2×2；0 = 空；renderMap 读 micros[mi-1])
+                         ├─► buildFrameTypes(micros, microLen) → 每帧 TileType
+                         └─► reencodeLevelCel(cel, frameTypes) → 定长帧缓冲
+                               (Square 1024B / 三角 512B / 梯形 784B / 透明方保留 RLE)
+  renderMap(reencoded, micros, grid, solFlags, transparency, tileLayer, palRGBA)
+       └─► MapRenderResult: rgba 全图 + solid/blockLight/blockMissile/transparent 每格标志
+```
+
+**TileType**（`dun_tile.hpp`）：Square(0)、TransparentSquare(1)、LeftTriangle(2)、
+RightTriangle(3)、LeftTrapezoid(4)、RightTrapezoid(5)。
+
+**等距变换**（`worldToScreen`）：`screenX=(j-i)*32`、`screenY=-(j+i)*16`；每个微瓦片按
+`microLen/2` 行、每行左右两块 32×32 CEL 帧向上堆叠，CEL 行 0 画在底部（垂直翻转）。
+**绘制顺序为降序 `i+j`**（从远到近），近处瓦片正确遮挡远端墙基（升序会浮空）。
+
+**关键约定 / 已踩坑**：
+- TIL 的微瓦片索引与 `LevelCelBlock.frame()` 同为 **1-based**（`0`=空）；早期误把索引再
+  `+1` 导致内部瓦片缺失，已修正（用 `rnd2.dun` 完整空房间 + `skngdo.dun` 地板环/墙验证）。
+- `paletteToRGBA` 产出 **1024 字节 RGBA**（4 字节/项），`CopyRun` 必须按 4 字节步长索引；
+  早期按 3 字节 RGB 步长导致彩虹噪点，已修正。
+- StormLib 抽取时档案内名必须是 **反斜杠 `\`**（`map_tools` 内部对 `/` 做转换 / 见测试用例）。
+
+**`map.build` 产出**（`out/maps/<sanitized-dun>.*`）：完整地图 PNG、≤400px 预览 PNG、
+sidecar JSON（`grid_width/grid_height/micro_len/frame_count` + 四个每格标志数组）、
+返回摘要与 base64 预览。当前为 **FullyLit** 渲染，不应用逐像素光照图（运行时效果，延后）；
+碰撞/光照/透明标志已从 SOL/DUN 解出并随图输出，供前端叠加。
+
+**测试**（见 `README.md` §6）：
+- `out/unit_tests.cpp`：TIL/MIN/DUN/SOL 解析、`buildMicroGrid`、Square CEL 重编码+解码
+  （调色板步长回归）、LeftTriangle 解码形状+透明、`renderMap`/`renderMicroTile` 与 SOL/DUN 标志。
+- `out/integration_tests.cpp::testLevelMap`：从 `DIABDAT.MPQ` 抽真实 L1 资源跑通全链路，
+  断言产出可见像素（默认 `devilutionx.mpq` 无 L1 关卡，会自动探测同目录 `DIABDAT.MPQ`）。
 
 ---
 

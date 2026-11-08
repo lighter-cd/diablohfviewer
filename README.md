@@ -13,8 +13,8 @@ Diablo 1 / Hellfire 的 MPQ 研究与精灵查看工具。**后端为纯 C/C++ �
 | 目录 | 说明 |
 |------|------|
 | `src/engine/` | StormLib 封装（open / list / extract / verify） |
-| `src/decoders/` | 格式解码器（palette / clx / cel / cl2 / pcx） |
-| `src/tools/` | Tool Registry + `mpq_tools` + `sprite_tools` |
+| `src/decoders/` | 格式解码器（palette / clx / cel / cl2 / pcx / png / `level_*` 关卡管线） |
+| `src/tools/` | Tool Registry + `mpq_tools` + `sprite_tools` + `map_tools`（`map.build`） |
 | `src/mcp/` | MCP 服务端（jsonrpc / stdio / ws 桥） |
 | `3rdparty/StormLib/` | StormLib 源码（git submodule；构建脚本见仓库根 `build-stormlib.sh`） |
 | `mpq-info/` | MPQ 文件名恢复字典与产出（参考数据，非代码） |
@@ -84,6 +84,8 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
 | `sprite.list` | 枚举 `recovered.json` 中真实存在的精灵名（按 family/class/type 分类并带自动帧宽），供前端建目录树（`src/tools/sprite_tools.cpp`） |
 | `spell.list` | 从 DevilutionX 数据表（`spelldat` / `misdat` / `missile_sprites` / `monstdat`）合成**玩家技能与怪物远程攻击的全阶段视觉目录**：每个条目按 施法 → 投射 → 命中 → debuff 四阶段组织；`sprite` 层给出编号 `missiles\{name}{N}.cl2` 文件清单 + 显式 `width`（编号文件**不能**用 `width:"auto"`），`trn` 层给出目标 debuff 的调色板重映射；另附 `impact_catalog` 候选命中特效。每条还带 `name_zh`（中文名，取自 `Translations/zh_TW.po`→`zh_CN.po` 的 `msgctxt "spell"`，无翻译则回退英文名）、`description`（按已解析阶段链 + 玩家法力/智力消耗合成的中文说明），以及**法术级别参数**：`level`（`spelldat.bookLevel`，法术等级/阶）、`staff_level`、`mana_cost`、`mana_multiplier`（每升 1 级训练减少的法力）、`min_mana`、`staff_min/staff_max`，与 `mana_by_level`（按 `GetManaAmount` 公式算出的 1..bookLevel 各级基础法力 `{level, mana}`，含 `min_mana` 下限，未乘职业系数）；另含 `visual_by_level`（玩家 1..bookLevel / 怪物 1..16 各级**视觉参数**，逐法术从 DevilutionX handler 转录：持续时间 `duration_ticks`/`duration_sec`、弹速 `speed`、范围 `range_tiles`/`radius_tiles`、弹射物数 `count` 及法术特有字段如 `segments`/`wall_length_tiles`，含角色/地下城层依赖的项标 `_note`；无级别视觉缩放的法术为空）。**怪物攻击侧**除 `GetMissileType()` 的 14 类远程 AI 外，还覆盖**在 AI 函数里直接 `AddMissile` 的形态**（Counselor 按智力发 Firebolt/ChargedBolt/LightningControl/Fireball + 近身双层 Flash、Familiar 闪电、Gloom 冲撞、Mega 近身地狱火），每个形态单独一条并有 `variant` / `condition` 字段（`id` 为 `AI` 或 `AI.variant`）；`unique_monstdat` 的唯一怪会额外叠加，故 Hork Demon（HorkSpawn）、Zhar / Lazarus（按智力 3 归入 Counselor.Fireball）、Red Vex / Black Jade（LazarusSuccubus）均按真实 AI 归属。另含 **`abilities[]` 引擎级怪物特殊能力**：`Blink` 受重击瞬移、`AcidPuddle` 酸怪死亡留池、`Hidden` 潜行系隐身，每条带 `monsters` / `trigger` / `source_ref`（Diablo 1 没有 D2 式 Thunderstorm / Waller / Vortex / Shielding 词缀）。另含 **`traps[]` 陷阱法术** 10 条：墙上机关陷阱（箭矢 / 火焰弹 / 闪电，按有效层数出现）、带陷阱宝箱（箭矢 / 火焰箭 / 新星，地狱火另有火焰之环 / 偷药水 / 吸法力）、地狱火喷火口与火焰拉杆，每条带 `objects`（宿主 `OBJ_*`）/ `trigger` / `source_ref`。当前为 51 技能 / 25 怪物攻击 / 3 特殊能力 / 10 陷阱。可用 `source` / `id` 过滤（`src/tools/sprite_tools.cpp`、`src/tools/spell_tables.h`、`src/tools/spell_visual_model.h`） |
 
+| `map.build` | 解码 Diablo 1 / Hellfire 关卡（TIL / MIN / DUN / SOL / level CEL）并渲染完整等距地图 PNG + ≤400px 预览 PNG + 每格碰撞/光照/透明标志 sidecar JSON 到 `out/maps/`，返回摘要与 base64 预览。必填 `archive` + `cel`/`til`/`min`/`sol`/`dun`（档案内名），可选 `palette`（默认 `gendata/cut2.pal`）、`archives`（额外 MPQ 搜索栈）、`micro_len`（10 原版 / 12 地狱火）、`blocks`（10 / 16）、`out`。当前为 FullyLit 渲染（逐像素光照为运行时效果，延后）。L1 示例：`levels/l1data/l1.cel`/`l1.til`/`l1.min`/`l1.sol` + `levels/l1data/rnd2.dun`（`src/tools/map_tools.cpp`、`src/decoders/level_*.cpp`） |
+
 请求示例（JSON-RPC 2.0，stdio 与 WS 同构）：
 
 ```json
@@ -105,10 +107,11 @@ g++ -I src -std=c++17 out/unit_tests.cpp \
     src/decoders/clx.cpp src/decoders/cel.cpp src/decoders/cl2.cpp \
     src/decoders/pcx.cpp src/decoders/palette.cpp src/decoders/png.cpp \
     src/decoders/sprite_width.cpp \
+    src/decoders/level_decode.cpp src/decoders/level_cel.cpp src/decoders/level_render.cpp \
     -static-libgcc -static-libstdc++ \
     -o out/unit_tests.exe && out/unit_tests.exe
 ```
-覆盖：CLX 解码、CEL→CLX / CL2→CLX 往返、**CL2/CEL 畸形输入与错误 `width` 拒绝（不崩溃）**、**`spell_tables.h` 纯 join（TSV/CRLF、编号文件生成、AI→导弹、阶段派生）**、PCX 解码、调色板加载、base64 编解码往返。
+覆盖：CLX 解码、CEL→CLX / CL2→CLX 往返、**CL2/CEL 畸形输入与错误 `width` 拒绝（不崩溃）**、**`spell_tables.h` 纯 join（TSV/CRLF、编号文件生成、AI→导弹、阶段派生）**、PCX 解码、调色板加载、base64 编解码往返；以及**关卡解码器**（`loadTil` / `loadMin` / `loadDun` / `loadSol` 解析、`buildMicroGrid` 兆瓦片→微瓦片拼装、Square/Triangle 的 level CEL 重编码与 RGBA 帧解码、调色板 4 字节步长回归、三角形解码形状与透明、`renderMap` / `renderMicroTile` 等距合成与 SOL/DUN 标志）。
 源码路径：`src/decoders/*.cpp`、`src/tools/base64.h`、`src/tools/spell_tables.h`；测试脚本 `out/unit_tests.cpp`。
 
 ### 2. Registry + JSON-RPC（纯逻辑，无需 MPQ）
@@ -135,6 +138,7 @@ g++ -I 3rdparty/StormLib/src -I 3rdparty -I src -std=c++17 \
     src/tools/mpq_tools.cpp src/tools/sprite_tools.cpp \
     src/decoders/palette.cpp src/decoders/clx.cpp src/decoders/cel.cpp \
     src/decoders/cl2.cpp src/decoders/pcx.cpp src/decoders/sprite_width.cpp \
+    src/decoders/level_decode.cpp src/decoders/level_cel.cpp src/decoders/level_render.cpp \
     src/mcp/jsonrpc.cpp \
     3rdparty/StormLib/build/libStormLib.a \
     -lws2_32 -lwininet -static-libgcc -static-libstdc++ \
@@ -147,10 +151,13 @@ g++ -I 3rdparty/StormLib/src -I 3rdparty -I src -std=c++17 \
 跨 MPQ 搜索、**截断 CL2 返回干净错误而非崩溃**、`cow.cel` 的 `width:"auto"` 解码，以及
 **`spell.list` 全阶段目录**（51 技能 / 25 怪物攻击 / 3 特殊能力 / 10 陷阱法术、Fireball 四阶段、Stone Curse TRN、
 Fire Wall 双文件、Flash 双层、Torchant→Fireball、default→Arrow，以及 Counselor 四弹按智力分流 +
-近身 Flash、Familiar 闪电、Gloom 冲撞、Mega 地狱火等 AI 内直接发弹的形态）。
+近身 Flash、Familiar 闪电、Gloom 冲撞、Mega 地狱火等 AI 内直接发弹的形态）；以及
+**`testLevelMap` 关卡全链路**：从 `DIABDAT.MPQ` 抽真实 L1 资源（`levels/l1data/l1.{cel,til,min,sol}`
++ `rnd2.dun` + `gendata/cut2.pal`）跑通解析→重编码→等距合成并断言产出可见像素（默认
+`devilutionx.mpq` 无 L1 关卡，会自动探测同目录 `DIABDAT.MPQ`；两者皆无则 SKIP）。
 源码路径：`src/engine/archive.cpp`、`src/tools/mpq_tools.cpp`、`src/tools/sprite_tools.cpp`、
 `src/tools/spell_tables.h`、`src/decoders/cl2.cpp`、`src/decoders/cel.cpp`、
-`src/decoders/sprite_width.cpp`；测试脚本 `out/integration_tests.cpp`。
+`src/decoders/sprite_width.cpp`、`src/decoders/level_*.cpp`；测试脚本 `out/integration_tests.cpp`。
 
 > 每轮改动后请完整运行以上三个套件，确保全绿。
 
@@ -235,6 +242,43 @@ out/render_sprite.exe \
   80 帧（8 方向 × 10）均可解码无错位；怪物 `monsters\acid\acida.cl2`（宽 128）、导弹
   `missiles\arrows.cl2`（宽 96）、物件 `objects\armstand.cel`（宽 96）、NPC `towners\drunk\twndrunk.cel`
   （宽 96）均经自动查表渲染成功。
+
+### 6. 关卡地图测试与 `map.build` 使用（阶段 4）
+
+**测试**：关卡解码器单测在 §1 的 `out/unit_tests.cpp`，真实关卡全链路集成测试在 §3 的
+`out/integration_tests.cpp::testLevelMap`（从 `DIABDAT.MPQ` 渲染 `rnd2.dun`）。两个套件把
+`src/decoders/level_decode.cpp`、`level_cel.cpp`、`level_render.cpp` 直接编入，新增源码无需重跑 cmake。
+`mcp-server`（CMake `GLOB_RECURSE src/*.cpp`）会一并编译它们，`cmake --build build-mcp --target mcp-server`
+即可确认全绿。
+
+**使用 `map.build`**（stdio 或 WS 的 `tools/call`，L1 cathedral 示例）：
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call",
+ "params":{"name":"map.build",
+           "arguments":{
+             "archive":"D:/work/xt/diablo/DevilutionX-Hell Fire/DIABDAT.MPQ",
+             "cel":"levels/l1data/l1.cel",
+             "til":"levels/l1data/l1.til",
+             "min":"levels/l1data/l1.min",
+             "sol":"levels/l1data/l1.sol",
+             "dun":"levels/l1data/rnd2.dun",
+             "palette":"gendata/cut2.pal"}}}
+```
+
+返回摘要（`image_path` / `preview_base64` / `meta_path` / `width` / `height` /
+`grid_width` / `grid_height` / `frame_count` / `micro_count` / `solid_count` /
+`transparent_count`），并写出到 `out/maps/`：
+
+- `<dun>.png` —— 完整等距地图 RGBA PNG；
+- `<dun>_preview.png` —— ≤400px 最近邻缩略预览；
+- `<dun>.json` —— sidecar：`grid_width`/`grid_height`/`micro_len`/`frame_count` 与
+  `solid` / `transparent` / `block_light` / `block_missile` 四个每格标志数组（来自 SOL 与 DUN 微尺度透明层）。
+
+- 地狱火层级把 `micro_len`、`blocks` 改为 `12`、`16`，并指向对应 `nlevels/` 的 cel/til/min/sol。
+- 源码路径：`src/tools/map_tools.cpp`、`src/decoders/level.h` /
+  `level_decode.cpp` / `level_cel.cpp` / `level_render.cpp`；测试脚本 `out/unit_tests.cpp`、
+  `out/integration_tests.cpp`；管线与已踩坑详见 `docs/ARCHITECTURE.md` §9.2。
 
 ## 开发文档
 

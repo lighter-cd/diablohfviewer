@@ -266,3 +266,7 @@
 - 在 docs/PROJECT.md 的技能总览小节补充「字段示例」：按 spell.list 真实返回给出 Fireball 单条 JSON（含 name_zh/description/level/staff_level/mana_cost/mana_by_level/visual_by_level/missiles 与四阶段 stages 的 cast_action、16 方向文件、命中 override 层），并列出 monster_attacks/abilities/traps 各自额外的差异字段。
 - 涉及: docs/PROJECT.md
 
+
+## 2026-11-08 22:59:49
+- 落地阶段 4 关卡地图管线全量：本轮补齐单元/集成测试（TIL/MIN/DUN/SOL 解析、buildMicroGrid 拼装、level CEL 重编码与 Square/Triangle 解码、renderMap/renderMicroTile 等距合成与 SOL/DUN 标志、真实 DIABDAT.MPQ 的 rnd2.dun 全链路渲染）并同步 docs/PROJECT.md / docs/ARCHITECTURE.md / README.md 的关卡进度、map.build 工具与测试文档；同时把前序会话已写好但未入库的关卡源码（level.h / level_decode.cpp / level_cel.cpp / level_render.cpp / map_tools.* / main.cpp 注册）一并纳入版本管理，删除临时 out/smoke_map.cpp，并把 map.build 产出目录 out/maps/ 加入 .gitignore；core/unit/integration 三套测试与 CMake mcp-server 均全绿。
+- 涉及: src/decoders/level.h, src/decoders/level_decode.cpp, src/decoders/level_cel.cpp, src/decoders/level_render.cpp, src/tools/map_tools.cpp, src/tools/map_tools.h, src/main.cpp, out/unit_tests.cpp, out/integration_tests.cpp, docs/PROJECT.md, docs/ARCHITECTURE.md, README.md, .gitignore, out/smoke_map.cpp(删除)

@@ -32,6 +32,8 @@ out/*.txt
 # 从 mpq 中提取出的文件
 out/extracted/
 out/render/
+# map.build 生成的地图 PNG / 预览 / sidecar JSON（运行产物，不入库）
+out/maps/
 
 # ---------- MPQ 文件名恢复的生成产出（字典源文件保留） ----------
 # recovered.json / recovered/ 可由 mcp-server 的 mpq.recover 重建。

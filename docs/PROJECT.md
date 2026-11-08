@@ -631,8 +631,52 @@ DiabloHFConverter/
 `abilities[]` 多 `ability` / `monsters` / `trigger` / `source_ref`；`traps[]` 多 `trap` / `objects` / `trigger` / `source_ref`。
 
 ### 阶段 4：地图还原（目标 1）
-- [ ] 解码 TIL / MIN / DUN，移植 `levels/` 的拼接逻辑。
-- [ ] 重建各层完整地图（瓦片、光照、碰撞）。
+
+> **状态：解码 + 离屏渲染管线完成，已实现 `map.build` MCP 工具并配齐单元/集成测试（2026-11-08）。**
+> 忠實移植 DevilutionX `Source/levels/` 的 DUN→TIL→MIN→level CEL 拼装与
+> `dun_render.cpp` 的等距合成，后端纯 C/C++（`src/decoders/level_*.cpp` +
+> `src/tools/map_tools.cpp`），无 Node 运行时。
+
+- [x] **TIL 解码**：`src/decoders/level_decode.cpp::loadTil` —— 每 8 字节 = 4 个
+      little-endian uint16（micro1..micro4，即 TL/TR/BL/BR 四个角微瓦片索引）。
+- [x] **MIN 解码**：`loadMin(buf, blocks, microLen)` —— 每 piece 按 DevilutionX
+      `SetDungeonMicros` 的**块源偏移置换**（`(blocks-2)+(b&1)-(b&0xE)`）读取至多 16 个
+      `LevelCelBlock`（data 低 12 位 = 1-based 帧号、高 3 位 = TileType）；`blocks`=10（原版）
+      /16（地狱火），`microLen`=10/12。
+- [x] **DUN 解码**：`loadDun` —— 头 2 个 uint16（宽/高）+ 宽×高 个 uint16 兆瓦片层
+      （0=空），并可选地读取微尺度透明层（位于 tile 层后 3 个 (2w×2h) 层之后）。
+- [x] **SOL 解码**：`loadSol` —— 固定 `MAXTILES=1379` 字节的每兆瓦片碰撞/光照标志位
+      （Solid/BlockLight/BlockMissile/Transparent/…）。
+- [x] **兆瓦片→微瓦片网格拼装**：`buildMicroGrid`（忠实 `DRLG_LPass3`）——DUN 每个兆瓦片
+      展开为 2×2 个微瓦片索引，网格为 (2w)×(2h)。**关键约定**：TIL 的微瓦片索引与
+      `LevelCelBlock.frame()` 同为 **1-based**（`0`=空），`renderMap` 读 `micros[mi-1]`；
+      早期曾误把索引再 `+1` 导致内部瓦片缺失，已修正并经 `rnd2.dun`（完整空房间，350 格全地板）
+      与 `skngdo.dun`（地板环+内部墙，真实关卡数据）双向验证。
+- [x] **level CEL 重编码**：`reencodeLevelCel` —— 忠实 `ReencodeDungeonCels`，把原始 level CEL
+      逐帧重编码为定长缓冲（Square=1024B / 三角=512B / 梯形=784B / 透明方保留 RLE），便于渲染器
+      直接读取；`buildFrameTypes` 用每个微瓦片引用的 CEL 块推导每帧 TileType。
+- [x] **帧解码 → RGBA**：`decodeReencodedFrame` + `decodeReencodedFrame` 的三角形分支
+      （`DecodeLeft/RightTriangle/Trapezoid`）——按 TileType 还原 32×H 调色板索引像素；
+      **已修调色板索引为 4 字节 RGBA 步长**（`paletteToRGBA` 产出 1024 字节表），修正了此前
+      3 字节步长导致的彩虹噪点。
+- [x] **等距合成渲染**：`renderMap` —— 移植 `DrawCell`+`worldToScreen`：
+      `screenX=(j-i)*32`、`screenY=-(j+i)*16`，微瓦片按 `microLen/2` 行、每行左右两块
+      32×32 CEL 帧、CEL 行 0 画在底部（垂直翻转）；**从远到近（降序 i+j）绘制**，使近处瓦片
+      正确遮挡远端墙基（升序会导致墙浮空/棋盘）。附带输出每格 `solid`/`blockLight`/
+      `blockMissile`/`transparent` 标志（来自 SOL 与 DUN 微尺度透明层）。
+- [x] **`map.build` MCP 工具**：`src/tools/map_tools.cpp::toolMapBuild` —— 串起上述全链路，
+      写完整地图 PNG + ≤400px 预览 PNG + 每格标志 sidecar JSON 到 `out/maps/`，并返回摘要与
+      base64 预览；已注册到 Tool Registry（stdio + WS 双传输复用）。
+- [x] **单元/集成测试**：
+      - `out/unit_tests.cpp` 新增 8 个用例（纯合成数据，无需 MPQ）：TIL/MIN/DUN/SOL 解析器、
+        `buildMicroGrid` 拼装、Square CEL 重编码+解码（调色板步长回归）、LeftTriangle 解码形状
+        + 透明、`renderMap`/`renderMicroTile` 合成与 SOL/DUN 透明标志。
+      - `out/integration_tests.cpp` 新增 `testLevelMap`：从 `DIABDAT.MPQ` 抽取真实 L1 资源
+        （`levels/l1data/l1.{cel,til,min,sol}` + `rnd2.dun` + `gendata/cut2.pal`），跑通全链路并
+        断言产出可见像素。
+  - 构建/运行见仓库根 `README.md` §6（关卡地图测试）。
+- [ ] **光照/寻路细化（可选，后续）**：当前为 FullyLit 渲染，未应用逐像素光照图
+      （Lighting 属运行时效果，已明确延后）；碰撞/光照标志已从 SOL/DUN 解出并随图输出，供前端叠加。
 
 ### 阶段 5：GUI 布局与显示（目标 4）
 - [ ] 还原 `DiabloUI/` 的全部界面布局与元素。

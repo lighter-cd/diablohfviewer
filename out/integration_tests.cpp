@@ -19,6 +19,8 @@
 //       src/tools/mpq_tools.cpp src/tools/sprite_tools.cpp \
 //       src/decoders/palette.cpp src/decoders/clx.cpp src/decoders/cel.cpp \
 //       src/decoders/cl2.cpp src/decoders/pcx.cpp src/decoders/sprite_width.cpp \
+//       src/decoders/level_decode.cpp src/decoders/level_cel.cpp \
+//       src/decoders/level_render.cpp \
 //       src/mcp/jsonrpc.cpp \
 //       3rdparty/StormLib/build/libStormLib.a \
 //       -lws2_32 -lwininet -static-libgcc -static-libstdc++ \
@@ -33,6 +35,8 @@
 #include "tools/sprite_tools.h"
 #include "tools/base64.h"
 #include "mcp/jsonrpc.h"
+#include "decoders/level.h"
+#include "decoders/palette.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -1047,6 +1051,90 @@ static void testSpellListSynthesis() {
     printf("sprite_tools (spell.list): %s\n", allOk ? "PASS" : "FAIL");
 }
 
+// Level map render against a real Diablo 1 / Hellfire MPQ (L1 cathedral/town).
+// Exercises the full level pipeline (TIL/MIN/DUN/SOL + level CEL reencode +
+// isometric composite) end to end, mirroring the map.build tool. SKIPs cleanly
+// if the fixture lacks the L1 level assets.
+static void testLevelMap(const std::string& mpq) {
+    // The default fixture is the Hellfire bundle (devilutionx.mpq); L1 dungeons
+    // live in the base DIABDAT.MPQ beside it, so probe both.
+    std::vector<std::string> archives = { mpq };
+    {
+        size_t i = mpq.find_last_of("/\\");
+        std::string dir = (i != std::string::npos) ? mpq.substr(0, i + 1) : "";
+        std::string base = dir + "DIABDAT.MPQ";
+        if (base != mpq) archives.push_back(base);
+    }
+    auto bs = [](const std::string& s) {
+        std::string r = s;
+        for (char& c : r) if (c == '/') c = static_cast<char>(92);
+        return r;
+    };
+
+    std::string cel = "levels/l1data/l1.cel", til = "levels/l1data/l1.til",
+                min = "levels/l1data/l1.min", sol = "levels/l1data/l1.sol",
+                pal = "gendata/cut2.pal";
+    std::vector<std::string> duns = {"levels/l1data/rnd2.dun",
+                                     "levels/l1data/skngdo.dun",
+                                     "levels/l1data/l1.dun"};
+
+    std::string usedMpq, dun;
+    std::vector<uint8_t> celB, tilB, minB, solB, dunB, palB;
+    for (auto& arch : archives) {
+        engine::Archive arc;
+        if (!arc.open(arch)) continue;
+        if (!arc.extract(bs(cel), celB)) continue;
+        if (!arc.extract(bs(til), tilB)) continue;
+        if (!arc.extract(bs(min), minB)) continue;
+        if (!arc.extract(bs(sol), solB)) continue;
+        if (!arc.extract(bs(pal), palB)) continue;
+        for (auto& dn : duns) {
+            std::vector<uint8_t> t;
+            if (arc.extract(bs(dn), t) && !t.empty()) { dun = dn; dunB = t; break; }
+        }
+        if (!dun.empty()) { usedMpq = arch; break; }
+    }
+    if (dun.empty()) {
+        printf("  (skipped level.map; no L1 dungeon in any fixture)\n");
+        printf("level.map: %s\n", allOk ? "PASS" : "FAIL");
+        return;
+    }
+
+    auto megatiles = decoders::loadTil(tilB);
+    auto micros = decoders::loadMin(minB, 10, 10);
+    auto d = decoders::loadDun(dunB);
+    auto solFlags = decoders::loadSol(solB);
+    auto palRgb = decoders::loadPalette(palB);
+    CHECK(!megatiles.empty(), "level.map TIL parsed");
+    CHECK(!micros.empty(), "level.map MIN parsed");
+    CHECK(d.width > 0 && d.height > 0, "level.map DUN parsed");
+    CHECK(!palRgb.empty(), "level.map palette parsed");
+
+    int gw = 0, gh = 0;
+    std::vector<uint16_t> grid;
+    decoders::buildMicroGrid(d, megatiles, grid, gw, gh);
+    CHECK(gw > 0 && gh > 0, "level.map micro grid built");
+
+    auto ft = decoders::buildFrameTypes(micros, 10);
+    auto re = decoders::reencodeLevelCel(celB, ft);
+    CHECK(re.numFrames > 0, "level.map CEL reencoded");
+
+    std::vector<uint8_t> palRgba = decoders::paletteToRGBA(palRgb);
+    auto map = decoders::renderMap(re, micros, grid, gw, gh, solFlags,
+                                  d.transparency, d.tileLayer, d.width, d.height,
+                                  palRgba.data(), 10);
+    CHECK(map.width > 0 && map.height > 0, "level.map rendered with positive size");
+    CHECK(map.rgba.size() == (size_t)map.width * map.height * 4,
+          "level.map rgba sized width*height*4");
+    size_t nonT = 0;
+    for (size_t i = 0; i < map.rgba.size() / 4; ++i)
+        if (map.rgba[i * 4 + 3] != 0) nonT++;
+    CHECK(nonT > 0, "level.map produced visible (opaque) pixels");
+    CHECK(map.solid.size() == (size_t)gw * gh, "level.map solid grid sized gw*gh");
+    printf("level.map (%s via %s): %s\n", dun.c_str(),
+           usedMpq.c_str(), allOk ? "PASS" : "FAIL");
+}
+
 int main() {
     printf("=== DiabloHFConverter integration tests (engine + mpq_tools + sprite_tools) ===\n");
     testNormalize();
@@ -1078,6 +1166,7 @@ int main() {
     testSpriteListCatalogFixes();
     testSpriteDecodeCow();
     testSpellListSynthesis();
+    testLevelMap(mpq);
     printf("=== %s ===\n", allOk ? "ALL PASS" : "FAILURES PRESENT");
     return allOk ? 0 : 1;
 }
