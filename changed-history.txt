@@ -221,3 +221,7 @@
 ## 2026-11-08 16:52:25
 - 前端新增全局「放大倍数」控制（滑块 1–8，默认 4）：fitCanvas 改为按 nativeW×zoom 设置 Canvas CSS 尺寸（最近邻清晰），战斗场景含 sprite 间距整体同倍放大；顶部控制条加滑块与数值显示，切换仅重设 CSS 尺寸无需重绘；canvas-wrap 加 overflow:auto 以容纳大倍率。
 - 涉及: web/index.html, web/src/main.js, web/src/viewer.js, web/styles.css, docs/ARCHITECTURE.md
+
+## 2026-11-08 17:09:02
+- 修复放大倍数无效：canvas 作为 flex 子项默认 flex-shrink:1 会被父容器压回原宽，导致 zoom 的 CSS 尺寸被忽略；给 .canvas-wrap>canvas 加 flex:0 0 auto（margin:auto 居中且大图可滚动），放大倍数现在真正生效。
+- 涉及: web/styles.css
