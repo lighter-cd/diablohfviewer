@@ -504,6 +504,11 @@ DiabloHFConverter/
       弹速 `speed`、范围 `range_tiles`/`radius_tiles`、弹射物数 `count` 及法术特有字段如
       `segments`/`wall_length_tiles`；各法术硬编码公式不同，由 `src/tools/spell_visual_model.h`
       逐法术从 DevilutionX handler 转录，含角色/地下城层依赖项标 `_note`，无级别缩放为空）。
+      已**全量覆盖**全部 23 个可升级玩家法术（含 Fire Wall/Chain Lightning/Flame Wave/Charged Bolt/
+      Holy Bolt/Guardian/Stone Curse/Inferno 等级别缩放项，及 Firebolt/Fireball/Elemental/Blood Star/
+      Bone Spirit/Town Portal/Phasing/Teleport/Flash 等常量视觉项；Healing/Golem/ManaShield/Telekinesis/
+      HealOther 为瞬发无弹道，visual_by_level 为空）与全部 14 类怪物远程攻击
+      （Arrow/BloodStar/Acid/Firebolt/各 Flare/MagmaBall/ThinLightningControl/DiabloApocalypse 等）。
       前端信息区同步显示法术等级、各级法力曲线与**各级视觉参数表**。
 - [x] 前端第 4 种浏览模式「技能 / 战斗查看器」：`web/src/viewer.js` 新增 `drawScene`
       （多 actor 绝对定位，抽 `blitRgba` 复用，`drawComposite` 行为不变）；同屏两角色 + 效果；

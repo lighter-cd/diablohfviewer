@@ -771,6 +771,27 @@ static void testSpellTables()
     idn["flags"] = ""; idn["missiles"] = ""; idn["bookLevel"] = "-1";
     Entry eid = deriveEntry(idn, misById, sprById, "player");
     if (!eid.visual_by_level.empty()) bad("Identify has no visual_by_level");
+    // Stone Curse: duration = min(lvl+6,15) << 4
+    Row scRow; scRow["id"] = "StoneCurse"; scRow["name"] = "Stone Curse";
+    scRow["flags"] = ""; scRow["missiles"] = "StoneCurse"; scRow["bookLevel"] = "6";
+    Entry esc = deriveEntry(scRow, misById, sprById, "player");
+    if (esc.visual_by_level.empty()) bad("Stone Curse has visual_by_level");
+    else {
+        if (findP(esc, 1, "duration_ticks") != "112") bad("Stone Curse L1 duration == 112 (min(7,15)<<4)");
+        if (findP(esc, 6, "duration_ticks") != "192") bad("Stone Curse L6 duration == 192 (min(12,15)<<4)");
+    }
+    // Inferno: radius_tiles = min(lvl+3, MaxCrawlRadius=18)
+    Row inf; inf["id"] = "Inferno"; inf["name"] = "Inferno";
+    inf["flags"] = ""; inf["missiles"] = "InfernoControl"; inf["bookLevel"] = "3";
+    Entry einf = deriveEntry(inf, misById, sprById, "player");
+    if (einf.visual_by_level.empty()) bad("Inferno has visual_by_level");
+    else if (findP(einf, 3, "radius_tiles") != "6") bad("Inferno L3 radius_tiles == 6");
+    // Firebolt (player): constant duration 256, speed 26
+    Row fbz2; fbz2["id"] = "Firebolt"; fbz2["name"] = "Firebolt";
+    fbz2["flags"] = ""; fbz2["missiles"] = "Firebolt"; fbz2["bookLevel"] = "1";
+    Entry efbz = deriveEntry(fbz2, misById, sprById, "player");
+    if (efbz.visual_by_level.empty()) bad("Firebolt has visual_by_level");
+    else if (findP(efbz, 1, "speed") != "26") bad("Firebolt L1 speed == 26 (player constant)");
     // Firebolt halves the per-level mana adjustment (game special-case)
     Row fb2;
     fb2["id"] = "Firebolt"; fb2["name"] = "Firebolt";

@@ -140,6 +140,136 @@ static ParamMap fwMonThinLightning(int lvl, int, int)
     return m;
 }
 
+// ---- 阶段 B：补充覆盖其余玩家法术与全部怪物攻击 ----
+// 仅瞬发无弹道者（Healing/Golem/ManaShield/Telekinesis/HealOther 及实用法术）无视觉参数，留空。
+
+// Firebolt(玩家): sp=26 常量, duration=256 (AddFirebolt 1978 玩家分支)
+static ParamMap fwFirebolt(int, int, int)
+{
+    ParamMap m;
+    m["duration_ticks"] = "256";
+    m["duration_sec"] = fmtSec(256);
+    m["speed"] = "26";
+    return m;
+}
+// Flash: 上下两发 duration=19 常量
+static ParamMap fwFlash(int, int, int)
+{
+    ParamMap m;
+    m["duration_ticks"] = "19";
+    m["duration_sec"] = fmtSec(19);
+    return m;
+}
+// TownPortal: duration=100 常量
+static ParamMap fwTownPortal(int, int, int)
+{
+    ParamMap m;
+    m["duration_ticks"] = "100";
+    m["duration_sec"] = fmtSec(100);
+    return m;
+}
+// StoneCurse: duration = min(lvl+6,15) << 4 (AddStoneCurse 2412-2415)
+static ParamMap fwStoneCurse(int lvl, int, int)
+{
+    ParamMap m;
+    int d = lvl + 6;
+    if (d > 15) d = 15;
+    d <<= 4;
+    m["duration_ticks"] = std::to_string(d);
+    m["duration_sec"] = fmtSec(d);
+    return m;
+}
+// Phasing / Teleport: duration=2（瞬移闪烁）
+static ParamMap fwBlink(int, int, int)
+{
+    ParamMap m;
+    m["duration_ticks"] = "2";
+    m["duration_sec"] = fmtSec(2);
+    return m;
+}
+// Fireball(玩家): sp=16 常量, duration=256 (AddFireball 1976 玩家分支)
+static ParamMap fwFireballP(int, int, int)
+{
+    ParamMap m;
+    m["duration_ticks"] = "256";
+    m["duration_sec"] = fmtSec(256);
+    m["speed"] = "16";
+    return m;
+}
+// Elemental / Blood Star / Bone Spirit: 通用魔法弹 duration=256, sp=16
+static ParamMap fwMagicMissile(int, int, int)
+{
+    ParamMap m;
+    m["duration_ticks"] = "256";
+    m["duration_sec"] = fmtSec(256);
+    m["speed"] = "16";
+    return m;
+}
+// Inferno: 同 LightningControl 爬行半径 + 常量 duration/speed (AddInfernoControl 2685)
+static ParamMap fwInferno(int lvl, int, int)
+{
+    ParamMap m;
+    m["duration_ticks"] = "256";
+    m["duration_sec"] = fmtSec(256);
+    m["speed"] = "32";
+    m["radius_tiles"] = std::to_string(std::min(lvl + 3, kMaxCrawlRadius));
+    return m;
+}
+// 怪物 Arrow(山羊/默认): 怪物施放 sp=32 常量 (AddArrow 1778)
+static ParamMap fwMonArrow(int, int, int)
+{
+    ParamMap m;
+    m["duration_ticks"] = "256";
+    m["duration_sec"] = fmtSec(256);
+    m["speed"] = "32";
+    return m;
+}
+// 怪物 BloodStar / 各 Flare: 通用魔法弹 duration=256, sp=16
+static ParamMap fwMonMagicMissile(int, int, int)
+{
+    ParamMap m;
+    m["duration_ticks"] = "256";
+    m["duration_sec"] = fmtSec(256);
+    m["speed"] = "16";
+    return m;
+}
+// 怪物 Firebolt(火蝙蝠): sp = 16 + min(lvl*2, 47) (AddFirebolt 1868-1871)
+static ParamMap fwMonFirebolt(int lvl, int, int)
+{
+    ParamMap m;
+    m["duration_ticks"] = "256";
+    m["duration_sec"] = fmtSec(256);
+    m["speed"] = std::to_string(16 + std::min(lvl * 2, 47));
+    return m;
+}
+// 怪物 Acid(酸怪): duration = 5*(intel+4)，以怪物等级近似 intel (AddAcid 2333)
+static ParamMap fwMonAcid(int lvl, int, int)
+{
+    ParamMap m;
+    int d = 5 * (lvl + 4);
+    m["duration_ticks"] = std::to_string(d);
+    m["duration_sec"] = fmtSec(d);
+    m["_note"] = "持续含怪物智力项(≈等级)";
+    return m;
+}
+// 怪物 MagmaBall(岩浆怪): duration=256, sp=16 (AddMagmaBall 1898)
+static ParamMap fwMonMagma(int, int, int)
+{
+    ParamMap m;
+    m["duration_ticks"] = "256";
+    m["duration_sec"] = fmtSec(256);
+    m["speed"] = "16";
+    return m;
+}
+// 怪物 DiabloApocalypse: 瞬发对每个玩家降下爆裂，导弹自身立即删除 (AddDiabloApocalypse 2788)
+static ParamMap fwMonDiabloApoc(int, int, int)
+{
+    ParamMap m;
+    m["duration_ticks"] = "1";
+    m["_note"] = "瞬发打击：对每个玩家降下 ApocalypseBoom";
+    return m;
+}
+
 using VisualFn = ParamMap (*)(int level, int refChar, int refDungeon);
 
 inline const std::map<std::string, VisualFn>& registry()
@@ -153,9 +283,31 @@ inline const std::map<std::string, VisualFn>& registry()
         { "Charged Bolt", fwChargedBolt },
         { "Holy Bolt", fwHolyBolt },
         { "Guardian", fwGuardian },
+        { "Firebolt", fwFirebolt },
+        { "Flash", fwFlash },
+        { "Town Portal", fwTownPortal },
+        { "Stone Curse", fwStoneCurse },
+        { "Phasing", fwBlink },
+        { "Fireball", fwFireballP },
+        { "Teleport", fwBlink },
+        { "Elemental", fwMagicMissile },
+        { "Blood Star", fwMagicMissile },
+        { "Bone Spirit", fwMagicMissile },
+        { "Inferno", fwInferno },
         // 怪物攻击（键 = "M:" + MissileID）
         { "M:Fireball", fwMonFireball },
         { "M:ThinLightningControl", fwMonThinLightning },
+        { "M:Arrow", fwMonArrow },
+        { "M:BloodStar", fwMonMagicMissile },
+        { "M:Acid", fwMonAcid },
+        { "M:Firebolt", fwMonFirebolt },
+        { "M:OrangeFlare", fwMonMagicMissile },
+        { "M:YellowFlare", fwMonMagicMissile },
+        { "M:BlueFlare", fwMonMagicMissile },
+        { "M:RedFlare", fwMonMagicMissile },
+        { "M:BlueFlare2", fwMonMagicMissile },
+        { "M:MagmaBall", fwMonMagma },
+        { "M:DiabloApocalypse", fwMonDiabloApoc },
     };
     return r;
 }
