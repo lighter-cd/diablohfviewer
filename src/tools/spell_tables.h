@@ -59,6 +59,97 @@ inline std::vector<std::string> splitComma(const std::string& s)
     return splitLine(s, ',');
 }
 
+// Strip surrounding quotes and unescape gettext escape sequences ("\"", "\\",
+// "\n", "\t"). Used when reading DevilutionX .po translation files.
+inline std::string poUnquote(const std::string& s)
+{
+    std::string t = trim(s);
+    if (t.size() >= 2 && t.front() == '"' && t.back() == '"')
+        t = t.substr(1, t.size() - 2);
+    std::string out;
+    out.reserve(t.size());
+    for (size_t i = 0; i < t.size(); ++i) {
+        if (t[i] == '\\' && i + 1 < t.size()) {
+            char n = t[i + 1];
+            if (n == 'n') out += '\n';
+            else if (n == 't') out += '\t';
+            else if (n == '"') out += '"';
+            else if (n == '\\') out += '\\';
+            else { out += '\\'; out += n; }
+            ++i;
+        } else {
+            out += t[i];
+        }
+    }
+    // Drop Unicode format/zero-width characters the translation files sometimes
+    // contain between characters (e.g. U+200B between 火 and 栓), which would
+    // otherwise silently corrupt display names. Walk UTF-8 code points properly.
+    std::string cleaned;
+    cleaned.reserve(out.size());
+    size_t i = 0;
+    while (i < out.size()) {
+        unsigned char c = static_cast<unsigned char>(out[i]);
+        char32_t cp; int len;
+        if (c < 0x80) { cp = c; len = 1; }
+        else if ((c & 0xE0) == 0xC0) { cp = c & 0x1F; len = 2; }
+        else if ((c & 0xF0) == 0xE0) { cp = c & 0x0F; len = 3; }
+        else if ((c & 0xF8) == 0xF0) { cp = c & 0x07; len = 4; }
+        else { cleaned.push_back(out[i]); ++i; continue; }
+        if (i + len > out.size()) { cleaned.push_back(out[i]); ++i; continue; }
+        for (int k = 1; k < len; ++k)
+            cp = (cp << 6) | (static_cast<unsigned char>(out[i + k]) & 0x3F);
+        if (cp == 0x200B || cp == 0x200C || cp == 0x200D || cp == 0x2060 ||
+            cp == 0xFEFF || cp == 0x00AD) { /* skip zero-width / format chars */ }
+        else for (int k = 0; k < len; ++k) cleaned.push_back(out[i + k]);
+        i += len;
+    }
+    return cleaned;
+}
+
+// Load spell display names from DevilutionX gettext translations. Spell names
+// live under `msgctxt "spell"` in Translations/<lang>.po (zh_TW preferred, then
+// zh_CN). A few entries are .po bugs that reuse a format string as the name
+// (e.g. Fireball -> "火球傷害: {:d}"); we skip any translation containing a
+// "{:" placeholder so the English name survives as fallback.
+inline std::map<std::string, std::string> loadSpellZhNames(
+    const std::filesystem::path& devRoot)
+{
+    std::map<std::string, std::string> out;
+    static const char* const kLocales[] = { "zh_TW.po", "zh_CN.po" };
+    for (const char* fn : kLocales) {
+        std::ifstream f(devRoot / "Translations" / fn);
+        if (!f) continue;
+        std::string line;
+        std::string ctx, idBuf, strBuf;
+        bool inMsgid = false;
+        std::string* cur = nullptr;
+        auto flush = [&]() {
+            if (inMsgid && ctx == "spell" && !idBuf.empty() &&
+                strBuf.find("{:") == std::string::npos) {
+                if (out.find(idBuf) == out.end()) out[idBuf] = strBuf;
+            }
+            inMsgid = false;
+            cur = nullptr;
+            idBuf.clear();
+            strBuf.clear();
+        };
+        while (std::getline(f, line)) {
+            std::string tl = trim(line);
+            if (tl.empty() || tl[0] == '#' || tl[0] == '\0') { flush(); ctx.clear(); continue; }
+            if (tl.rfind("msgctxt \"", 0) == 0) { flush(); ctx = poUnquote(tl.substr(8)); continue; }
+            if (tl.rfind("msgid ", 0) == 0 || tl.rfind("msgid\"", 0) == 0) {
+                flush(); inMsgid = true; idBuf = poUnquote(tl.substr(6)); cur = &idBuf; continue;
+            }
+            if (tl.rfind("msgid_p", 0) == 0) { flush(); ctx.clear(); continue; } // skip plural
+            if (tl.rfind("msgstr ", 0) == 0 || tl.rfind("msgstr\"", 0) == 0) {
+                strBuf = poUnquote(tl.substr(7)); cur = &strBuf; flush(); continue;
+            }
+            if (cur) *cur += poUnquote(tl); // continuation quoted line
+        }
+    }
+    return out;
+}
+
 // Parse a header TSV from an in-memory string (used by unit tests).
 inline Table parseTsvText(const std::string& text)
 {
@@ -119,6 +210,15 @@ inline std::string elementToAction(const std::string& element)
     if (element == "Fire") return "fm";
     if (element == "Lightning") return "lm";
     return "qm";
+}
+
+inline std::string elementZh(const std::string& element)
+{
+    if (element == "Fire") return "火";
+    if (element == "Lightning") return "雷";
+    if (element == "Acid") return "酸";
+    if (element == "Physical") return "物理";
+    return "魔法";
 }
 
 struct SpriteInfo {
@@ -250,11 +350,15 @@ struct Stage {
 struct Entry {
     std::string id;
     std::string name;
+    std::string name_zh;     // Chinese display name (from zh_TW/zh_CN .po; falls back to `name`)
+    std::string description;  // synthesized Chinese description of the effect chain
     std::string source;      // player | monster
     std::string element;
     std::string cast_action;
     std::string monster_ai;
     std::vector<std::string> missiles;
+    std::string mana_cost;
+    std::string min_intelligence;
     std::vector<std::string> monsters;
     bool default_ai = false;
     std::vector<Stage> stages;
@@ -298,10 +402,44 @@ inline Layer makeTrnLayer(const std::string& name, const std::string& preset)
     return l;
 }
 
+// Build a Chinese description from the resolved effect chain and (player) stats.
+// Graphic ids and MissileIDs are kept in English (no Chinese asset names exist in
+// the data), but the structure and element words are Chinese.
+inline std::string synthDescription(const Entry& e)
+{
+    std::string proj, imp, deb;
+    for (const auto& s : e.stages) {
+        for (const auto& l : s.layers) {
+            if (l.role == "projectile" && l.kind == "sprite") {
+                if (!proj.empty()) proj += "、";
+                proj += l.graphic_id;
+            } else if (l.role == "impact" && l.kind == "sprite") {
+                if (!imp.empty()) imp += "、";
+                imp += l.graphic_id;
+            } else if (l.role == "debuff") {
+                if (!deb.empty()) deb += "、";
+                deb += (l.kind == "trn") ? (l.trn_preset + " TRN") : l.graphic_id;
+            }
+        }
+    }
+    if (e.source == "monster") {
+        return e.monster_ai + " 远程攻击：发射 " +
+               (e.missiles.empty() ? "?" : e.missiles[0]) + " 导弹。";
+    }
+    std::string d = elementZh(e.element) + "系法术。";
+    if (!e.mana_cost.empty()) d += "法力消耗 " + e.mana_cost + "，";
+    if (!e.min_intelligence.empty()) d += "最低智力 " + e.min_intelligence + "。";
+    d += "投射物：" + (proj.empty() ? "无" : proj) +
+         "；命中：" + (imp.empty() ? "无" : imp) +
+         "；状态：" + (deb.empty() ? "无" : deb) + "。";
+    return d;
+}
+
 inline Entry deriveEntry(const Row& spell,
                          const std::map<std::string, Row>& misById,
                          const std::map<std::string, SpriteInfo>& sprById,
-                         const std::string& source)
+                         const std::string& source,
+                         const std::map<std::string, std::string>* zhNames = nullptr)
 {
     Entry e;
     e.source = source;
@@ -311,6 +449,8 @@ inline Entry deriveEntry(const Row& spell,
     if (e.name.empty()) e.name = e.id;
     e.element = firstElement(val(spell, "flags"));
     e.cast_action = elementToAction(e.element);
+    e.mana_cost = trim(val(spell, "manaCost"));
+    e.min_intelligence = trim(val(spell, "minIntelligence"));
 
     for (const auto& t : splitComma(val(spell, "missiles"))) {
         auto s = trim(t);
@@ -377,6 +517,14 @@ inline Entry deriveEntry(const Row& spell,
     e.stages.push_back(std::move(proj));
     e.stages.push_back(std::move(impact));
     e.stages.push_back(std::move(debuff));
+
+    if (zhNames) {
+        auto it = zhNames->find(e.name);
+        if (it == zhNames->end()) it = zhNames->find(e.id);
+        if (it != zhNames->end()) e.name_zh = it->second;
+    }
+    if (e.name_zh.empty()) e.name_zh = e.name;
+    e.description = synthDescription(e);
     return e;
 }
 
@@ -401,6 +549,8 @@ inline Catalog buildCatalog(const std::filesystem::path& devRoot)
         return c;
     }
 
+    auto zh = loadSpellZhNames(devRoot);
+
     std::map<std::string, Row> misById;
     for (const auto& r : mis) {
         auto k = trim(val(r, "id"));
@@ -421,7 +571,7 @@ inline Catalog buildCatalog(const std::filesystem::path& devRoot)
 
     for (const auto& r : spells) {
         if (trim(val(r, "name")).empty()) continue;
-        c.spells.push_back(deriveEntry(r, misById, sprById, "player"));
+        c.spells.push_back(deriveEntry(r, misById, sprById, "player", &zh));
     }
 
     std::map<std::string, std::vector<std::string>> byAi;
@@ -438,7 +588,7 @@ inline Catalog buildCatalog(const std::filesystem::path& devRoot)
         pseudo["name"] = kv.first;
         pseudo["flags"] = "";
         pseudo["missiles"] = aiToMissile(kv.first, def);
-        Entry e = deriveEntry(pseudo, misById, sprById, "monster");
+        Entry e = deriveEntry(pseudo, misById, sprById, "monster", &zh);
         e.monster_ai = kv.first;
         e.monsters = kv.second;
         e.default_ai = def;

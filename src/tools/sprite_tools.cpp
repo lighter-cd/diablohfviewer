@@ -833,7 +833,9 @@ mcp::ToolResult toolSpellList(const mcp::json& params)
             stages.push_back(mcp::json{ { "id", s.id }, { "label", s.label },
                                         { "layers", layers } });
         }
-        mcp::json j = { { "id", e.id }, { "name", e.name }, { "source", e.source },
+        mcp::json j = { { "id", e.id }, { "name", e.name },
+                        { "name_zh", e.name_zh }, { "description", e.description },
+                        { "source", e.source },
                         { "element", e.element }, { "cast_action", e.cast_action },
                         { "missiles", e.missiles }, { "stages", stages } };
         if (!e.monster_ai.empty()) {
@@ -966,6 +968,9 @@ void registerSpriteTools(ToolRegistry& reg)
         "layers carry the numbered missiles\\{name}{N}.cl2 file list plus an EXPLICIT "
         "width (width:\"auto\" does not work for numbered files). debuff layers may be "
         "TRN palette remaps (apply_trn on the target) or overlay sprites. "
+        "Every entry also carries a Chinese display name (name_zh, resolved from "
+        "DevilutionX Translations/zh_TW.po, falling back to the English name) and a "
+        "synthesized Chinese description of the effect chain. "
         "impact_catalog lists all boom/splat effects (confidence='catalog') for manual "
         "selection. Filter with source='player'|'monster' and/or id.",
         json{ { "type", "object" },

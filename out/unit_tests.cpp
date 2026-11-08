@@ -683,6 +683,25 @@ static void testSpellTables()
             hasTrn = true;
     if (!hasTrn) bad("Stone Curse TRN debuff layer");
 
+    // (g) Chinese name + synthesized description (no disk; map provided directly)
+    std::map<std::string, std::string> zh;
+    zh["Firebolt"] = "火栓";
+    Row fbz;
+    fbz["id"] = "Firebolt"; fbz["name"] = "Firebolt";
+    fbz["flags"] = "Fire,Targeted"; fbz["manaCost"] = "8";
+    fbz["minIntelligence"] = "15"; fbz["missiles"] = "Fireball";
+    Entry ez = deriveEntry(fbz, misById, sprById, "player", &zh);
+    if (ez.name_zh != "火栓") bad("Firebolt name_zh from po map");
+    if (ez.description.empty()) bad("description synthesized");
+    if (ez.description.find("火系法术") == std::string::npos) bad("description has element word");
+    // missing translation -> English fallback, still has description
+    Row nov;
+    nov["id"] = "Nova"; nov["name"] = "Nova";
+    nov["flags"] = "Lightning"; nov["missiles"] = "LightningControl";
+    Entry en = deriveEntry(nov, misById, sprById, "player", &zh);
+    if (en.name_zh != "Nova") bad("Nova falls back to English name_zh");
+    if (en.description.empty()) bad("Nova description present on fallback");
+
     printf("spell_tables (pure joins): %s\n", allOk ? "PASS" : "FAIL");
 }
 

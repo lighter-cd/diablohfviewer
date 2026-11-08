@@ -780,6 +780,14 @@ static void testSpellListSynthesis() {
         CHECK(!il.empty() && il[0].value("graphic_id", std::string()) == "MagmaBallExplosion",
               "Fireball impact -> MagmaBallExplosion");
     }
+    // Chinese name + synthesized description (resolved from Translations/zh_TW.po).
+    CHECK(!fb.value("name_zh", std::string()).empty(), "Fireball name_zh present");
+    CHECK(fb.value("description", std::string()).find("系法术") != std::string::npos,
+          "Fireball zh description synthesized");
+    // A clean spell name from the .po (validates the po loader end-to-end).
+    json fbt = findSpell("Firebolt");
+    CHECK(!fbt.empty() && fbt.value("name_zh", std::string()) == "火栓",
+          "Firebolt zh name == 火栓 (from Translations)");
 
     // Fire Wall: 2 numbered files, width 128.
     json fw = findSpell("Fire Wall");
