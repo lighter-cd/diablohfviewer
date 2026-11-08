@@ -867,6 +867,12 @@ mcp::ToolResult toolSpellList(const mcp::json& params)
             j["trigger"] = e.trigger;
             j["source_ref"] = e.source_ref;
         }
+        if (e.is_trap) {
+            j["trap"] = true;
+            j["objects"] = e.objects;
+            j["trigger"] = e.trigger;
+            j["source_ref"] = e.source_ref;
+        }
         return j;
     };
 
@@ -877,6 +883,7 @@ mcp::ToolResult toolSpellList(const mcp::json& params)
     mcp::json spells = mcp::json::array();
     mcp::json attacks = mcp::json::array();
     mcp::json abilities = mcp::json::array();
+    mcp::json traps = mcp::json::array();
     if (sourceFilter.empty() || sourceFilter == "player")
         for (const auto& e : cat.spells)
             if (want(e)) spells.push_back(entryJson(e));
@@ -886,6 +893,9 @@ mcp::ToolResult toolSpellList(const mcp::json& params)
     if (sourceFilter.empty() || sourceFilter == "ability")
         for (const auto& e : cat.abilities)
             if (want(e)) abilities.push_back(entryJson(e));
+    if (sourceFilter.empty() || sourceFilter == "trap")
+        for (const auto& e : cat.traps)
+            if (want(e)) traps.push_back(entryJson(e));
 
     mcp::json impacts = mcp::json::array();
     for (const auto& si : cat.impact_catalog)
@@ -896,17 +906,19 @@ mcp::ToolResult toolSpellList(const mcp::json& params)
 
     mcp::ToolResult r;
     r.value = mcp::json{
-        { "count", spells.size() + attacks.size() + abilities.size() },
+        { "count", spells.size() + attacks.size() + abilities.size() + traps.size() },
         { "spell_count", spells.size() },
         { "monster_attack_count", attacks.size() },
         { "ability_count", abilities.size() },
+        { "trap_count", traps.size() },
         { "cast_action_map", mcp::json{ { "Fire", "fm" }, { "Lightning", "lm" },
                                         { "Magic", "qm" }, { "Physical", "qm" },
                                         { "Acid", "qm" } } },
         { "impact_catalog", impacts },
         { "spells", spells },
         { "monster_attacks", attacks },
-        { "abilities", abilities } };
+        { "abilities", abilities },
+        { "traps", traps } };
     return r;
 }
 
@@ -1026,8 +1038,12 @@ void registerSpriteTools(ToolRegistry& reg)
         "monsters, trigger and source_ref (a DevilutionX source location). Diablo 1 / "
         "Hellfire have no Diablo-2 champion affixes (Thunderstorm / Waller / Vortex / "
         "Shielding do not exist in the engine). "
+        "traps[] lists trap spell effects: wall traps (Arrow always, Firebolt at level >=3, "
+        "LightningControl at level >=6), trapped chests (Arrow/FireArrow/Nova, plus Hellfire's "
+        "RingOfFire/StealPotions/StealMana), and Hellfire flame traps. Each carries objects "
+        "(OBJ_*), trigger and source_ref. "
         "impact_catalog lists all boom/splat effects (confidence='catalog') for manual "
-        "selection. Filter with source='player'|'monster'|'ability' and/or id.",
+        "selection. Filter with source='player'|'monster'|'ability'|'trap' and/or id.",
         json{ { "type", "object" },
               { "properties",
                 json{ { "devilutionx_root",
@@ -1035,7 +1051,7 @@ void registerSpriteTools(ToolRegistry& reg)
                               { "description", "DevilutionX source root (default D:/work/xt/diablo/DevilutionX)" } } },
                       { "source",
                         json{ { "type", "string" },
-                              { "description", "'player' | 'monster' | 'ability' | empty (all)" } } },
+                              { "description", "'player' | 'monster' | 'ability' | 'trap' | empty (all)" } } },
                       { "id",
                         json{ { "type", "string" },
                               { "description", "filter by spell/AI id or display name" } } } } },

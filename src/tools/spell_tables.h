@@ -390,6 +390,76 @@ inline const std::vector<AbilitySpec>& monsterAbilities()
     return k;
 }
 
+// Trap spell effects. Transcribed from DevilutionX Source/objects.cpp:
+//   AddTrap(1230)      OBJ_TRAPL/OBJ_TRAPR wall traps: missile is rolled from
+//                      {Arrow, Firebolt, LightningControl} with
+//                      GenerateRnd((effectiveLevel / 3) + 1), so Arrow is always
+//                      possible, Firebolt needs level >= 3, Lightning >= 6.
+//   OperateChest(2043) trapped chests (OBJ_TCHEST1..3) cast Arrow / FireArrow /
+//                      Nova (vanilla 0..2) and RingOfFire / StealPotions /
+//                      StealMana (Hellfire 0..5).
+//   UpdateFlameTrap(1590) Hellfire wall flame holes / flame levers: object
+//                      animation + direct damage typed as FireWallControl.
+struct TrapSpec {
+    std::string id;
+    std::string name;                        // MissileID / effect name
+    std::string name_zh;
+    std::string description;                 // one-line Chinese effect
+    std::string trigger;                     // when it fires
+    std::string element;                     // cast-action element
+    std::string missiles;                    // optional MissileID chain
+    std::vector<std::string> objects;        // OBJ_* ids that host it
+    std::string source_ref;                  // DevilutionX source location
+};
+
+inline const std::vector<TrapSpec>& trapSpecs()
+{
+    static const std::vector<TrapSpec> k = {
+        {"Trap.Arrow", "Arrow", "箭矢陷阱",
+         "墙上的机关陷阱向触发者射出一支箭。",
+         "门/箱子/拉杆被触发且附近有玩家；任意有效层都会出现", "Physical", "Arrow",
+         {"OBJ_TRAPL", "OBJ_TRAPR"}, "Source/objects.cpp:1230 AddTrap, 4196 OperateTrap"},
+        {"Trap.Firebolt", "Firebolt", "火焰弹陷阱",
+         "墙陷阱改为发射火焰弹（复用火球图形）。",
+         "有效层 ≥3（GenerateRnd((effLevel/3)+1) 可摇到 1）", "Fire", "Firebolt",
+         {"OBJ_TRAPL", "OBJ_TRAPR"}, "Source/objects.cpp:1230 AddTrap"},
+        {"Trap.Lightning", "LightningControl", "闪电陷阱",
+         "墙陷阱改为发射爬行闪电。",
+         "有效层 ≥6（GenerateRnd((effLevel/3)+1) 可摇到 2）", "Lightning", "LightningControl",
+         {"OBJ_TRAPL", "OBJ_TRAPR"}, "Source/objects.cpp:1230 AddTrap"},
+        {"TrapChest.Arrow", "Arrow", "宝箱箭矢",
+         "打开带陷阱的箱子时向玩家射出箭矢。",
+         "宝箱陷阱类型 0（原版与地狱火都有）", "Physical", "Arrow",
+         {"OBJ_TCHEST1", "OBJ_TCHEST2", "OBJ_TCHEST3"}, "Source/objects.cpp:2043 OperateChest"},
+        {"TrapChest.FireArrow", "FireArrow", "宝箱火焰箭",
+         "宝箱陷阱类型 1：射出带火焰的箭。",
+         "宝箱陷阱类型 1（原版与地狱火都有）", "Fire", "FireArrow",
+         {"OBJ_TCHEST1", "OBJ_TCHEST2", "OBJ_TCHEST3"}, "Source/objects.cpp:2043 OperateChest"},
+        {"TrapChest.Nova", "Nova", "宝箱新星",
+         "宝箱陷阱类型 2：以玩家为中心爆出环形闪电。",
+         "宝箱陷阱类型 2（原版与地狱火都有）", "Lightning", "Nova",
+         {"OBJ_TCHEST1", "OBJ_TCHEST2", "OBJ_TCHEST3"}, "Source/objects.cpp:2043 OperateChest"},
+        {"TrapChest.RingOfFire", "RingOfFire", "宝箱火焰之环",
+         "宝箱陷阱类型 3：在玩家周围生成一圈火焰墙。",
+         "宝箱陷阱类型 3（仅地狱火：GenerateRnd(6)）", "Fire", "RingOfFire",
+         {"OBJ_TCHEST1", "OBJ_TCHEST2", "OBJ_TCHEST3"}, "Source/objects.cpp:2043 OperateChest"},
+        {"TrapChest.StealPotions", "StealPotions", "宝箱偷药水",
+         "宝箱陷阱类型 4：偷走玩家一瓶治疗药水（无图形）。",
+         "宝箱陷阱类型 4（仅地狱火）", "Physical", "StealPotions",
+         {"OBJ_TCHEST1", "OBJ_TCHEST2", "OBJ_TCHEST3"}, "Source/objects.cpp:2043 OperateChest"},
+        {"TrapChest.StealMana", "StealMana", "宝箱吸法力",
+         "宝箱陷阱类型 5：吸走玩家法力（无图形）。",
+         "宝箱陷阱类型 5（仅地狱火）", "Physical", "StealMana",
+         {"OBJ_TCHEST1", "OBJ_TCHEST2", "OBJ_TCHEST3"}, "Source/objects.cpp:2043 OperateChest"},
+        {"Trap.Flame", "FireWallControl", "墙上喷火口 / 火焰拉杆",
+         "地狱火墙上的喷火口沿一条直线喷火；伤害类型按 FireWallControl 记账，"
+         "画面是对象自身的火焰动画（无 missile 图形）。",
+         "踩到喷火口的感应线（OBJ_FLAMEHOLE）或拉动火焰拉杆（OBJ_FLAMELVR）",
+         "Fire", "", {"OBJ_FLAMEHOLE", "OBJ_FLAMELVR"}, "Source/objects.cpp:1590 UpdateFlameTrap, 2163 OperateTrapLever"},
+    };
+    return k;
+}
+
 // True when this monster (normalized AI + id) has the given ability.
 inline bool abilityMatches(const AbilitySpec& a, const std::string& ai, const std::string& monsterId)
 {
@@ -466,8 +536,10 @@ struct Entry {
     std::string variant;          // monster: attack form of a multi-form AI (e.g. "Fireball" / "Flash")
     std::string condition;        // monster: when that form is used (Chinese note)
     bool is_ability = false;      // true for engine-level monster abilities
-    std::string trigger;          // ability: when the engine fires it
-    std::string source_ref;       // ability: DevilutionX source location
+    bool is_trap = false;         // true for trap spell effects
+    std::string trigger;          // ability/trap: when the engine fires it
+    std::string source_ref;       // ability/trap: DevilutionX source location
+    std::vector<std::string> objects;  // trap: OBJ_* hosting objects
     std::vector<std::string> missiles;
     std::string mana_cost;
     std::string min_intelligence;
@@ -488,6 +560,7 @@ struct Catalog {
     std::vector<Entry> spells;
     std::vector<Entry> monster_attacks;
     std::vector<Entry> abilities;
+    std::vector<Entry> traps;
     std::vector<SpriteInfo> impact_catalog;
     bool ok = false;
     std::string error;
@@ -851,6 +924,25 @@ inline Catalog buildCatalog(const std::filesystem::path& devRoot)
         e.source_ref = spec.source_ref;
         e.monsters = names;
         c.abilities.push_back(std::move(e));
+    }
+
+    // Trap spell effects (wall traps / trapped chests / Hellfire flame traps).
+    for (const auto& spec : trapSpecs()) {
+        Row pseudo;
+        pseudo["id"] = spec.id;
+        pseudo["name"] = spec.name;
+        pseudo["flags"] = spec.element;
+        pseudo["missiles"] = spec.missiles;
+        Entry e = deriveEntry(pseudo, misById, sprById, "monster", nullptr);
+        e.is_trap = true;
+        e.monster_ai.clear();
+        e.name_zh = spec.name_zh;
+        e.description = spec.name_zh + "（" + spec.name + "）：" + spec.description +
+                        " 触发：" + spec.trigger + "。";
+        e.trigger = spec.trigger;
+        e.source_ref = spec.source_ref;
+        e.objects = spec.objects;
+        c.traps.push_back(std::move(e));
     }
 
     c.ok = true;

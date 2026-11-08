@@ -699,6 +699,26 @@ static void testSpellTables()
         }
     }
 
+    // (d4) trap spell effects (wall traps / chest traps / flame traps)
+    {
+        const auto& tr = trapSpecs();
+        if (tr.size() != 10) bad("10 trap spell effects registered");
+        bool arrow = false, firebolt = false, lightning = false, nova = false;
+        bool ring = false, stealMana = false, flame = false;
+        for (const auto& t : tr) {
+            if (t.id == "Trap.Arrow") arrow = t.missiles == "Arrow";
+            if (t.id == "Trap.Firebolt") firebolt = t.missiles == "Firebolt";
+            if (t.id == "Trap.Lightning") lightning = t.missiles == "LightningControl";
+            if (t.id == "TrapChest.Nova") nova = t.missiles == "Nova";
+            if (t.id == "TrapChest.RingOfFire") ring = t.missiles == "RingOfFire";
+            if (t.id == "TrapChest.StealMana") stealMana = t.missiles == "StealMana";
+            if (t.id == "Trap.Flame")
+                flame = t.missiles.empty() && t.objects.size() == 2;
+        }
+        if (!arrow || !firebolt || !lightning || !nova || !ring || !stealMana || !flame)
+            bad("trap effects mapped to their MissileIDs");
+    }
+
     // (e) impact / status classification
     if (impactOverride("Fireball") != "MagmaBallExplosion") bad("Fireball impact override");
     if (!isImpactGraphic("MagmaBallExplosion")) bad("isImpactGraphic");

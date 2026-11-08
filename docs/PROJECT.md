@@ -503,6 +503,12 @@ DiabloHFConverter/
       （`SneakAi` 的 `MFLAG_HIDDEN`）；每条带 `monsters`/`trigger`/`source_ref`，`ability_count=3`。
       核实结论：Diablo 1 / Hellfire **没有** Diablo 2 式词缀——`Thunderstorm`/`Waller`/`Vortex`/
       `Shielding` 在 `Source/` 中完全不存在，故不伪造条目，相关说明写入 `docs/SPELLS.md`。
+- [x] 陷阱法术入口 `traps[]`（`spell_tables.h::trapSpecs()`，转录自 `Source/objects.cpp`）：
+      `OBJ_TRAPL/R` 墙陷阱按 `GenerateRnd((effLevel/3)+1)` → Arrow / Firebolt(有效层≥3) /
+      LightningControl(≥6)；`OBJ_TCHEST1..3` 带陷阱宝箱 Arrow / FireArrow / Nova，地狱火扩到
+      RingOfFire / StealPotions / StealMana；地狱火 `OBJ_FLAMEHOLE`/`OBJ_FLAMELVR` 为对象火焰
+      动画 + 直接伤害（记 `FireWallControl`，无 missile 图形）。每条带 `objects`/`trigger`/
+      `source_ref`，`trap_count=10`，`spell.list` 总计 89 条。
 - [x] 后端 `spell.list`：四表 join（`spelldat` / `misdat` / `missile_sprites` / `monstdat`），
       输出 `{count,spell_count,monster_attack_count,cast_action_map,impact_catalog[],spells[],monster_attacks[]}`；
       每条目四阶段 `stages[]`，`sprite` 层带编号 `missiles\{name}{N}.cl2` 清单 + 显式 `width`，

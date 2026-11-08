@@ -988,6 +988,58 @@ static void testSpellListSynthesis() {
               "Hidden ability lists the Sneak monsters (incl. uniques)");
     }
 
+    // Trap spell effects (wall traps / trapped chests / Hellfire flame traps).
+    json traps = res.value("traps", json::array());
+    CHECK(res.value("trap_count", 0) == 10 && traps.size() == 10,
+          "spell.list exposes the 10 trap spell effects");
+    auto findTrap = [&](const std::string& id) -> json {
+        for (auto& t : traps)
+            if (t.value("id", std::string()) == id) return t;
+        return json::object();
+    };
+    json ta = findTrap("Trap.Arrow");
+    CHECK(!ta.empty(), "spell.list includes Trap.Arrow");
+    if (!ta.empty()) {
+        CHECK(ta.value("trap", false), "Trap.Arrow marked as a trap");
+        json pl = stageOf(ta, "projectile").value("layers", json::array());
+        CHECK(!pl.empty() && pl[0].value("graphic_id", std::string()) == "Arrow",
+              "Trap.Arrow uses the Arrow sprite");
+        CHECK(ta.value("objects", json::array()).size() == 2,
+              "Trap.Arrow lists both wall trap objects");
+        CHECK(!ta.value("trigger", std::string()).empty(), "Trap.Arrow carries a trigger");
+        CHECK(!ta.value("source_ref", std::string()).empty(), "Trap.Arrow carries source_ref");
+    }
+    json tn = findTrap("TrapChest.Nova");
+    CHECK(!tn.empty(), "spell.list includes TrapChest.Nova");
+    if (!tn.empty()) {
+        json pl = stageOf(tn, "projectile").value("layers", json::array());
+        CHECK(!pl.empty() && pl[0].value("graphic_id", std::string()) == "Lightning",
+              "TrapChest.Nova uses the Lightning sprite");
+    }
+    json trf = findTrap("TrapChest.RingOfFire");
+    CHECK(!trf.empty(), "spell.list includes TrapChest.RingOfFire (Hellfire)");
+    if (!trf.empty()) {
+        json pl = stageOf(trf, "projectile").value("layers", json::array());
+        CHECK(!pl.empty() && pl[0].value("graphic_id", std::string()) == "FireWall" &&
+                  pl[0].value("files", json::array()).size() == 2,
+              "TrapChest.RingOfFire uses the 2-file FireWall sprite");
+    }
+    json tsm = findTrap("TrapChest.StealMana");
+    CHECK(!tsm.empty(), "spell.list includes TrapChest.StealMana (Hellfire)");
+    if (!tsm.empty())
+        CHECK(stageOf(tsm, "projectile").value("layers", json::array()).empty(),
+              "StealMana has no sprite (invisible missile)");
+    json tf = findTrap("Trap.Flame");
+    CHECK(!tf.empty(), "spell.list includes Trap.Flame");
+    if (!tf.empty()) {
+        CHECK(stageOf(tf, "projectile").value("layers", json::array()).empty(),
+              "flame trap has no missile sprite (object animation)");
+        CHECK(tf.value("objects", json::array()).size() == 2,
+              "flame trap lists flame hole + lever objects");
+    }
+    json trapOnly = resultOf("spell.list", json{ { "source", "trap" } });
+    CHECK(trapOnly.value("count", 0) == 10, "spell.list source=trap returns only traps");
+
     // source / id filters.
     json one = resultOf("spell.list", json{{"source", "player"}, {"id", "Fireball"}});
     CHECK(one.value("count", 0) == 1, "spell.list id/source filter works");

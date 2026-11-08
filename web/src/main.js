@@ -854,6 +854,7 @@ function combatList() {
   const src = $("combatSource").value;
   if (src === "monster") return spellCatalog.monster_attacks || [];
   if (src === "ability") return spellCatalog.abilities || [];
+  if (src === "trap") return spellCatalog.traps || [];
   return spellCatalog.spells || [];
 }
 
@@ -891,6 +892,8 @@ function renderCombatInfo() {
   if (combatEntry.condition) addRow("触发条件", combatEntry.condition);
   if (combatEntry.trigger) addRow("触发条件", combatEntry.trigger);
   if (combatEntry.source_ref) addRow("源码位置", combatEntry.source_ref);
+  if (Array.isArray(combatEntry.objects) && combatEntry.objects.length)
+    addRow("宿主对象", combatEntry.objects.join(" / "));
   if (Array.isArray(combatEntry.mana_by_level) && combatEntry.mana_by_level.length) {
     const txt = combatEntry.mana_by_level
       .map((o) => `${o.level}级=${o.mana}`)

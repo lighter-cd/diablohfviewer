@@ -118,7 +118,13 @@ Jarulf攻略的4.2.1/4.2.2节专门列出了怪物法术。以下为可确认的
 > **需要更正的下表内容**：Teleporter/Thunderstorm/Waller/Vortex/Shielding 是**暗黑破坏神 2** 的
 > 怪物词缀，DevilutionX（暗黑 1 / 地狱火）引擎中并不存在。其中只有“传送”有对应实现（`MT_BLINK`
 > 受击瞬移）；**闪电风暴 / 筑墙 / 漩涡 / 护盾在 `Source/` 里完全没有对应代码**，因此 `spell.list`
-> 不会伪造这些条目。陷阱类法术效果目前仍未纳入。
+> 不会伪造这些条目。
+>
+> **陷阱法术已纳入 `traps[]`（10 条）**：`OBJ_TRAPL/R` 墙陷阱（`GenerateRnd((effLevel/3)+1)` →
+> Arrow / Firebolt 有效层≥3 / LightningControl ≥6）、`OBJ_TCHEST1..3` 带陷阱宝箱（Arrow /
+> FireArrow / Nova，地狱火扩到 RingOfFire / StealPotions / StealMana）、地狱火 `OBJ_FLAMEHOLE` /
+> `OBJ_FLAMELVR` 喷火口与火焰拉杆。下节脚注中的“分解（Disintegrate）”在 DevilutionX 中**不存在**，
+> 实际第 5 种宝箱陷阱是 `StealPotions`（偷药水）。
 
 #### 怪物词缀能力（Champion/Unique怪物）
 
@@ -131,7 +137,7 @@ Jarulf攻略的4.2.1/4.2.2节专门列出了怪物法术。以下为可确认的
 - **护盾（Shielding）** ：为同组怪物提供防护。
 - **召唤/筑墙组合**：冠军/稀有怪物会以更复杂的方式使用筑墙能力。
 
-> **补充说明**：陷阱（Traps）在游戏数据中也属于“法术效果”的一部分，包括箭矢、火焰箭、新星、火焰之环、法力吸取、分解等，但它们属于环境机关而非怪物主动施法，因此未列入上表。
+> **补充说明**：陷阱（Traps）在游戏数据中也属于“法术效果”的一部分，包括箭矢、火焰箭、新星、火焰之环、偷药水、吸法力等，但它们属于环境机关而非怪物主动施法，因此未列入上表。**更正**：原文的“分解（Disintegrate）”在地狱火/DevilutionX 中不存在，实际第 5 种宝箱陷阱为 `StealPotions`；详细实现见 `spell.list` 的 `traps[]`。
 
 ---
 
