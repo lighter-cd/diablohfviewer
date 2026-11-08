@@ -99,6 +99,13 @@ main { display: flex; height: calc(100vh - 52px); }
   font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14px;
   color: #ffd479; word-break: break-all;
 }
+.combat-info { margin: 8px 0 2px; padding: 8px 10px; border-radius: 6px;
+  background: #23232b; border: 1px solid #33333d; font-size: 13px; line-height: 1.6; }
+.combat-info[hidden] { display: none; }
+.combat-info .ci-row { display: flex; gap: 8px; }
+.combat-info .ci-key { color: #b9b9c2; flex: 0 0 auto; }
+.combat-info .ci-val { color: #e6e6ee; word-break: break-all; }
+.combat-info .ci-desc { color: #cfd0ec; margin-top: 4px; }
 
 .error-banner {
   margin: 8px 0; padding: 10px 12px; border-radius: 6px;

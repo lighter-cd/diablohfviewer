@@ -690,6 +690,7 @@ async function onSelectSprite(sprite) {
   lastSprite = sprite;
   hideError();
   $("currentName").textContent = sprite.name;
+  $("combatInfo").hidden = true; $("combatInfo").textContent = "";
   // Overlays are tied to the base sprite; clear them whenever a new one is picked.
   overlayLayers = [];
   renderOverlayList();
@@ -855,13 +856,51 @@ function combatList() {
     : (spellCatalog.spells || []);
 }
 
+// 显示名：优先中文名 name_zh，仅在中文名与英文名不同（即确有翻译）时附英文名；
+// 怪物远程攻击通常无翻译，回落到英文名。description 用作悬浮提示。
+function combatLabel(e) {
+  const zh = e && e.name_zh && e.name_zh !== e.name ? e.name_zh : "";
+  return zh ? `${zh} (${e.name})` : (e ? e.name : "");
+}
+
+// 在信息区展示原英文名与合成中文描述（用 textContent 防注入）。
+function renderCombatInfo() {
+  const el = $("combatInfo");
+  if (!combatEntry) { el.hidden = true; el.textContent = ""; return; }
+  el.hidden = false;
+  el.textContent = "";
+  const addRow = (k, v) => {
+    if (!v) return;
+    const row = document.createElement("div");
+    row.className = "ci-row";
+    const kk = document.createElement("span");
+    kk.className = "ci-key"; kk.textContent = k + "：";
+    const vv = document.createElement("span");
+    vv.className = "ci-val"; vv.textContent = v;
+    row.appendChild(kk); row.appendChild(vv); el.appendChild(row);
+  };
+  addRow("英文名", combatEntry.name);
+  if (combatEntry.name_zh && combatEntry.name_zh !== combatEntry.name)
+    addRow("中文名", combatEntry.name_zh);
+  if (combatEntry.description) {
+    const d = document.createElement("div");
+    d.className = "ci-desc";
+    const kk = document.createElement("span");
+    kk.className = "ci-key"; kk.textContent = "描述：";
+    const vv = document.createElement("span");
+    vv.className = "ci-val"; vv.textContent = combatEntry.description;
+    d.appendChild(kk); d.appendChild(vv); el.appendChild(d);
+  }
+}
+
 function populateCombatSpells() {
   const sel = $("combatSpell");
   sel.innerHTML = "";
   for (const e of combatList()) {
     const o = document.createElement("option");
     o.value = e.id;
-    o.textContent = e.name + (e.monster_ai ? `  (${e.monster_ai})` : "");
+    o.textContent = combatLabel(e) + (e.monster_ai ? `  (${e.monster_ai})` : "");
+    o.title = e.description || e.name;
     sel.appendChild(o);
   }
 }
@@ -1168,8 +1207,9 @@ function renderCombatStage(si, fi) {
   $("stageNo").textContent = `${si + 1}/${stages.length} ${st.label}`;
   $("frame").max = String(total - 1);
   $("frame").value = String(Math.min(fi, total - 1));
-  $("currentName").textContent = `${combatEntry.name} — ${st.label}`;
-  setMeta(`技能/战斗查看器  ${combatEntry.name}  ·  ${st.label}  ·  ${st.layers.length} 层  ·  方向 ${combatDir}`);
+  $("currentName").textContent = `${combatLabel(combatEntry)} — ${st.label}`;
+  renderCombatInfo();
+  setMeta(`技能/战斗查看器  ${combatLabel(combatEntry)}  ·  ${st.label}  ·  ${st.layers.length} 层  ·  方向 ${combatDir}`);
 }
 
 function startCombatPlay() {

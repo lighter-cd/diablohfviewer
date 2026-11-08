@@ -190,3 +190,13 @@
 - 后端 spell.list 加中文名 name_zh 与合成中文描述 description：spell_tables.h 解析 Translations/zh_TW.po→zh_CN.po 的 msgctxt "spell" 块取中文名（清理零宽/格式字符，跳过含 {: 占位的坏翻译回退英文名）；deriveEntry 附带 mana_cost/min_intelligence 并由 synthDescription 按已解析阶段链+法力/智力消耗合成中文说明；toolSpellList 输出 name_zh/description；单测/集成测各加断言。修一处 po 解析 bug：msgctxt 分支用了 substr(9) 跳过引号导致 ctx 残留尾引号永不匹配，改为 substr(8) 后 Firebolt→火栓 端到端通过。重建 mcp-server.exe，stdio 驱动验证 name_zh(火球术/火栓/石咒卷軸)与 description 均正确返回；三套 C++ 测试全 PASS。同步 README.md/ARCHITECTURE.md/PROJECT.md 的 spell.list 说明。
 - 涉及: src/tools/spell_tables.h, src/tools/sprite_tools.cpp, out/unit_tests.cpp, out/integration_tests.cpp, README.md, docs/ARCHITECTURE.md, docs/PROJECT.md
 - 验证：unit/core/integration 三套 C++ 测试全 PASS；cmake --build build-mcp --target mcp-server 重编成功；临时 Node 驱动向 mcp-server --stdio 发 spell.list，Fireball/Firebolt/Stone Curse 的 name_zh 与 description 均正确返回。
+
+## 2026-11-08 12:24:10
+- 技能/战斗查看器（前端）展示中文名：web/src/main.js 新增 combatLabel()，下拉项与顶部标题优先显示后端 name_zh（确有翻译时形如「火栓 (Firebolt)」，怪物远程攻击无翻译则回退英文名）；条目 title 设为合成中文 description。仅前端改动，未重建 mcp-server.exe；同步 web/README.md 第 4 模式说明。
+- 涉及: web/src/main.js, web/README.md
+- 验证：node --check web/src/main.js 通过；unit/core/integration 三套 C++ 测试全 PASS（前端改动不影响后端）。
+
+## 2026-11-08 12:25:21
+- 技能/战斗查看器信息区补充原英文名与描述：web/index.html 在 currentName 下方新增 combatInfo 信息区（web/styles.css 加 .combat-info 样式）；web/src/main.js 新增 renderCombatInfo()，在画布下方列出英文名（name）、中文名（name_zh，确有翻译时）与合成中文描述（description）；非战斗模式（精灵查看）隐藏该区。满足「显示原英文名及描述信息」需求。同步 web/README.md 第 4 模式说明。
+- 涉及: web/index.html, web/styles.css, web/src/main.js, web/README.md
+- 验证：node --check web/src/main.js 通过；unit/core/integration 三套 C++ 测试全 PASS。
