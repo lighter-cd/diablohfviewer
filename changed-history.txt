@@ -237,3 +237,7 @@
 ## 2026-11-08 17:31:58
 - 改变放大实现思路：Canvas 固定 1280×720 逻辑视口（VIEW_W/VIEW_H），缩放改为绘制时对 bitmap 的目标尺寸缩放 ctx.drawImage(img,dx,dy,nativeW×zoom,nativeH×zoom)、居中于视口，imageSmoothingEnabled=false 最近邻；不再改变 canvas 元素/后备存储尺寸。版本串升至 ?v=20261108c。
 - 涉及: web/src/viewer.js, web/index.html, web/styles.css, web/src/main.js, docs/ARCHITECTURE.md
+
+## 2026-11-08 17:39:47
+- 把默认放大倍数从 4 调整为 2：main.js 的 zoom 初值、index.html 滑块 value/显示、viewer.js validZoom 兜底默认值；版本串升至 ?v=20261108d。
+- 涉及: web/src/main.js, web/index.html, web/src/viewer.js, docs/ARCHITECTURE.md

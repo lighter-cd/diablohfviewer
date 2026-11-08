@@ -12,9 +12,9 @@
 // Player CL2 frames are stored direction-major: 8 directions x N frames, so
 // frameIndex = dir * framesPerDir + frameInDir (framesPerDir = total/8).
 
-import { McpClient } from "./client.js?v=20261108c";
-import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js?v=20261108c";
-import { drawFrame, drawComposite, drawScene } from "./viewer.js?v=20261108c";
+import { McpClient } from "./client.js?v=20261108d";
+import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js?v=20261108d";
+import { drawFrame, drawComposite, drawScene } from "./viewer.js?v=20261108d";
 
 const $ = (id) => document.getElementById(id);
 
@@ -117,7 +117,7 @@ let currentDirections = 1;  // number of directions the current sprite is split 
 let framesPerDir = 1;       // frames per direction (total / directions)
 let currentDir = 0;         // currently shown direction
 let currentFin = 0;         // currently shown frame within the direction
-let zoom = 4;               // display magnification (1..8); also scales scene spacing
+let zoom = 2;               // display magnification (1..8); also scales scene spacing
 let isPlaying = false;
 let playTimer = null;
 

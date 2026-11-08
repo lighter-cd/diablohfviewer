@@ -42,10 +42,10 @@ function setupView(canvas) {
   return ctx;
 }
 
-// Clamp/normalise a zoom factor to a finite integer in 1..8 (default 4).
+// Clamp/normalise a zoom factor to a finite integer in 1..8 (default 2).
 export function validZoom(zoom) {
   const z = Math.round(Number(zoom));
-  return Number.isFinite(z) && z >= 1 && z <= 8 ? z : 4;
+  return Number.isFinite(z) && z >= 1 && z <= 8 ? z : 2;
 }
 
 // Draw one offscreen bitmap scaled to (w,h) at (x,y). This is the draw-time
