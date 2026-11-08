@@ -246,3 +246,8 @@
 - 补齐 spell.list 怪物侧缺失法术入口：spell_tables.h 新增 monsterAttackForms()，转录 AI 函数内直接 AddMissile 的形态——Counselor 按智力 0..3 → Firebolt/ChargedBolt/LightningControl/Fireball，外加近身 FlashBottom+FlashTop；Familiar → Lightning；Gloom → Rhino 冲撞；Mega → InfernoControl。每形态独立成条（id 为 AI 或 AI.variant）并带 variant/condition，monsters 按智力或怪物 id 精确收窄，怪物攻击 14 → 22；HorkSpawn 因 monstdat 无 ai=HorkDemon 行（MT_HORKDMN 实为 SkeletonMelee）不可达，明确不输出。同步前端显示「攻击形态/触发条件」、工具描述与 README/ARCHITECTURE/PROJECT/SPELLS/web README 文档，单元与集成测试各加断言。
 - 涉及: src/tools/spell_tables.h, src/tools/sprite_tools.cpp, web/src/main.js, out/unit_tests.cpp, out/integration_tests.cpp, README.md, docs/ARCHITECTURE.md, docs/PROJECT.md, docs/SPELLS.md, web/README.md
 
+
+## 2026-11-08 18:12:52
+- 补齐 spell.list 怪物特殊能力入口并修正归属：新增 abilities[]（monsterAbilities() 转录引擎实现——Blink 受重击瞬移、AcidPuddle 酸液怪死亡留池、Hidden 潜行系隐身，带 monsters/trigger/source_ref）；合并 unique_monstdat.tsv 作为额外怪物行（唯一怪 ai/intelligence 覆盖基础怪，Zhar/Lazarus 经 normalizedMonsterAi 归一到 Counselor），使 HorkSpawn、Counselor.Fireball(Zhar/Lazarus)、LazarusSuccubus(Red Vex/Black Jade)、AcidUnique 正确归属，怪物攻击 22→25、count=79；核实 Thunderstorm/Waller/Vortex/Shielding 在 DevilutionX 中不存在（仅 Teleporter 对应 Blink），不伪造条目并写入文档。前端新增「怪物特殊能力」来源与触发条件/源码位置展示。
+- 涉及: src/tools/spell_tables.h, src/tools/sprite_tools.cpp, web/index.html, web/src/main.js, out/unit_tests.cpp, out/integration_tests.cpp, README.md, docs/ARCHITECTURE.md, docs/PROJECT.md, docs/SPELLS.md, web/README.md
+

@@ -107,11 +107,18 @@ Jarulf攻略的4.2.1/4.2.2节专门列出了怪物法术。以下为可确认的
 | **法力吸取/眩晕** | 手指法师（Finger Mage） | 追踪弹吸取法力，并使目标眩晕 |
 
 > **本项目 `spell.list` 的覆盖情况**：玩家侧 51 条（含未使用的 4 个 ID 与 5 个陷阱符文）全部输出；
-> 怪物侧 22 条 = `GetMissileType()` 的 14 类 AI + 在 AI 函数内直接 `AddMissile` 的 8 个形态
-> （Counselor 按智力 0..3 → Firebolt/ChargedBolt/LightningControl/Fireball，外加近身双层 Flash；
-> Familiar → Lightning；Gloom → Rhino 冲撞；Mega → InfernoControl）。上表中的“大主教火球/闪光”
-> 即对应 Counselor 的 Fireball 与 Flash 两条。**尚未纳入**：怪物词缀能力（Teleporter /
-> Thunderstorm / Waller / Vortex / Shielding，不来自这四张数据表）与陷阱类法术效果。
+> 怪物侧 25 条 = `GetMissileType()` 的 16 类 AI（含 `unique_monstdat` 唯一怪带来的 `AcidUnique`、
+> `LazarusSuccubus`）+ 在 AI 函数内直接 `AddMissile` 的 9 个形态（Counselor 按智力 0..3 →
+> Firebolt/ChargedBolt/LightningControl/Fireball，外加近身双层 Flash；Familiar → Lightning；
+> Gloom → Rhino 冲撞；Mega → InfernoControl；Hork Demon → HorkSpawn）。上表中的“大主教火球/闪光”
+> 即对应 Counselor 的 Fireball 与 Flash 两条。另有 `abilities[]` 3 条引擎级怪物特殊能力：
+> **瞬移**（`MT_BLINK` 受重击 `Teleport()`，即下表的 Teleporter）、**死亡酸池**（酸液怪尸体
+> 留 `AcidPuddle`）、**隐身**（潜行系 `MFLAG_HIDDEN`）。
+>
+> **需要更正的下表内容**：Teleporter/Thunderstorm/Waller/Vortex/Shielding 是**暗黑破坏神 2** 的
+> 怪物词缀，DevilutionX（暗黑 1 / 地狱火）引擎中并不存在。其中只有“传送”有对应实现（`MT_BLINK`
+> 受击瞬移）；**闪电风暴 / 筑墙 / 漩涡 / 护盾在 `Source/` 里完全没有对应代码**，因此 `spell.list`
+> 不会伪造这些条目。陷阱类法术效果目前仍未纳入。
 
 #### 怪物词缀能力（Champion/Unique怪物）
 

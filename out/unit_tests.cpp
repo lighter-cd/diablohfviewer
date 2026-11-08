@@ -639,7 +639,12 @@ static void testSpellTables()
         if (!hasFlash || !hasFireballForm) bad("Counselor Flash/Fireball forms present");
         if (bat != 2) bad("Bat has 2 attack forms (Lightning + Gloom charge)");
         if (mega != 1) bad("Mega has 1 attack form (Inferno)");
-        if (hork != 0) bad("HorkDemon has no attack form (ai unused in monstdat)");
+        if (hork != 1) bad("HorkDemon has 1 attack form (HorkSpawn, unique AI)");
+
+        // Unique-monster AIs that delegate to another AI body.
+        if (normalizedMonsterAi("Zhar") != "Counselor") bad("Zhar -> Counselor");
+        if (normalizedMonsterAi("Lazarus") != "Counselor") bad("Lazarus -> Counselor");
+        if (normalizedMonsterAi("Succubus") != "Succubus") bad("plain AI unchanged");
 
         // intelligence / monster-id narrowing mirrors the AI code
         const AttackForm* fireball = nullptr;
@@ -666,6 +671,31 @@ static void testSpellTables()
                 bad("Bat/Lightning rejects Gloom");
             if (!attackFormMatches(*gloomCharge, "MT_GLOOM", 2))
                 bad("Bat/Charge matches Gloom");
+        }
+    }
+
+    // (d3) engine-level monster abilities (no missile attack of their own)
+    {
+        const auto& ab = monsterAbilities();
+        if (ab.size() != 3) bad("3 monster abilities registered");
+        bool blink = false, acid = false, hidden = false;
+        for (const auto& a : ab) {
+            if (a.id == "Blink") blink = true;
+            if (a.id == "AcidDeathPuddle") acid = true;
+            if (a.id == "Hidden") hidden = true;
+        }
+        if (!blink || !acid || !hidden) bad("Blink/AcidDeathPuddle/Hidden present");
+        for (const auto& a : ab) {
+            if (a.id == "Blink" && !abilityMatches(a, "Bat", "MT_BLINK"))
+                bad("Blink matches MT_BLINK");
+            if (a.id == "Blink" && abilityMatches(a, "Bat", "MT_FAMILIAR"))
+                bad("Blink rejects MT_FAMILIAR");
+            if (a.id == "AcidDeathPuddle" && !abilityMatches(a, "Acid", "MT_XACID"))
+                bad("Acid puddle matches MT_XACID");
+            if (a.id == "Hidden" && !abilityMatches(a, "Sneak", "MT_SNEAK"))
+                bad("Hidden matches Sneak AI");
+            if (a.id == "Hidden" && abilityMatches(a, "Zombie", "MT_NZOMBIE"))
+                bad("Hidden rejects Zombie");
         }
     }
 

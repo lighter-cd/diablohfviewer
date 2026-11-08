@@ -851,9 +851,10 @@ async function loadSpellList() {
 
 function combatList() {
   if (!spellCatalog) return [];
-  return $("combatSource").value === "monster"
-    ? (spellCatalog.monster_attacks || [])
-    : (spellCatalog.spells || []);
+  const src = $("combatSource").value;
+  if (src === "monster") return spellCatalog.monster_attacks || [];
+  if (src === "ability") return spellCatalog.abilities || [];
+  return spellCatalog.spells || [];
 }
 
 // 显示名：优先中文名 name_zh，仅在中文名与英文名不同（即确有翻译）时附英文名；
@@ -888,6 +889,8 @@ function renderCombatInfo() {
     addRow("法术等级", combatEntry.level);
   if (combatEntry.variant) addRow("攻击形态", combatEntry.variant);
   if (combatEntry.condition) addRow("触发条件", combatEntry.condition);
+  if (combatEntry.trigger) addRow("触发条件", combatEntry.trigger);
+  if (combatEntry.source_ref) addRow("源码位置", combatEntry.source_ref);
   if (Array.isArray(combatEntry.mana_by_level) && combatEntry.mana_by_level.length) {
     const txt = combatEntry.mana_by_level
       .map((o) => `${o.level}级=${o.mana}`)

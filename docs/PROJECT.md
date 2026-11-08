@@ -493,8 +493,16 @@ DiabloHFConverter/
       Counselor 按智力 0..3 分别发 Firebolt/ChargedBolt/LightningControl/Fireball，近身另发
       FlashBottom+FlashTop；Familiar 撤退时发 Lightning；Gloom 远距离 Rhino 冲撞；Mega 近身
       InfernoControl。每个形态单独成条（id 为 `AI` 或 `AI.variant`），带 `variant`/`condition`，
-      `monsters` 按智力或怪物 id 收窄，怪物攻击条数 14 → 22。`HorkSpawn` 因 monstdat 无
-      `ai=HorkDemon` 行（`MT_HORKDMN` 实为 SkeletonMelee）不可达，明确不输出。
+      `monsters` 按智力或怪物 id 收窄，怪物攻击条数 14 → 22。
+- [x] 合并 `unique_monstdat.tsv`：唯一怪的 `ai`/`intelligence` 覆盖基础怪，解决归属错误——
+      Hork Demon（唯一怪 `ai=HorkDemon`）的 `HorkSpawn` 可达；Zhar/Lazarus（`ZharAi`/`LazarusAi`
+      委托 `CounselorAi`，用 `normalizedMonsterAi()` 归一）按其智力 3 归入 `Counselor.Fireball`；
+      Red Vex / Black Jade（`LazarusSuccubus`）与 `AcidUnique` 也已进入各自条目；怪物攻击 22 → 25。
+- [x] 怪物特殊能力入口 `abilities[]`（`spell_tables.h::monsterAbilities()`，转录自引擎实现）：
+      `Blink` 受重击瞬移（`Teleport()`）、`AcidPuddle` 酸液怪死亡留酸池、`Hidden` 潜行系隐身
+      （`SneakAi` 的 `MFLAG_HIDDEN`）；每条带 `monsters`/`trigger`/`source_ref`，`ability_count=3`。
+      核实结论：Diablo 1 / Hellfire **没有** Diablo 2 式词缀——`Thunderstorm`/`Waller`/`Vortex`/
+      `Shielding` 在 `Source/` 中完全不存在，故不伪造条目，相关说明写入 `docs/SPELLS.md`。
 - [x] 后端 `spell.list`：四表 join（`spelldat` / `misdat` / `missile_sprites` / `monstdat`），
       输出 `{count,spell_count,monster_attack_count,cast_action_map,impact_catalog[],spells[],monster_attacks[]}`；
       每条目四阶段 `stages[]`，`sprite` 层带编号 `missiles\{name}{N}.cl2` 清单 + 显式 `width`，

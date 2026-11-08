@@ -108,9 +108,10 @@ NPC 固定单方向。两者宽度均由后端自动查表（`monstdat.tsv` / `t
 
 第 4 种浏览模式，以**施放者为中心**同屏显示 施放者 + 目标 + 攻击/施法效果：
 
-1. **来源**：玩家技能（51 个，来自 `spelldat.tsv`）或 怪物远程攻击（22 条：14 类
-   `GetMissileType` AI + 8 个「AI 函数内直接 `AddMissile`」的形态——Counselor 按智力分流的
-   4 种弹与近身 Flash、Familiar 闪电、Gloom 冲撞、Mega 地狱火）。
+1. **来源**：三选一——玩家技能（51 个，来自 `spelldat.tsv`）、怪物远程攻击（25 条：16 类
+   `GetMissileType` AI，含唯一怪带来的 `AcidUnique`/`LazarusSuccubus`；加 9 个「AI 函数内直接
+   `AddMissile`」的形态——Counselor 按智力分流的 4 种弹与近身 Flash、Familiar 闪电、Gloom 冲撞、
+   Mega 地狱火、Hork Demon 召唤），或怪物特殊能力（3 个：受击瞬移、死亡酸池、潜行隐身）。
 2. **技能 / 攻击**：选具体条目。**下拉项与顶部标题优先显示后端 `name_zh`（中文名，如
    `火栓 (Firebolt)`），确无翻译时回退英文名**；选中后，画布下方的**信息区**会列出
    **英文名**（`name`）、**中文名**（`name_zh`，确有翻译时）、**法术等级**（`level`，来自
@@ -119,7 +120,8 @@ NPC 固定单方向。两者宽度均由后端自动查表（`monstdat.tsv` / `t
    `duration_ticks`/`duration_sec`、弹速 `speed`、范围 `range_tiles`/`radius_tiles`、弹射物数
    `count` 及法术特有字段如 `segments`/`wall_length_tiles`；含角色/地下城层依赖项标「注」；
    无级别缩放的单级/实用法术显示「无级别视觉缩放」）、**攻击形态**（`variant`，仅多形态怪物攻击）、
-   **触发条件**（`condition`，中文说明该形态何时使用）与**合成中文描述**（`description`，含
+   **触发条件**（`condition` / `trigger`，中文说明该形态或能力何时使用）、**源码位置**
+   （`source_ref`，仅特殊能力）与**合成中文描述**（`description`，含
    元素系、法力消耗、最低智力、法术等级与每级法力变化、投射物 / 命中 / 状态阶段），便于核对。
 3. **玩家职业 / 怪物 MPQ / 怪物 / 怪物动作**：决定同屏两个角色。
 4. **方向**（控制条「方向」滑块，0–7）：以施放者为中心旋转整场——目标落在施放者朝向的

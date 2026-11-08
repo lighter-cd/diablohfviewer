@@ -934,10 +934,59 @@ static void testSpellListSynthesis() {
         CHECK(!mm.empty() && mm[0] == "InfernoControl",
               "Mega.Inferno -> InfernoControl");
     }
-    CHECK(findAttack("HorkDemon.HorkSpawn").empty(),
-          "unreachable HorkSpawn (ai unused in monstdat) is omitted");
-    CHECK(res.value("monster_attack_count", 0) >= 21,
+    json hork = findAttack("HorkDemon.HorkSpawn");
+    CHECK(!hork.empty(), "spell.list includes HorkDemon.HorkSpawn (unique AI)");
+    if (!hork.empty()) {
+        json hm = hork.value("monsters", json::array());
+        CHECK(hm.size() == 1 && hm[0] == "Hork Demon",
+              "HorkSpawn attributed to the Hork Demon unique");
+    }
+    CHECK(res.value("monster_attack_count", 0) >= 23,
           "spell.list monster_attack_count includes the extra attack forms");
+
+    // Engine-level monster abilities (teleport / acid puddle / invisibility).
+    json abilities = res.value("abilities", json::array());
+    CHECK(res.value("ability_count", 0) == 3 && abilities.size() == 3,
+          "spell.list exposes the 3 monster abilities");
+    auto findAbility = [&](const std::string& id) -> json {
+        for (auto& a : abilities)
+            if (a.value("id", std::string()) == id) return a;
+        return json::object();
+    };
+    json blink = findAbility("Blink");
+    CHECK(!blink.empty(), "spell.list includes Blink ability");
+    if (!blink.empty()) {
+        CHECK(blink.value("ability", false), "Blink marked as an ability");
+        CHECK(!blink.value("trigger", std::string()).empty(), "Blink carries a trigger");
+        CHECK(!blink.value("source_ref", std::string()).empty(), "Blink carries source_ref");
+        bool hasBlink = false;
+        for (auto& m : blink.value("monsters", json::array()))
+            if (m == "Blink") hasBlink = true;
+        CHECK(hasBlink, "Blink ability lists MT_BLINK");
+    }
+    json acidAb = findAbility("AcidDeathPuddle");
+    CHECK(!acidAb.empty(), "spell.list includes AcidDeathPuddle ability");
+    if (!acidAb.empty()) {
+        json pl = stageOf(acidAb, "projectile").value("layers", json::array());
+        CHECK(!pl.empty() && pl[0].value("graphic_id", std::string()) == "AcidPuddle",
+              "Acid puddle uses the AcidPuddle sprite");
+        bool lavaMaw = false;
+        for (auto& m : acidAb.value("monsters", json::array()))
+            if (m == "Lava Maw") lavaMaw = true;
+        CHECK(lavaMaw, "Acid puddle ability lists Lava Maw");
+    }
+    json hiddenAb = findAbility("Hidden");
+    CHECK(!hiddenAb.empty(), "spell.list includes Hidden ability");
+    if (!hiddenAb.empty()) {
+        json hm = hiddenAb.value("monsters", json::array());
+        bool hasHidden = false, hasIllusion = false;
+        for (auto& m : hm) {
+            if (m == "Hidden") hasHidden = true;
+            if (m == "Illusion Weaver") hasIllusion = true;
+        }
+        CHECK(hm.size() >= 4 && hasHidden && hasIllusion,
+              "Hidden ability lists the Sneak monsters (incl. uniques)");
+    }
 
     // source / id filters.
     json one = resultOf("spell.list", json{{"source", "player"}, {"id", "Fireball"}});

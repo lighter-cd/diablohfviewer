@@ -301,8 +301,8 @@ inline const std::set<std::string>& rangedAiSet()
 //                      Fireball; plus FlashBottom+FlashTop at close range.
 //   BatAi(2436)        MT_FAMILIAR -> Lightning; MT_GLOOM -> Rhino charge.
 //   MegaAi(2822)       InfernoControl (near-range breath).
-// HorkDemonAi exists but no monstdat row uses ai=HorkDemon (MT_HORKDMN is
-// SkeletonMelee), so HorkSpawn is unreachable and intentionally omitted.
+//   HorkDemonAi(3013)  HorkSpawn (summon; only reachable through the unique
+//                      monster row, whose ai overrides MT_HORKDMN's SkeletonMelee).
 // Each form becomes its own catalog entry so every missile keeps its own
 // projectile stage; 'condition' records why/when the game picks it.
 struct AttackForm {
@@ -326,6 +326,7 @@ inline const std::vector<AttackForm>& monsterAttackForms()
         {"Bat", "Lightning", "Lightning", "仅 Familiar（MT_FAMILIAR）在撤退时放电", -1, -1, {"MT_FAMILIAR"}},
         {"Bat", "Charge", "Rhino", "仅 Gloom（MT_GLOOM）远距离冲撞（物理，非法术）", -1, -1, {"MT_GLOOM"}},
         {"Mega", "Inferno", "InfernoControl", "Slayer/Guardian/Vortex Lord/Balrog 近身喷吐", -1, -1, {}},
+        {"HorkDemon", "HorkSpawn", "HorkSpawn", "召唤 Hork Spawn（落点需为空地；导弹本身无图形）", -1, -1, {}},
     };
     return k;
 }
@@ -340,6 +341,61 @@ inline bool attackFormMatches(const AttackForm& f, const std::string& monsterId,
             f.only_monsters.end())
         return false;
     return true;
+}
+
+// Unique monsters can override the base monster's AI (unique_monstdat.tsv); a
+// few of those AIs just delegate to another AI function, so they must be folded
+// onto the AI they actually run (Source/monster.cpp:2817 ZharAi -> CounselorAi,
+// 2926 LazarusAi -> CounselorAi).
+inline std::string normalizedMonsterAi(const std::string& ai)
+{
+    if (ai == "Zhar" || ai == "Lazarus") return "Counselor";
+    return ai;
+}
+
+// Monster abilities the engine implements directly (no dedicated missile
+// attack). Diablo 1 / Hellfire have no Diablo-2-style champion affixes: there is
+// no Thunderstorm / Waller / Vortex / Shielding anywhere in Source/, so the only
+// "affix-like" behaviours are the ones below (see docs/SPELLS.md).
+struct AbilitySpec {
+    std::string id;                          // stable id in the catalog
+    std::string name;                        // engine / AI name
+    std::string name_zh;                     // Chinese display name
+    std::string description;                 // one-line Chinese effect
+    std::string trigger;                     // when the engine fires it
+    std::string element;                     // cast-action element
+    std::string missiles;                    // optional MissileID chain
+    std::string monster_ai;                  // select monsters by (normalized) AI
+    std::vector<std::string> monster_ids;    // and/or by _monster_id
+    std::string source_ref;                  // DevilutionX source location
+};
+
+inline const std::vector<AbilitySpec>& monsterAbilities()
+{
+    static const std::vector<AbilitySpec> k = {
+        {"Blink", "Blink", "瞬移",
+         "受到重击时瞬移到敌人身边，只改变位置、没有特效图像。",
+         "IsHardHit 判定成立时（M_StartHit → Teleport）", "Magic", "", "", {"MT_BLINK"},
+         "Source/monster.cpp:969 Teleport(), 3974-3976 M_StartHit"},
+        {"AcidDeathPuddle", "Acid", "死亡酸池",
+         "酸液系怪物死亡时在尸体处留下酸液池，持续造成伤害。",
+         "酸液系怪物死亡时（AddMissile(AcidPuddle)）", "Acid", "AcidPuddle", "",
+         {"MT_NACID", "MT_RACID", "MT_BACID", "MT_XACID", "MT_SPIDLORD"},
+         "Source/monster.cpp:4039; Source/missiles.cpp AddAcidPuddle"},
+        {"Hidden", "Sneak", "隐身",
+         "潜行系怪物在远处保持隐身，靠近或交战时才显形。",
+         "与玩家距离超过判定值时（SneakAi 设置 MFLAG_HIDDEN）", "Magic", "", "Sneak", {},
+         "Source/monster.cpp:2558-2561 SneakAi"},
+    };
+    return k;
+}
+
+// True when this monster (normalized AI + id) has the given ability.
+inline bool abilityMatches(const AbilitySpec& a, const std::string& ai, const std::string& monsterId)
+{
+    if (!a.monster_ai.empty() && ai == a.monster_ai) return true;
+    return std::find(a.monster_ids.begin(), a.monster_ids.end(), monsterId) !=
+           a.monster_ids.end();
 }
 
 inline bool isImpactGraphic(const std::string& id)
@@ -409,6 +465,9 @@ struct Entry {
     std::string monster_ai;
     std::string variant;          // monster: attack form of a multi-form AI (e.g. "Fireball" / "Flash")
     std::string condition;        // monster: when that form is used (Chinese note)
+    bool is_ability = false;      // true for engine-level monster abilities
+    std::string trigger;          // ability: when the engine fires it
+    std::string source_ref;       // ability: DevilutionX source location
     std::vector<std::string> missiles;
     std::string mana_cost;
     std::string min_intelligence;
@@ -428,6 +487,7 @@ struct Entry {
 struct Catalog {
     std::vector<Entry> spells;
     std::vector<Entry> monster_attacks;
+    std::vector<Entry> abilities;
     std::vector<SpriteInfo> impact_catalog;
     bool ok = false;
     std::string error;
@@ -659,6 +719,25 @@ inline Catalog buildCatalog(const std::filesystem::path& devRoot)
         parseTsvTable(devRoot / "mods" / "hf" / "txtdata" / "monsters" / "monstdat.tsv"),
         "_monster_id");
 
+    // Unique monsters override the base monster's AI / intelligence
+    // (unique_monstdat.tsv). Load them as extra monster rows so ranged attacks
+    // and abilities are attributed to the unique's name and its own AI.
+    Table uniques = mergeByKey(
+        parseTsvTable(devRoot / "assets" / "txtdata" / "monsters" / "unique_monstdat.tsv"),
+        parseTsvTable(devRoot / "mods" / "hf" / "txtdata" / "monsters" / "unique_monstdat.tsv"),
+        "type");
+    for (const auto& u : uniques) {
+        const auto type = trim(val(u, "type"));
+        const auto nm = trim(val(u, "name"));
+        if (type.empty() || nm.empty()) continue;
+        Row r;
+        r["_monster_id"] = type;
+        r["name"] = nm;
+        r["ai"] = trim(val(u, "ai"));
+        r["intelligence"] = trim(val(u, "intelligence"));
+        mon.push_back(std::move(r));
+    }
+
     if (spells.empty() || mis.empty() || spr.empty()) {
         c.error = "missing DevilutionX data tables (spells/missiles)";
         return c;
@@ -691,7 +770,7 @@ inline Catalog buildCatalog(const std::filesystem::path& devRoot)
 
     std::map<std::string, std::vector<std::string>> byAi;
     for (const auto& r : mon) {
-        auto ai = trim(val(r, "ai"));
+        auto ai = normalizedMonsterAi(trim(val(r, "ai")));
         if (!rangedAiSet().count(ai)) continue;
         auto nm = trim(val(r, "name"));
         if (!nm.empty()) byAi[ai].push_back(nm);
@@ -717,7 +796,7 @@ inline Catalog buildCatalog(const std::filesystem::path& devRoot)
     for (const auto& f : monsterAttackForms()) {
         std::vector<std::string> names;
         for (const auto& r : mon) {
-            if (trim(val(r, "ai")) != f.ai) continue;
+            if (normalizedMonsterAi(trim(val(r, "ai"))) != f.ai) continue;
             if (!attackFormMatches(f, trim(val(r, "_monster_id")),
                                    std::atoi(val(r, "intelligence").c_str())))
                 continue;
@@ -741,6 +820,37 @@ inline Catalog buildCatalog(const std::filesystem::path& devRoot)
         e.monsters = names;
         e.default_ai = false;
         c.monster_attacks.push_back(std::move(e));
+    }
+
+    // Engine-level monster abilities (teleport on hard hit, death acid puddle,
+    // sneak invisibility). They are not ranged attacks, so they carry their own
+    // array; the sprite chain (if any) is still resolved through misdat.
+    for (const auto& spec : monsterAbilities()) {
+        std::vector<std::string> names;
+        for (const auto& r : mon) {
+            const auto ai = normalizedMonsterAi(trim(val(r, "ai")));
+            if (!abilityMatches(spec, ai, trim(val(r, "_monster_id")))) continue;
+            auto nm = trim(val(r, "name"));
+            if (nm.empty()) continue;
+            if (std::find(names.begin(), names.end(), nm) == names.end())
+                names.push_back(nm);
+        }
+
+        Row pseudo;
+        pseudo["id"] = spec.id;
+        pseudo["name"] = spec.name;
+        pseudo["flags"] = spec.element;
+        pseudo["missiles"] = spec.missiles;
+        Entry e = deriveEntry(pseudo, misById, sprById, "monster", nullptr);
+        e.is_ability = true;
+        e.monster_ai.clear();
+        e.name_zh = spec.name_zh;
+        e.description = spec.name_zh + "（" + spec.name + "）：" + spec.description +
+                        " 触发：" + spec.trigger + "。";
+        e.trigger = spec.trigger;
+        e.source_ref = spec.source_ref;
+        e.monsters = names;
+        c.abilities.push_back(std::move(e));
     }
 
     c.ok = true;
