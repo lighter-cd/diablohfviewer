@@ -135,7 +135,12 @@ numFrames == 1 ->  missiles\{name}.cl2        （无数字后缀；{name}1.cl2 �
 实测 `Fireball numFrames=16` → `fireba1..16.cl2` 全部存在、各 14 帧；
 `FireWall=2` → `firewal1/2.cl2`（13/11 帧）；`Lightning=1` → `lghning.cl2`。
 这些编号文件**不在** `recovered.json`（只恢复了 33 个单帧 missiles 名），由
-`spell.list` 从数据表合成清单发现。
+`spell.list` 从数据表合成清单发现。**编号文件是方向而非连续动画帧**：
+`LoadGFX` 用 `LoadMultipleCl2Sheet<16>(pathGenerator, animFAmt, animWidth)` 把
+`animFAmt` 个文件拼成 `ClxSpriteSheet`，运行时
+`spritesForDirection(getDirection16())` 取 `sheet()[direction]`，`animLen(dir)`
+给出该方向的帧数（即 `frameLength[i]`）。因此技能/战斗查看器播放时只取当前方向
+对应的那一份编号文件，不把 16 个文件平铺成一条跨越方向的动画。
 
 **宽度必须显式传**：`sprite_width.cpp` 的 missiles 分支按 basename 精确查
 `missile_sprites.tsv` 的 `name` 列，`fireba1` 查不到表里的 `fireba`，故

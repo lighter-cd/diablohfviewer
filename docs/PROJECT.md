@@ -495,12 +495,23 @@ DiabloHFConverter/
       `trn` 层带目标 debuff 重映射；命中阶段按命名约定自动关联 + override + `impact_catalog` 候选。
       纯 join 逻辑在 `src/tools/spell_tables.h`（header-only，不依赖 json，便于单测）。
 - [x] 前端第 4 种浏览模式「技能 / 战斗查看器」：`web/src/viewer.js` 新增 `drawScene`
-      （多 actor 绝对定位，抽 `blitRgba` 复用，`drawComposite` 行为不变）；同屏 玩家(左) + 怪物(右) + 效果；
-      自动时间线连播四阶段 + 阶段 stepper；debuff 用 `apply_trn` 对怪物层近似着色。
+      （多 actor 绝对定位，抽 `blitRgba` 复用，`drawComposite` 行为不变）；同屏两角色 + 效果；
+      自动时间线连播四阶段 + 阶段 stepper；debuff 用 `apply_trn` 对目标层近似着色。
       角色前缀从 `charIndex.combos` 取真实存在的组合（不硬编码 `l+n`）。
+- [x] 以施放者为中心的方向旋转（2026-11-08）：控制条「方向」滑块在战斗模式下生效（0–7），
+      `combatLayout()` 固定施放者于场景中心、按方向向量重算目标位置，施放者朝向 = d、
+      目标朝向 = (d+4)%8（回身面向施放者）；`combatCasterAnchor()` 从 `cast_action.anchor`
+      判定施放者，故「怪物远程攻击」时施放者/目标互换、布局朝向随之变化。
+- [x] 阶段内不切换方向（2026-11-08）：解码结果按方向拆为 `FrameSet.groups[]`
+      （`makeFrameSet` / `frameSetAt` / `combatGroupIndex` / `frameSetBudget`）；
+      时间线帧预算取各方向帧数最大值（方向无关），播放只推进当前方向组内的帧号。
+      核实 `missile_sprites.tsv` 的 `numFrames>1` 编号文件是**方向**
+      （`misdat.cpp::LoadGFX` + `spritesForDirection(Direction16)`），不再平铺成跨方向动画；
+      cast 阶段也从整条 160 帧改为单方向 20 帧。投射物沿 施放者→目标 插值飞行动画。
 - [x] 回归：`testSpellTables`（单元）、`testSpellListSynthesis`（集成）、stdio 端到端
       （51 技能 / 14 怪物攻击 / 17 命中候选，Fireball 的 17 个特效文件全部可解码）、
-      前端 42 个解码契约预演全通过；全量 320 条目录回归不退化。
+      前端 42 个解码契约预演全通过；全量 320 条目录回归不退化；
+      方向不变量 79 项断言 + 41 个前端解码契约 91 项断言全 PASS。
 
 ### 阶段 4：地图还原（目标 1）
 - [ ] 解码 TIL / MIN / DUN，移植 `levels/` 的拼接逻辑。

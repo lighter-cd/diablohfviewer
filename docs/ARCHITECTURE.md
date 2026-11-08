@@ -508,8 +508,8 @@ Archive 输入框——点选精灵即可直接解码，无需用户手填路径
    - 8 方向：玩家 CL2 为**方向优先**（8 方向 × N 帧），前端按 `总帧数 / 方向数` 切分，
      提供方向滑块 + 帧滑块 + ▶播放/⏸ + fps 速度；方向数可选 1/2/4/8（plrgfx 默认 8）。
    - 装备**不做 alpha 合成**（D1 把武器/护甲 bake 进文件名前缀，组合浏览=枚举文件名）；
-     技能特效（`lm`/`fm`/`qm`）作为可浏览动画纳入动作下拉，并可通过「特效叠加层（alpha 合成）」
-     面板（见 §10.2 第 5 项）按图层叠加到底图上。
+     角色施法动作（`lm`/`fm`/`qm`，**不是**火球类攻击效果）作为可浏览动画纳入动作下拉，
+     并可通过「特效叠加层（alpha 合成）」面板（见 §10.2 第 5 项）按图层叠加到底图上。
    - 改动 `web/index.html` + `web/src/main.js` + `web/styles.css`，**后端无改动**。
 6. 查看器能力复用（阶段 3 目标，已实现）：
    - 怪物/NPC 查看器复用同一 `sprite.list` + `sprite.decode` 链路，仅家族不同；
@@ -519,6 +519,25 @@ Archive 输入框——点选精灵即可直接解码，无需用户手填路径
      NPC 为单方向 `.cel`。两者自动查表宽度（`monstdat.tsv` / `towners.tsv`）。
    - TRN 上色（见 §10.2.3，已实现）：`sprite.decode` 加 `apply_trn` 接入职业 TRN 与
      每精灵 TRN；前端「应用 TRN」开关可切换原调色板模式 / TRN 模式，meta 行显示应用状态。
+7. **技能 / 战斗查看器的方向模型（✅ 已完成，2026-11-08）**：`web/src/main.js` 把
+   `sprite.decode` 的扁平帧按方向拆成 `FrameSet = {groups:[frames[]...], directions}`：
+   `makeFrameSet` 按 `总帧数 / directions` 分组，`frameSetAt(fs,fi,dir)` 只从
+   `combatGroupIndex(directions,dir)` 选中的那一组取帧（帧号对组长度取模），
+   `frameSetBudget` 取各组最大帧数作为**方向无关**的时间线预算。因此播放循环
+   （`startCombatPlay`）只推进帧号，从不改变方向；旋转方向也无需重建 `combatTimeline`。
+   - `combatLayout()` 以施放者固定的场景中心为原点，按 8 向向量放置目标；
+     施放者朝向 = d、目标朝向 = (d+4)%8（回身面向施放者），两者位置与朝向在
+     每次 `dir` 滑块变更时重算。施放者由 `cast_action.anchor`（`spell.list`）判定，
+     所以「怪物远程攻击」来源下施放者/目标互换、布局随之变化。
+   - `viewer.js::drawScene` 的 actor `x/y` 是绝对定位；`pushCombatActor` 用
+     `中心 - 帧尺寸/2` 换算左上角，并按 `y` 给 `z` 做深度排序。投射物沿
+     施放者→目标插值，命中/debuff 落在目标上。
+   - **关键事实**：`missile_sprites.tsv` 的 `numFrames>1` 编号文件是**方向**
+     （`Source/tables/misdat.cpp::LoadGFX` 的 `LoadMultipleCl2Sheet<16>` +
+     `spritesForDirection(Direction16)`），不是连续动画帧；`decodeLayerFrames`
+     把每个文件保留为一个方向组，不再平铺成跨方向的 224 帧动画。
+     玩家 CL2 由 `combatDirsOf` 按 `plrgfx` 前缀固定 8 方向，怪物用后端
+     `directions` 字段，导弹为 1 方向。
 
 > 该顺序让"列清单 → 渲染 → 显示"尽快端到端跑通，且后端每一步都可独立单测，
 > 符合项目"先理解、再使用；CLI / 可验证产出优先"的章程。

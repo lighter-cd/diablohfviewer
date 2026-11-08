@@ -60,17 +60,57 @@ let overlayLayers = [];
 // archive / palette / TRN context.
 let lastDecodeArgs = null;
 
-// Skill / combat viewer: stage-ordered full-cast timeline (player + monster +
+// Skill / combat viewer: stage-ordered full-cast timeline (caster + target +
 // effect layers in one scene). spell.list supplies the catalog.
 let spellCatalog = null;       // spell.list result
 let combatEntry = null;        // currently selected spell / monster attack
 let combatStage = 0;           // index into combatEntry.stages
 let combatFrame = 0;           // frame index within that stage
-let combatCache = new Map();   // "name|width|trn" -> decoded frames[]
-let combatActors = { playerStand: [], playerCast: [], monsterBase: [], monsterTrn: [] };
-let combatStageFrames = [];    // per stage: [{ frames, anchor, role }]
+let combatCache = new Map();   // "name|width|trn" -> FrameSet
+let combatDir = 0;             // scene direction 0..7, caster faces this way
+let combatPlayerStandName = "";// for decoding a TRN-tinted player target
+let combatActors = {           // FrameSets for the two actors (+ tinted target)
+  playerStand: null, playerCast: null, playerTrn: null,
+  monsterBase: null, monsterTrn: null,
+};
+let combatStageFrames = [];    // per stage: [{ frameSet, anchor, role }]
 let combatTimeline = [];       // flattened [{ stageIdx, frameIdx }]
 let combatPlayIdx = 0;
+
+// A FrameSet keeps frames split per direction so a stage can play entirely
+// inside ONE direction instead of silently cycling through all of them.
+// { groups: [frames[]...], directions: groups.length }
+function makeFrameSet(frames, directions) {
+  const n = Math.max(1, directions | 0);
+  const fpd = Math.max(1, Math.floor(frames.length / n));
+  const groups = [];
+  for (let d = 0; d < n; d++) {
+    const g = frames.slice(d * fpd, (d + 1) * fpd);
+    groups.push(g.length ? g : frames.slice(0, fpd));
+  }
+  return { groups, directions: n };
+}
+function frameSetEmpty(fs) {
+  return !fs || !fs.groups || !fs.groups.some((g) => g && g.length);
+}
+// Map a scene direction (0..7) onto however many directions an actor really has.
+function combatGroupIndex(directions, sceneDir) {
+  const n = Math.max(1, directions | 0);
+  if (n === 1) return 0;
+  return Math.min(n - 1, Math.round(sceneDir * (n - 1) / 7));
+}
+function frameSetAt(fs, fi, sceneDir) {
+  if (frameSetEmpty(fs)) return null;
+  const g = fs.groups[combatGroupIndex(fs.directions, sceneDir)] || fs.groups[0];
+  if (!g || !g.length) return null;
+  return g[((fi % g.length) + g.length) % g.length];
+}
+// Direction-independent frame budget for the timeline: the longest direction
+// group. frameSetAt wraps fi inside the chosen group, so playback stays in dir.
+function frameSetBudget(fs) {
+  if (frameSetEmpty(fs)) return 1;
+  return Math.max(1, ...fs.groups.map((g) => (g ? g.length : 1)));
+}
 
 // 8-direction animation state.
 let currentDirections = 1;  // number of directions the current sprite is split into
@@ -878,15 +918,24 @@ function combatArchiveFor() {
   return $("combatArchive").value || allArchives[0] || "";
 }
 
+// The backend only reports `directions` for monster sprites; player CL2 are
+// fixed 8-direction and missile graphics are single-direction.
+function combatDirsOf(name, res) {
+  const d = (res && res.directions > 0) ? res.directions : 0;
+  if (d) return d;
+  const first = String(name).split(/[\\/]/)[0].toLowerCase();
+  return first === "plrgfx" ? 8 : 1;
+}
+
 async function decodeCombatFrames(name, width, trn) {
   const key = name + "|" + (width === "auto" ? "auto" : width) + "|" + (trn || "");
   if (combatCache.has(key)) return combatCache.get(key);
   const args = buildDecodeArgs(
     { name, archive_path: combatArchiveFor() }, name, { width, trn });
   const res = await client.callTool("sprite.decode", args);
-  const frames = (res && res.frames) || [];
-  combatCache.set(key, frames);
-  return frames;
+  const fs = makeFrameSet((res && res.frames) || [], combatDirsOf(name, res));
+  combatCache.set(key, fs);
+  return fs;
 }
 
 // Not every class has the same armour/weapon combos (e.g. sorcerer/barbarian
@@ -905,16 +954,21 @@ function plrgfxPath(cp, e, combo, action) {
   return `plrgfx\\${cp}\\${prefix}\\${prefix}${action}.cl2`;
 }
 
-// A sprite layer can span several numbered .cl2 files; flatten them into one
-// frame sequence so the stage timeline can play straight through.
+// A missile sprite's numbered .cl2 files are its DIRECTIONS (DevilutionX
+// `animFAmt` / `spritesForDirection(Direction16)`), not consecutive animation
+// frames. Keep each file as one direction group so playback stays in one dir.
 async function decodeLayerFrames(layer) {
   const key = "layer|" + (layer.files || []).join("|") + "|" + layer.width;
   if (combatCache.has(key)) return combatCache.get(key);
-  const frames = [];
-  for (const f of layer.files || [])
-    frames.push(...await decodeCombatFrames(f, layer.width));
-  combatCache.set(key, frames);
-  return frames;
+  const groups = [];
+  for (const f of layer.files || []) {
+    const one = await decodeCombatFrames(f, layer.width);
+    groups.push(one.groups[0] || []);
+  }
+  const fs = { groups: groups.length ? groups : [[]],
+               directions: groups.length || 1 };
+  combatCache.set(key, fs);
+  return fs;
 }
 
 function combatDebuffTrn() {
@@ -932,38 +986,49 @@ async function buildCombatScene() {
   try {
     const cp = $("combatClass").value;
     const ce = charIndex && charIndex.get(cp);
+    combatPlayerStandName = "";
     if (ce) {
       const action = combatEntry.cast_action || "qm";
       const combo = combatCombo(ce, action);
+      combatPlayerStandName = plrgfxPath(cp, ce, combo, "st");
       combatActors.playerStand =
-        await decodeCombatFrames(plrgfxPath(cp, ce, combo, "st"), "auto");
+        await decodeCombatFrames(combatPlayerStandName, "auto");
       try {
         combatActors.playerCast =
           await decodeCombatFrames(plrgfxPath(cp, ce, combo, action), "auto");
       } catch (e) {
-        combatActors.playerCast = [];   // fall back to standing if unavailable
+        combatActors.playerCast = null;   // fall back to standing if unavailable
       }
-      if (!combatActors.playerCast.length)
+      if (frameSetEmpty(combatActors.playerCast))
         combatActors.playerCast = combatActors.playerStand;
     }
 
     const mName = $("combatMonsterAnim").value;
     const trn = combatDebuffTrn();
-    combatActors.monsterBase = mName ? await decodeCombatFrames(mName, "auto") : [];
-    combatActors.monsterTrn = (mName && trn)
-      ? await decodeCombatFrames(mName, "auto", trn) : [];
+    combatActors.monsterBase = mName
+      ? await decodeCombatFrames(mName, "auto") : makeFrameSet([], 1);
+
+    // The caster is whoever casts (player for spells, monster for ranged
+    // attacks); the target is the other actor. Debuff TRN tints the target.
+    const targetIsMonster = combatCasterAnchor() === "player";
+    const targetName = targetIsMonster ? mName : combatPlayerStandName;
+    const tinted = (targetName && trn)
+      ? await decodeCombatFrames(targetName, "auto", trn) : null;
+    combatActors.playerTrn = (!targetIsMonster && tinted) ? tinted : makeFrameSet([], 1);
+    combatActors.monsterTrn = (targetIsMonster && tinted) ? tinted : makeFrameSet([], 1);
 
     combatStageFrames = [];
     for (const st of combatEntry.stages || []) {
       const layers = [];
       for (const l of st.layers || []) {
         if (l.kind !== "sprite") continue;
-        layers.push({ frames: await decodeLayerFrames(l), anchor: l.anchor, role: l.role });
+        layers.push({ frameSet: await decodeLayerFrames(l), anchor: l.anchor, role: l.role });
       }
       combatStageFrames.push(layers);
     }
     buildCombatTimeline();
     hideError();
+    syncCombatDirControl();
     renderCombatStage(0, 0);
   } catch (e) {
     showError("战斗场景加载失败：" + (e.message || e));
@@ -974,11 +1039,12 @@ function stageFrameCount(si) {
   const st = ((combatEntry && combatEntry.stages) || [])[si];
   if (!st) return 1;
   if (st.id === "cast")
-    return Math.max(1, (combatActors.playerCast || []).length ||
-                       (combatActors.playerStand || []).length || 8);
+    return frameSetBudget(frameSetEmpty(combatActors.playerCast)
+                          ? combatActors.playerStand : combatActors.playerCast);
   let n = 1;
-  for (const l of combatStageFrames[si] || []) n = Math.max(n, l.frames.length);
-  return n;
+  for (const l of combatStageFrames[si] || [])
+    n = Math.max(n, frameSetBudget(l.frameSet));
+  return Math.max(1, n);
 }
 
 function buildCombatTimeline() {
@@ -990,9 +1056,56 @@ function buildCombatTimeline() {
   combatPlayIdx = 0;
 }
 
-function combatActorFrame(frames, fi) {
-  if (!frames || !frames.length) return null;
-  return frames[fi % frames.length];
+const COMBAT_W = 480, COMBAT_H = 320;
+// Screen-space direction vectors (y grows downward), 8-way like Diablo sprites.
+const COMBAT_DIR_VEC = [
+  [0, 1], [-1, 1], [-1, 0], [-1, -1],
+  [0, -1], [1, -1], [1, 0], [1, 1],
+];
+
+// spell.list marks the caster explicitly (cast_action.anchor): player for
+// spells, monster for ranged attacks. The other actor is the target.
+function combatCasterAnchor() {
+  const cast = ((combatEntry && combatEntry.stages) || []).find((s) => s.id === "cast");
+  const cl = cast && (cast.layers || []).find((l) => l.kind === "cast_action");
+  return (cl && cl.anchor) || "player";
+}
+
+function syncCombatDirControl() {
+  combatDir = Math.max(0, Math.min(7, combatDir | 0));
+  $("dir").min = "0";
+  $("dir").max = "7";
+  $("dir").value = String(combatDir);
+  $("dirNo").textContent = String(combatDir);
+  // The per-sprite "方向数" selector has no meaning for a two-actor scene.
+  $("directions").disabled = true;
+}
+
+// The caster is the fixed centre of the scene. The target is placed along the
+// selected direction and turned to face back at the caster; the caster faces
+// the target. Both positions AND both facing directions are recomputed here.
+function combatLayout() {
+  const d = ((combatDir % 8) + 8) % 8;
+  const [vx, vy] = COMBAT_DIR_VEC[d];
+  const m = Math.hypot(vx, vy) || 1;
+  const cx = COMBAT_W / 2, cy = COMBAT_H / 2;
+  return {
+    caster: { x: cx, y: cy },
+    target: { x: cx + (vx / m) * 134, y: cy + (vy / m) * 78 },
+    casterDir: d,                 // caster faces the target
+    targetDir: (d + 4) % 8,       // target faces the caster
+  };
+}
+
+function pushCombatActor(actors, fs, center, sceneDir, fi) {
+  const f = frameSetAt(fs, fi, sceneDir);
+  if (!f) return;
+  actors.push({
+    rgba: f.rgba_base64, w: f.width, h: f.height,
+    x: Math.round(center.x - f.width / 2),
+    y: Math.round(center.y - f.height / 2),
+    z: 1 + center.y / 1000,       // lower on screen = drawn in front
+  });
 }
 
 function renderCombatStage(si, fi) {
@@ -1003,43 +1116,60 @@ function renderCombatStage(si, fi) {
   const st = stages[si];
   combatStage = si;
   combatFrame = fi;
+  const L = combatLayout();
+  const casterAnchor = combatCasterAnchor();
+  const targetAnchor = casterAnchor === "player" ? "monster" : "player";
+  const debuffIdx = stages.findIndex((s) => s.id === "debuff");
+  const tinted = debuffIdx >= 0 && si >= debuffIdx;
   const actors = [];
 
-  // Player (left): casting animation on the cast stage, standing otherwise.
-  const pf = combatActorFrame(
-    st.id === "cast" ? combatActors.playerCast : combatActors.playerStand, fi);
-  if (pf) actors.push({ rgba: pf.rgba_base64, w: pf.width, h: pf.height, x: 40, y: 72, z: 1 });
-
-  // Monster (right): TRN tint from the debuff stage onwards.
-  const debuffIdx = stages.findIndex((s) => s.id === "debuff");
-  const tinted = debuffIdx >= 0 && si >= debuffIdx && (combatActors.monsterTrn || []).length;
-  const mf = combatActorFrame(
-    tinted ? combatActors.monsterTrn : combatActors.monsterBase, fi);
-  if (mf) actors.push({ rgba: mf.rgba_base64, w: mf.width, h: mf.height, x: 300, y: 72, z: 1 });
-
-  // Effect layers (projectile / impact / debuff sprites).
-  let k = 0;
-  for (const l of combatStageFrames[si] || []) {
-    const f = combatActorFrame(l.frames, fi);
-    if (f) {
-      let x = 180 + (k % 2) * 40;
-      if (l.anchor === "monster") x = 296;
-      else if (l.anchor === "player") x = 40;
-      actors.push({ rgba: f.rgba_base64, w: f.width, h: f.height,
-                    x, y: 60 + (k % 3) * 8, z: 2 });
+  const actorFs = (anchor, onCastStage) => {
+    if (anchor === "player") {
+      if (tinted && !frameSetEmpty(combatActors.playerTrn)) return combatActors.playerTrn;
+      return onCastStage ? combatActors.playerCast : combatActors.playerStand;
     }
-    k++;
+    if (tinted && !frameSetEmpty(combatActors.monsterTrn)) return combatActors.monsterTrn;
+    return combatActors.monsterBase;
+  };
+  pushCombatActor(actors, actorFs(casterAnchor, st.id === "cast"),
+                  L.caster, L.casterDir, fi);
+  pushCombatActor(actors, actorFs(targetAnchor, false),
+                  L.target, L.targetDir, fi);
+
+  // Effect layers: projectiles travel caster -> target, impacts/debuffs land on
+  // the target. Every layer plays inside the current direction's frame group.
+  const total = Math.max(1, stageFrameCount(si));
+  for (const l of combatStageFrames[si] || []) {
+    const f = frameSetAt(l.frameSet, fi, combatDir);
+    if (!f) continue;
+    let cx, cy;
+    if (l.role === "projectile") {
+      const t = total <= 1 ? 0.5 : (fi % total) / (total - 1);
+      cx = L.caster.x + (L.target.x - L.caster.x) * t;
+      cy = L.caster.y + (L.target.y - L.caster.y) * t;
+    } else if (l.role === "caster") {
+      cx = L.caster.x; cy = L.caster.y;
+    } else if (l.role === "impact" || l.role === "debuff") {
+      cx = L.target.x; cy = L.target.y;
+    } else {
+      const c = (l.anchor === casterAnchor) ? L.caster : L.target;
+      cx = c.x; cy = c.y;
+    }
+    actors.push({ rgba: f.rgba_base64, w: f.width, h: f.height,
+                  x: Math.round(cx - f.width / 2),
+                  y: Math.round(cy - f.height / 2),
+                  z: 2 + cy / 1000 });
   }
 
-  drawScene($("canvas"), 480, 256, actors);
+  drawScene($("canvas"), COMBAT_W, COMBAT_H, actors);
   fitCanvas($("canvas"), 480);
-  $("dirNo").textContent = String(si);
-  $("frameNo").textContent = `${st.label} · 帧 ${fi} / ${Math.max(0, stageFrameCount(si) - 1)}`;
+  $("dirNo").textContent = String(combatDir);
+  $("frameNo").textContent = `dir ${combatDir} · ${st.label} · 帧 ${fi} / ${total - 1}`;
   $("stageNo").textContent = `${si + 1}/${stages.length} ${st.label}`;
-  $("frame").max = String(Math.max(0, stageFrameCount(si) - 1));
-  $("frame").value = String(Math.min(fi, Math.max(0, stageFrameCount(si) - 1)));
+  $("frame").max = String(total - 1);
+  $("frame").value = String(Math.min(fi, total - 1));
   $("currentName").textContent = `${combatEntry.name} — ${st.label}`;
-  setMeta(`技能/战斗查看器  ${combatEntry.name}  ·  ${st.label}  ·  ${st.layers.length} 层`);
+  setMeta(`技能/战斗查看器  ${combatEntry.name}  ·  ${st.label}  ·  ${st.layers.length} 层  ·  方向 ${combatDir}`);
 }
 
 function startCombatPlay() {
@@ -1070,6 +1200,7 @@ function selectCombatEntry() {
 
 async function showCombatView() {
   stopPlay();
+  syncCombatDirControl();
   if (!spellCatalog) await loadSpellList();
   if (!spellCatalog) {
     showError("spell.list 不可用（后端未注册或 DevilutionX 数据表缺失）。");
@@ -1113,6 +1244,13 @@ function wireControls() {
       $("charPane").hidden = !character;
       $("monsterPane").hidden = !monster;
       $("combatPane").hidden = !combat;
+      // Combat uses a fixed 8-way scene direction; other modes use the sprite's
+      // own direction count when the next sprite is decoded.
+      if (combat) syncCombatDirControl();
+      else {
+        $("directions").disabled = false;
+        $("dir").max = String(Math.max(0, currentDirections - 1));
+      }
       // Character / monster / combat all want level palettes (correct colours).
       applyPaletteFilter(character || monster || combat);
       if (character) showCharacterSprite();
@@ -1139,9 +1277,15 @@ function wireControls() {
     if (isCombatMode()) renderCombatStage(combatStage, v);
     else showFrame(currentDir, v);
   });
-  // Direction slider (combat mode uses the stage stepper instead).
+  // Direction slider. In combat mode it rotates the whole encounter around the
+  // caster: both actors are re-placed and re-oriented, but playback never
+  // changes the direction (the loop only advances frames within one stage).
   $("dir").addEventListener("input", (e) => {
-    if (isCombatMode()) return;
+    if (isCombatMode()) {
+      combatDir = Math.max(0, Math.min(7, Number(e.target.value) || 0));
+      renderCombatStage(combatStage, Math.min(combatFrame, stageFrameCount(combatStage) - 1));
+      return;
+    }
     stopPlay();
     showFrame(Number(e.target.value), currentFin);
   });
