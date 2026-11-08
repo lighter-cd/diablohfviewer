@@ -282,3 +282,7 @@
 ## 2026-11-09 07:51:14
 - 继续阶段 4 地图还原：新增忠实 DevilutionX 的静态 dLight 光照（level_light.cpp：LightTables Normal/Hell/Soft + LightFalloffs/LightConeInterpolations + buildLightMap，renderMap 逐格用 lit palette 解码）、SOL 碰撞网格 8 方向 A* 寻路（level_path.cpp + 新 scene.path 工具，100/101 步长，返回原生/预览坐标）、scene.build 光照参数与 meta.light/walkable、场景目录扩到 Tristram + L1/L2/L3/L4 共 6 个预设；前端场景查看器由 canvas 绘制 PNG 并新增「光照」开关；补齐单元/集成测试与 README/PROJECT/ARCHITECTURE/web 文档。
 - 涉及: src/decoders/level_light.h, src/decoders/level_light.cpp, src/decoders/level_path.h, src/decoders/level_path.cpp, src/decoders/level.h, src/decoders/level_render.cpp, src/decoders/level_scene.h, src/decoders/level_scene.cpp, src/tools/scene_tools.cpp, out/unit_tests.cpp, out/integration_tests.cpp, web/index.html, web/src/main.js, web/styles.css, web/README.md, README.md, docs/PROJECT.md, docs/ARCHITECTURE.md
+
+## 2026-11-09 07:54:11
+- 修正光照 DoLighting 的四分之一旋转：cone 查表用的 offset 必须随 RotateRadius 每轮更新（此前固定使用初始 offset，导致光照扇形方向错误），并重跑三套测试与 mcp-server 构建。
+- 涉及: src/decoders/level_light.cpp, changed-history.txt

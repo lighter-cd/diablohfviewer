@@ -230,6 +230,7 @@ LightMapResult buildLightMap(int gridW, int gridH, uint8_t ambient,
         int distX = offsetX, distY = offsetY;
         int lightX = 0, lightY = 0;
         int blockX = 0, blockY = 0;
+        int coneOffX = offsetX, coneOffY = offsetY;
 
         for (int i = 0; i < 4; ++i) {
             const int yBound = (i > 0 && i < 3) ? maxY : minY;
@@ -237,7 +238,7 @@ LightMapResult buildLightMap(int gridW, int gridH, uint8_t ambient,
             for (int y = 0; y < yBound; ++y) {
                 for (int x = 1; x < xBound; ++x) {
                     const int linearDistance =
-                        cone[offsetX][offsetY][x + blockX][y + blockY];
+                        cone[coneOffX][coneOffY][x + blockX][y + blockY];
                     if (linearDistance >= 128)
                         continue;
                     const int tx = px + rotateX(x, y, -i);
@@ -250,7 +251,9 @@ LightMapResult buildLightMap(int gridW, int gridH, uint8_t ambient,
                 }
             }
 
-            // RotateRadius() from lighting.cpp.
+            // RotateRadius() from lighting.cpp. `offset` itself is reassigned
+            // each quarter-turn (it is used by the next cone lookup), so keep
+            // its value in coneOffX/coneOffY.
             const int ndistX = 7 - distY;
             const int ndistY = distX;
             const int nlightX = 7 - lightY;
@@ -271,8 +274,8 @@ LightMapResult buildLightMap(int gridW, int gridH, uint8_t ambient,
                 offY += 8;
                 blockY = 1;
             }
-            (void)offX;
-            (void)offY;
+            coneOffX = offX;
+            coneOffY = offY;
         }
     }
 
