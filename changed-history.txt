@@ -256,3 +256,8 @@
 - 补齐 spell.list 陷阱法术入口：新增 traps[]（trapSpecs() 转录 Source/objects.cpp）——OBJ_TRAPL/R 墙陷阱按 GenerateRnd((effLevel/3)+1) 输出 Arrow/Firebolt(有效层≥3)/LightningControl(≥6)；OBJ_TCHEST1..3 带陷阱宝箱 Arrow/FireArrow/Nova（地狱火扩到 RingOfFire/StealPotions/StealMana）；地狱火 OBJ_FLAMEHOLE/OBJ_FLAMELVR 喷火口与火焰拉杆（对象火焰动画+直接伤害，记 FireWallControl，无 missile 图形）。每条带 objects/trigger/source_ref，trap_count=10，count=89（51+25+3+10）；前端新增「陷阱法术」来源与宿主对象展示；更正 SPELLS.md 中不存在的「分解」为 StealPotions。
 - 涉及: src/tools/spell_tables.h, src/tools/sprite_tools.cpp, web/index.html, web/src/main.js, out/unit_tests.cpp, out/integration_tests.cpp, README.md, docs/ARCHITECTURE.md, docs/PROJECT.md, docs/SPELLS.md, web/README.md
 
+
+## 2026-11-08 18:33:27
+- 把 SPELLS.md 的技能/法术分类落地到 docs/PROJECT.md：新增「技能与法术资源总览（对照 docs/SPELLS.md）」小节（玩家法术 51 / 怪物攻击 25 / 特殊能力 3 / 陷阱 10 的分类表、与 SPELLS.md 的四处差异更正、字段口径说明），并同步阶段 3.5 中过期的计数（14 类怪物攻击 → 25 条、回归数字补 3 特殊能力 / 10 陷阱）。
+- 涉及: docs/PROJECT.md
+

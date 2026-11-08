@@ -527,7 +527,7 @@ DiabloHFConverter/
       已**全量覆盖**全部 23 个可升级玩家法术（含 Fire Wall/Chain Lightning/Flame Wave/Charged Bolt/
       Holy Bolt/Guardian/Stone Curse/Inferno 等级别缩放项，及 Firebolt/Fireball/Elemental/Blood Star/
       Bone Spirit/Town Portal/Phasing/Teleport/Flash 等常量视觉项；Healing/Golem/ManaShield/Telekinesis/
-      HealOther 为瞬发无弹道，visual_by_level 为空）与全部 14 类怪物远程攻击
+      HealOther 为瞬发无弹道，visual_by_level 为空）与全部 25 条怪物攻击（16 类 `GetMissileType` AI + 9 个 AI 内直接发弹形态）
       （Arrow/BloodStar/Acid/Firebolt/各 Flare/MagmaBall/ThinLightningControl/DiabloApocalypse 等）。
       前端信息区同步显示法术等级、各级法力曲线与**各级视觉参数表**。
 - [x] 前端第 4 种浏览模式「技能 / 战斗查看器」：`web/src/viewer.js` 新增 `drawScene`
@@ -545,9 +545,42 @@ DiabloHFConverter/
       （`misdat.cpp::LoadGFX` + `spritesForDirection(Direction16)`），不再平铺成跨方向动画；
       cast 阶段也从整条 160 帧改为单方向 20 帧。投射物沿 施放者→目标 插值飞行动画。
 - [x] 回归：`testSpellTables`（单元）、`testSpellListSynthesis`（集成）、stdio 端到端
-      （51 技能 / 14 怪物攻击 / 17 命中候选，Fireball 的 17 个特效文件全部可解码）、
+      （51 技能 / 25 怪物攻击 / 3 特殊能力 / 10 陷阱 / 17 命中候选，Fireball 的 17 个特效文件全部可解码）、
       前端 42 个解码契约预演全通过；全量 320 条目录回归不退化；
       方向不变量 79 项断言 + 41 个前端解码契约 91 项断言全 PASS。
+
+
+#### 技能与法术资源总览（对照 `docs/SPELLS.md`）
+
+> `docs/SPELLS.md` 是法术内容的参考整理（其中混有来自暗黑 2 的说法）；本节把它的分类与
+> 项目实际实现对齐，作为阶段 3.5 的验收清单。所有条目均由 `spell.list` 输出，数据来源为
+> `spelldat` / `misdat` / `missile_sprites` / `monstdat` / `unique_monstdat`，陷阱另用 `objdat` 的 `OBJ_*` 宿主。
+
+| 分类 | 内容 | `spell.list` 条目 |
+|---|---|---|
+| 玩家可学法术（法术书 4 页） | 火矢、充能弹、圣光弹、治疗、治疗他人、地狱火、复活、火墙、隔空取物、闪电、传送门、闪光、石化诅咒、相位术、法力护盾、元素召唤、火球、火焰波、连锁闪电、守护者、新星、魔像、传送、天启、骨灵、鲜血之星、虚化 | `spells[]`（本体 27） |
+| 地狱火新增（第 5 页） | 闪电墙、献祭、扭曲、反射、狂暴、火焰之环、搜寻、小丑、法师、法力 | `spells[]`（10） |
+| 角色固有技能 | 修理（战士）、拆陷（浪人）、法杖充能（法师）、搜寻（僧侣）、鉴定（诗人）、狂暴（野蛮人） | `spells[]`（与上重叠，合计 51） |
+| 怪物远程攻击 | `GetMissileType()` 16 类 AI + AI 内直接 `AddMissile` 9 形态（Counselor 四弹 + Flash、Familiar 闪电、Gloom 冲撞、Mega 地狱火、Hork Demon 召唤） | `monster_attacks[]`（25） |
+| 怪物特殊能力 | Blink 受击瞬移、酸液怪死亡留池、潜行系隐身 | `abilities[]`（3） |
+| 陷阱法术 | 墙陷阱（箭矢 / 火焰弹 / 闪电）、带陷阱宝箱（箭矢 / 火焰箭 / 新星 / 火焰之环 / 偷药水 / 吸法力）、地狱火喷火口与火焰拉杆 | `traps[]`（10） |
+
+**与 SPELLS.md 的差异（已逐条核实并更正）**：
+
+- Teleporter / Thunderstorm / Waller / Vortex / Shielding 属**暗黑 2** 怪物词缀；DevilutionX 中只有
+  `MT_BLINK` 的受击瞬移（对应 Teleporter），其余四项在 `Source/` 里无任何实现，故不输出假条目。
+- 宝箱陷阱并不存在“分解（Disintegrate）”，实际第 5、6 种是 `StealPotions`（偷药水）与
+  `StealMana`（吸法力）。
+- Finger Mage 吸法 / 眩晕：`monstdat.tsv` 无此怪物，不适用。
+- 玩家侧 51 条中 `DoomSerpents` / `BloodRitual` / `Invisibility` / `Rage` 是引擎未使用 ID
+  （`bookLevel=-1`），`RuneOfFire/Light/Nova/Immolation/Stone` 是陷阱符文，均非可学法术，
+  但保留在目录里以便与数据表完整对照。
+
+**字段口径**：`name_zh`（`Translations` 中文名）+ `description`（中文合成说明）；玩家法术另有
+`level` / `staff_level` / `mana_cost` / `mana_multiplier` / `min_mana` / `mana_by_level` /
+`visual_by_level`；多形态怪物攻击有 `variant` / `condition`；特殊能力与陷阱有 `trigger` /
+`source_ref`（DevilutionX 源码位置），陷阱还有 `objects`（宿主 `OBJ_*`）；所有条目共用
+`missiles` 与四阶段 `stages[]`（cast → projectile → impact → debuff）视觉链。
 
 ### 阶段 4：地图还原（目标 1）
 - [ ] 解码 TIL / MIN / DUN，移植 `levels/` 的拼接逻辑。
