@@ -544,12 +544,13 @@ Archive 输入框——点选精灵即可直接解码，无需用户手填路径
      右 `combatDetailPane`（英文名 / 中文名 / 描述 / 各级法力 / 各级视觉参数表），
      法术详情竖直滚动置于显示窗口右侧。
    - **显示放大倍数（✅ 已完成，2026-11-08）**：控制条新增「放大倍数」滑块（1–8，默认 4）。
-     放大**烘焙进 Canvas 位图**：`viewer.js` 的 `drawComposite`/`drawScene` 把画布后备存储
-     设为 `native × zoom` 并对 2D 上下文 `scale(zoom)`，配合 `imageSmoothingEnabled=false`
-     保持最近邻清晰；战斗场景的 sprite 位置与尺寸同为 native 坐标，故 sprite 间距也随同一倍数放大。
-     拖动滑块即按新倍数重绘（`renderCombatStage` / `redrawCurrent`）。
-     绘制末尾 `publishSize` 把 Canvas 的 CSS 盒显式钉到后备存储尺寸（1:1），
-     确保显示大小始终跟随位图、不受 flex/固有尺寸影响。
+     **Canvas 固定为 1280×720（720p）逻辑视口**（`viewer.js` 的 `VIEW_W/VIEW_H`），缩放
+     **在绘制时施加**：每帧 bitmap 解码到 native 尺寸的离屏 canvas，再用
+     `ctx.drawImage(img, dx, dy, nativeW×zoom, nativeH×zoom)` 画到固定视口中央——这正是
+     Canvas 内建的绘制缩放模式；配 `imageSmoothingEnabled=false` 为最近邻清晰放大。
+     战斗场景的 actor 位置与尺寸同为 native 坐标，故 sprite 间距随同一倍数放大。
+     改变倍数只重绘、**不改变 canvas 元素/后备存储尺寸**；拖动滑块即重绘
+     （`renderCombatStage` / `redrawCurrent`）。
      静态页面对 CSS/JS/模块导入加了版本查询串（`?v=`）以强制浏览器越过旧缓存。
 
 > 该顺序让"列清单 → 渲染 → 显示"尽快端到端跑通，且后端每一步都可独立单测，

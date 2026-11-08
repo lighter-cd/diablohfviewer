@@ -144,17 +144,20 @@ main { display: flex; height: calc(100vh - 52px); }
 }
 
 .canvas-wrap {
-  flex: 1; display: flex; overflow: auto;
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  overflow: auto;
   background:
     repeating-conic-gradient(#2a2a30 0% 25%, #242429 0% 50%) 50% / 24px 24px;
   margin-top: 12px; border-radius: 6px;
 }
 canvas { background: transparent; image-rendering: pixelated; }
-/* flex-shrink:0 is REQUIRED so the zoom factor's CSS size is honoured — a
-   shrinking flex item would squash the canvas back to the wrap width and make
-   the zoom slider appear to do nothing. margin:auto centres small canvases and
-   lets large (zoomed) ones scroll from the start. */
-.canvas-wrap > canvas { margin: auto; flex: 0 0 auto; }
+/* The canvas keeps a FIXED 1280x720 backing store; its CSS box just fits the
+   available area while preserving the aspect ratio. Zoom is applied when the
+   bitmap is drawn (drawImage dest w/h), never by resizing the canvas. */
+.canvas-wrap > canvas {
+  display: block; margin: auto;
+  max-width: 100%; max-height: 100%;
+}
 .zoom { font-size: 12px; color: #c9c9d2; }
 .zoom input[type="range"] { width: 90px; }
 .zoom #zoomNo { color: #ffd479; min-width: 24px; text-align: right; }

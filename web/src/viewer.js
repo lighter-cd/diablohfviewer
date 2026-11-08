@@ -1,8 +1,15 @@
 // web/src/viewer.js
 //
-// Canvas 2D rendering of one decoded sprite frame. The backend returns each
-// frame as `rgba_base64`: raw RGBA8 bytes (length === width*height*4), NOT a
-// PNG data URL. We decode to an ImageData and blit it directly.
+// Canvas 2D rendering of decoded sprite frames. The backend returns each frame
+// as `rgba_base64`: raw RGBA8 bytes (length === width*height*4), NOT a PNG.
+// We decode each frame into an offscreen canvas, then blit it onto the FIXED main
+// canvas with `drawImage(img, dx, dy, dw, dh)` where dw/dh are the zoomed size.
+// That is Canvas' built-in draw-time scaling mode; `imageSmoothingEnabled=false`
+// makes it nearest-neighbour (crisp pixel art). The canvas element itself stays a
+// constant 1280x720 (720p) viewport — we never resize it when zooming.
+
+export const VIEW_W = 1280; // fixed logical viewport width  (720p)
+export const VIEW_H = 720;  // fixed logical viewport height
 
 function base64ToBytes(b64) {
   const bin = atob(b64);
@@ -12,30 +19,27 @@ function base64ToBytes(b64) {
   return bytes;
 }
 
-// Draw a single frame into `canvas`, magnified `zoom`×. The magnification is
-// baked into the canvas backing store (canvas pixels = native × zoom) and the 2D
-// context is scaled, so nearest-neighbour keeps it crisp.
-export function drawFrame(canvas, rgbaBase64, w, h, zoom) {
-  const z = validZoom(zoom);
-  const bytes = base64ToBytes(rgbaBase64);
-  canvas.width = w * z;
-  canvas.height = h * z;
-  const ctx = canvas.getContext("2d");
-  ctx.imageSmoothingEnabled = false;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+// Decode one RGBA frame into an offscreen canvas at its native pixel size.
+function rgbaToCanvas(rgbaBase64, w, h) {
   const off = document.createElement("canvas");
   off.width = w;
   off.height = h;
   const octx = off.getContext("2d");
   const img = octx.createImageData(w, h);
-  const n = Math.min(bytes.length, w * h * 4);
-  img.data.set(bytes.subarray(0, n));
-  octx.putImageData(img, 0, 0); // Anything beyond the bytes stays transparent.
-  ctx.save();
-  ctx.scale(z, z);
-  ctx.drawImage(off, 0, 0);
-  ctx.restore();
-  publishSize(canvas);
+  img.data.set(base64ToBytes(rgbaBase64).subarray(0, w * h * 4));
+  octx.putImageData(img, 0, 0);
+  return off;
+}
+
+// Reset the fixed viewport: canvas is always VIEW_W x VIEW_H, cleared, and set to
+// nearest-neighbour so draw-time scaling stays crisp.
+function setupView(canvas) {
+  if (canvas.width !== VIEW_W) canvas.width = VIEW_W;
+  if (canvas.height !== VIEW_H) canvas.height = VIEW_H;
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, VIEW_W, VIEW_H);
+  return ctx;
 }
 
 // Clamp/normalise a zoom factor to a finite integer in 1..8 (default 4).
@@ -44,92 +48,66 @@ export function validZoom(zoom) {
   return Number.isFinite(z) && z >= 1 && z <= 8 ? z : 4;
 }
 
-// Force the element's on-screen CSS box to match the (already zoomed) backing
-// store, 1:1. This makes the display size follow the bitmap regardless of any
-// flex / intrinsic-size quirks, so the zoom factor is always visible.
-function publishSize(canvas) {
-  canvas.style.width = canvas.width + "px";
-  canvas.style.height = canvas.height + "px";
-  canvas.style.imageRendering = "pixelated";
-}
-
-// Blit one decoded RGBA frame at absolute scene coordinates (under an already
-// scaled context). Shared by drawComposite (overlay offsets) and drawScene
-// (independently placed actors). Nearest-neighbour keeps the upscale crisp.
-function blitRgba(ctx, rgba, w, h, x, y, alpha) {
-  if (!rgba || w <= 0 || h <= 0) return;
-  ctx.imageSmoothingEnabled = false;
-  const off = document.createElement("canvas");
-  off.width = w;
-  off.height = h;
-  const octx = off.getContext("2d");
-  const img = octx.createImageData(w, h);
-  img.data.set(base64ToBytes(rgba).subarray(0, w * h * 4));
-  octx.putImageData(img, 0, 0);
+// Draw one offscreen bitmap scaled to (w,h) at (x,y). This is the draw-time
+// magnification: the source is native-sized, the destination is native × zoom.
+function blitScaled(ctx, img, x, y, w, h, alpha) {
+  if (!img || w <= 0 || h <= 0) return;
   if (typeof alpha === "number" && alpha < 1) {
     ctx.save();
     ctx.globalAlpha = Math.max(0, alpha);
-    ctx.drawImage(off, x || 0, y || 0);
+    ctx.drawImage(img, x, y, w, h);
     ctx.restore();
   } else {
-    ctx.drawImage(off, x || 0, y || 0);
+    ctx.drawImage(img, x, y, w, h);
   }
 }
 
-// Draw a base frame with zero or more overlay layers alpha-composited on top,
-// magnified `zoom`×. Each overlay is { rgba, w, h, dx, dy, enabled }; overlays
-// are blended with normal source-over alpha. Used for effect overlays (player
-// lm/fm/qm, monster special, or any sprite the user picks) — separate sprite
-// files in Diablo, not baked in.
+// Single frame + optional alpha overlays, magnified `zoom`x and centred.
+// Overlay dx/dy are native-pixel offsets from the base's top-left, so they scale
+// by the same factor and stay aligned with the base.
 export function drawComposite(canvas, baseRgba, baseW, baseH, overlays, zoom) {
   const z = validZoom(zoom);
-  const ctx = canvas.getContext("2d");
-  canvas.width = baseW * z;
-  canvas.height = baseH * z;
-  ctx.imageSmoothingEnabled = false;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  const off = document.createElement("canvas");
-  off.width = baseW;
-  off.height = baseH;
-  const octx = off.getContext("2d");
-  const baseBytes = base64ToBytes(baseRgba);
-  const baseImg = octx.createImageData(baseW, baseH);
-  baseImg.data.set(baseBytes.subarray(0, baseW * baseH * 4));
-  octx.putImageData(baseImg, 0, 0);
-
-  ctx.save();
-  ctx.scale(z, z);
-  ctx.drawImage(off, 0, 0);
+  const ctx = setupView(canvas);
+  const sw = baseW * z, sh = baseH * z;
+  const ox = Math.round((VIEW_W - sw) / 2);
+  const oy = Math.round((VIEW_H - sh) / 2);
+  blitScaled(ctx, rgbaToCanvas(baseRgba, baseW, baseH), ox, oy, sw, sh, 1);
   for (const ov of overlays || []) {
     if (!ov || !ov.enabled) continue;
-    blitRgba(ctx, ov.rgba, ov.w, ov.h, ov.dx || 0, ov.dy || 0);
+    const img = rgbaToCanvas(ov.rgba, ov.w, ov.h);
+    blitScaled(ctx, img,
+      ox + (ov.dx || 0) * z, oy + (ov.dy || 0) * z,
+      ov.w * z, ov.h * z, ov.alpha);
   }
-  ctx.restore();
-  publishSize(canvas);
 }
 
-// Draw a whole scene: several decoded sprites at independent absolute positions,
-// magnified `zoom`×. Each actor is { rgba, w, h, x, y, z, alpha }; lower z is
-// drawn first. Actor positions AND sizes are in native scene pixels, so the
-// context scale applies the zoom uniformly — sprite-to-sprite spacing scales
-// with the same factor. Used by the skill / combat viewer (player + monster +
-// effects).
+// Whole scene: actors at native scene coordinates, magnified `zoom`x and centred.
+// Sprite positions AND sizes scale together, so sprite-to-sprite spacing grows
+// with the same factor.
 export function drawScene(canvas, sceneW, sceneH, actors, zoom) {
   const z = validZoom(zoom);
-  const ctx = canvas.getContext("2d");
-  canvas.width = sceneW * z;
-  canvas.height = sceneH * z;
-  ctx.imageSmoothingEnabled = false;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const ctx = setupView(canvas);
+  const sw = sceneW * z, sh = sceneH * z;
+  const ox = Math.round((VIEW_W - sw) / 2);
+  const oy = Math.round((VIEW_H - sh) / 2);
   const sorted = (actors || [])
     .filter((a) => a && a.rgba)
     .slice()
     .sort((a, b) => (a.z || 0) - (b.z || 0));
-  ctx.save();
-  ctx.scale(z, z);
-  for (const a of sorted)
-    blitRgba(ctx, a.rgba, a.w, a.h, a.x || 0, a.y || 0, a.alpha);
-  ctx.restore();
-  publishSize(canvas);
+  for (const a of sorted) {
+    const img = rgbaToCanvas(a.rgba, a.w, a.h);
+    blitScaled(ctx, img,
+      ox + (a.x || 0) * z, oy + (a.y || 0) * z,
+      a.w * z, a.h * z, a.alpha);
+  }
+}
+
+// Single frame only, magnified `zoom`x and centred (kept for API completeness).
+export function drawFrame(canvas, rgbaBase64, w, h, zoom) {
+  const z = validZoom(zoom);
+  const ctx = setupView(canvas);
+  const sw = w * z, sh = h * z;
+  const ox = Math.round((VIEW_W - sw) / 2);
+  const oy = Math.round((VIEW_H - sh) / 2);
+  blitScaled(ctx, rgbaToCanvas(rgbaBase64, w, h), ox, oy, sw, sh, 1);
 }

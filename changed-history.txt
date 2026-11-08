@@ -233,3 +233,7 @@
 ## 2026-11-08 17:22:33
 - 排查放大无效：Node mock canvas 验证 viewer.js 逻辑正确（backing=native×zoom、ctx.scale=zoom、无运行时错误），推断为浏览器缓存旧 main.js/viewer.js 导致后续修复不生效。补强：drawFrame/drawComposite/drawScene 末尾 publishSize 把 Canvas CSS 盒显式设为后备存储尺寸；index.html 与 main.js 的 CSS/JS/模块导入加 ?v=20261108b 版本串强制刷新。
 - 涉及: web/index.html, web/src/main.js, web/src/viewer.js, docs/ARCHITECTURE.md
+
+## 2026-11-08 17:31:58
+- 改变放大实现思路：Canvas 固定 1280×720 逻辑视口（VIEW_W/VIEW_H），缩放改为绘制时对 bitmap 的目标尺寸缩放 ctx.drawImage(img,dx,dy,nativeW×zoom,nativeH×zoom)、居中于视口，imageSmoothingEnabled=false 最近邻；不再改变 canvas 元素/后备存储尺寸。版本串升至 ?v=20261108c。
+- 涉及: web/src/viewer.js, web/index.html, web/styles.css, web/src/main.js, docs/ARCHITECTURE.md
