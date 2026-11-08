@@ -1336,6 +1336,7 @@ function wireControls() {
       $("charPane").hidden = !character;
       $("monsterPane").hidden = !monster;
       $("combatPane").hidden = !combat;
+      $("combatDetailPane").hidden = !combat;
       // Combat uses a fixed 8-way scene direction; other modes use the sprite's
       // own direction count when the next sprite is decoded.
       if (combat) syncCombatDirControl();

@@ -144,7 +144,6 @@
         <span class="current-label">当前资源：</span>
         <span id="currentName" class="current-name">（未选择）</span>
       </div>
-      <div id="combatInfo" class="combat-info" hidden></div>
       <div id="errorBanner" class="error-banner" hidden></div>
       <div class="controls">
         <label>调色板
@@ -200,6 +199,11 @@
         <canvas id="canvas" width="96" height="96"></canvas>
       </div>
     </section>
+
+    <aside class="combat-detail-pane" id="combatDetailPane" hidden>
+      <div class="char-bar">法术 / 攻击详情</div>
+      <div id="combatInfo" class="combat-info"></div>
+    </aside>
   </main>
 
   <script type="module" src="src/main.js"></script>
