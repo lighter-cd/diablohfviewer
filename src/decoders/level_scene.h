@@ -44,6 +44,10 @@ struct SceneSpec {
     uint32_t background = 0xFF000000;                 // opaque black RGBA
     int gridW = 112, gridH = 112;                     // dPiece dimensions
     int dunW = 0, dunH = 0;                           // known .dun dims (for catalog)
+    // Static lighting defaults (DevilutionX gendung.cpp: town 0, dungeon 15).
+    // `lightStyle` is a decoders::LightStyle value (0 normal, 1 hell, 2 soft).
+    uint8_t ambientLight = 0;
+    uint8_t lightStyle = 0;
 };
 
 struct SceneGrid {

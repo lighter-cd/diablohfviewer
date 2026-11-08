@@ -12,9 +12,9 @@
 // Player CL2 frames are stored direction-major: 8 directions x N frames, so
 // frameIndex = dir * framesPerDir + frameInDir (framesPerDir = total/8).
 
-import { McpClient } from "./client.js?v=20261109a";
-import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js?v=20261109a";
-import { drawFrame, drawComposite, drawScene } from "./viewer.js?v=20261109a";
+import { McpClient } from "./client.js?v=20261109b";
+import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js?v=20261109b";
+import { drawFrame, drawComposite, drawScene } from "./viewer.js?v=20261109b";
 
 const $ = (id) => document.getElementById(id);
 
@@ -1333,9 +1333,11 @@ function stepCombatStage(delta) {
 
 // ---- Scene viewer (5th browse mode) -----------------------------------------
 //
-// The backend scene.build returns two pixel-identical PNGs (a bounded preview
-// and a transparent SOL overlay) as base64. We stack them as <img> layers and
-// apply ONE transform to the shared container, so zoom/pan never desync them.
+// The backend scene.build returns two pixel-aligned PNGs (a bounded preview
+// and a transparent SOL overlay) as base64. We decode each into a bitmap and
+// drawImage() it onto one of two stacked <canvas> layers, then apply ONE
+// transform to the shared container, so zoom/pan never desync them. There is no
+// <img>/src involved — the bitmap is drawn, never referenced by a URL.
 
 const sceneState = {
   zoom: 2,
@@ -1344,11 +1346,73 @@ const sceneState = {
   w: 0,             // preview natural width
   h: 0,             // preview natural height
   loaded: false,
+  loading: false,
   dragging: false,
   dragX: 0,
   dragY: 0,
 };
 let sceneCatalog = [];
+
+// Scene PNGs are drawn onto <canvas> layers, exactly like viewer.js blits
+// decoded sprite frames. We decode the base64 PNG bytes into a bitmap and
+// drawImage() it — there is NO <img> and NO `src` to go missing. This also
+// avoids ever building a giant `data:` URL.
+function sceneBase64ToBytes(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+async function sceneDecodeBitmap(b64) {
+  const blob = new Blob([sceneBase64ToBytes(b64)], { type: "image/png" });
+  if (typeof createImageBitmap === "function") {
+    return { bitmap: await createImageBitmap(blob), revoke: null, close: true };
+  }
+  // Fallback: an off-DOM Image with a REAL object-URL src (never appended to the
+  // document, so no src-less <img> is ever shown).
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error("场景 PNG 解码失败"));
+      el.src = url;
+    });
+    return { bitmap: img, revoke: url, close: false };
+  } catch (e) {
+    URL.revokeObjectURL(url);
+    throw e;
+  }
+}
+
+// Decode a base64 PNG and blit it onto `canvas` at native pixel size. Returns
+// the bitmap's natural dimensions (used for zoom/pan). An empty value clears
+// the canvas instead of leaving stale pixels behind.
+async function sceneDrawPng(canvas, b64) {
+  if (!b64) {
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    canvas.width = 0;
+    canvas.height = 0;
+    return { w: 0, h: 0 };
+  }
+  const { bitmap, revoke, close } = await sceneDecodeBitmap(b64);
+  try {
+    const w = bitmap.width || bitmap.naturalWidth;
+    const h = bitmap.height || bitmap.naturalHeight;
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(bitmap, 0, 0);
+    return { w, h };
+  } finally {
+    if (close && typeof bitmap.close === "function") bitmap.close();
+    if (revoke) URL.revokeObjectURL(revoke);
+  }
+}
 
 function applySceneTransform() {
   if (!sceneState.loaded) return;
@@ -1398,11 +1462,12 @@ async function loadSceneCatalog() {
 }
 
 async function loadScene() {
-  const id = $("sceneSel").value;
-  if (!id) { showError("请先选择一个场景"); return; }
+  if (sceneState.loading) return;
+  const id = $("sceneSel").value || "tristram";
   hideError();
   setMeta(`加载场景 ${id} …`);
   $("sceneLoadBtn").disabled = true;
+  sceneState.loading = true;
   try {
     const args = { id };
     // Prefer an explicit path; otherwise the catalog's primary archive. The
@@ -1417,35 +1482,44 @@ async function loadScene() {
       return;
     }
     args.preview_max_width = 1000;
+    args.lighting = !!$("sceneLightToggle").checked;
     const res = await client.callTool("scene.build", args);
     if (!res || !res.image_base64) throw new Error("scene.build 未返回图像");
-    const base = `data:image/png;base64,${res.image_base64}`;
-    $("sceneBase").src = base;
-    $("sceneOverlay").src = res.overlay_base64
-      ? `data:image/png;base64,${res.overlay_base64}` : "";
-    $("sceneOverlay").hidden = !$("sceneOverlayToggle").checked;
+    // Draw the returned PNG bitmaps onto the two <canvas> layers. No <img>/src is
+    // involved: the decoded bitmap is blitted directly, so the canvas always
+    // shows the actual scene once the tool returns.
+    const dim = await sceneDrawPng($("sceneBase"), res.image_base64);
+    await sceneDrawPng($("sceneOverlay"), res.overlay_base64 || "");
+    $("sceneOverlay").hidden = !res.overlay_base64 || !$("sceneOverlayToggle").checked;
     // Night-palette scenes (e.g. Tristram) render very dark and look blank;
     // the brighten toggle defaults to ON, so apply its state on every load.
     $("sceneLayers").classList.toggle("bright", $("sceneBrightToggle").checked);
-    sceneState.w = res.preview_width || 0;
-    sceneState.h = res.preview_height || 0;
+    sceneState.w = dim.w || res.preview_width || 0;
+    sceneState.h = dim.h || res.preview_height || 0;
     sceneState.loaded = true;
     sceneFit();
     setMeta(`${res.title}  原始 ${res.width}×${res.height}  预览 ${res.preview_width}×${res.preview_height}  ` +
             `网格 ${res.grid_width}×${res.grid_height}  缩放 1/${res.scale}  ` +
-            `透明像素 ${res.transparent_pixel_count}  Solid ${res.solid_count}`);
+            `透明像素 ${res.transparent_pixel_count}  Solid ${res.solid_count}  ` +
+            `光照 ${res.lighting ? "开" : "关"}`);
   } catch (e) {
     showError("scene.build 失败: " + (e.message || e));
     setMeta("场景加载失败", true);
   } finally {
+    sceneState.loading = false;
     $("sceneLoadBtn").disabled = false;
   }
 }
 
-function showSceneView() {
-  $("sceneBase").hidden = false;
-  if (!sceneCatalog.length) loadSceneCatalog();
-  if (sceneState.loaded) sceneFit();
+async function showSceneView() {
+  // Auto-load the default scene on first entry so the canvas is never an empty
+  // element with no content (the src-less <img> problem). Catalog + archives are
+  // both required; the WS connect handler below triggers this too.
+  if (!sceneCatalog.length) await loadSceneCatalog();
+  if (sceneState.loaded) { sceneFit(); return; }
+  if (allArchives && allArchives.length && !sceneState.loading) {
+    await loadScene();
+  }
 }
 
 function wireSceneControls() {
@@ -1460,6 +1534,10 @@ function wireSceneControls() {
   });
   $("sceneBrightToggle").addEventListener("change", (e) => {
     $("sceneLayers").classList.toggle("bright", e.target.checked);
+  });
+  $("sceneLightToggle").addEventListener("change", () => {
+    // Rebuild the scene so dLight shading is applied/removed server-side.
+    if (sceneState.loaded) loadScene();
   });
   $("sceneFitBtn").addEventListener("click", () => sceneFit());
 
@@ -1496,6 +1574,9 @@ function wireControls() {
     try {
       await client.connect($("wsUrl").value.trim());
       await loadCatalog();
+      // If the user switched to the scene view before connecting, nothing could
+      // load then; now that archives are known, draw the scene onto the canvas.
+      if (isSceneMode() && !sceneState.loaded) await showSceneView();
     } catch (e) {
       setMeta("connect failed: " + (e.message || e), true);
     }

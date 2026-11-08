@@ -31,7 +31,7 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta http-equiv="Pragma" content="no-cache" />
   <title>DiabloHFConverter · Sprite & Scene Viewer</title>
-  <link rel="stylesheet" href="styles.css?v=20261109a" />
+  <link rel="stylesheet" href="styles.css?v=20261109b" />
 </head>
 <body>
   <header>
@@ -164,9 +164,10 @@
         </label>
         <label class="scene-check"><input type="checkbox" id="sceneOverlayToggle" checked /> 显示叠加层（网格 / SOL 标志）</label>
         <label class="scene-check"><input type="checkbox" id="sceneBrightToggle" checked /> 提亮（夜景）</label>
+        <label class="scene-check"><input type="checkbox" id="sceneLightToggle" /> 光照（dLight 暗部 + 中心火把）</label>
         <button id="sceneFitBtn" type="button">复位视图</button>
       </div>
-      <div class="char-hint">选场景 → 加载：后端用 DevilutionX 两遍绘制（地板菱形 + 墙体）复原完整场景，返回 PNG 预览 + 对齐的叠加层。拖拽平移、滑块/滚轮缩放。红色=Solid，蓝色=透明，黄色=BlockLight。初始场景为 Tristram 城镇。</div>
+      <div class="char-hint">选场景 → 加载：后端用 DevilutionX 两遍绘制（地板菱形 + 墙体）复原完整场景，返回 PNG 预览 + 对齐的叠加层。拖拽平移、滑块/滚轮缩放。红色=Solid，蓝色=透明，黄色=BlockLight。勾选「光照」后按 SOL/ambient + 中心火把应用 DevilutionX LightTables 暗部着色（城镇全亮、地牢变暗）。场景含 Tristram 城镇与 L1–L4 预设。</div>
     </aside>
 
     <section class="stage">
@@ -235,8 +236,8 @@
       <div class="scene-view" id="sceneView" hidden>
         <div id="sceneViewport" class="scene-viewport">
           <div id="sceneLayers" class="scene-layers">
-            <img id="sceneBase" alt="scene" />
-            <img id="sceneOverlay" alt="scene overlay" />
+            <canvas id="sceneBase" aria-label="scene"></canvas>
+            <canvas id="sceneOverlay" aria-label="scene overlay"></canvas>
           </div>
         </div>
       </div>
@@ -248,6 +249,6 @@
     </aside>
   </main>
 
-  <script type="module" src="src/main.js?v=20261109a"></script>
+  <script type="module" src="src/main.js?v=20261109b"></script>
 </body>
 </html>

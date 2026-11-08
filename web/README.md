@@ -2,13 +2,13 @@
 
 浏览器里的 Diablo 1 / Hellfire 查看器。本前端**不读 MPQ、不碰文件系统**，
 只通过 WebSocket 调用本地 `mcp-server` 暴露的 `sprite.*` / `palette.*` / `scene.*` 工具，
-拿到 RGBA 帧（Canvas）或 PNG 预览（`<img>`）后绘制。
+拿到 RGBA 帧（Canvas）或把场景 PNG 预览绘制到 Canvas。
 
 > 阶段 2/3/5 的浏览器查看器，共 **5 种浏览模式**：目录浏览、角色查看器、
 > 怪物 / NPC 查看器、技能 / 战斗查看器、**场景查看器**。
 > 技能特效（`lm`/`fm`/`qm`）作为可浏览动画纳入；TRN 上色已实装为开关。
-> 场景查看器调用 `scene.list` / `scene.build` 复原**完整关卡场景**（初始场景为
-> Tristram 城镇），支持缩放 / 平移 / 叠加层，见下方独立章节。
+> 场景查看器调用 `scene.list` / `scene.build` 复原**完整关卡场景**（Tristram 城镇 +
+> L1–L4 预设），支持缩放 / 平移 / 叠加层 / dLight 光照，见下方独立章节。
 
 ## 运行
 
@@ -210,23 +210,27 @@ web/
 ## 场景查看器（第 5 种浏览模式）
 
 切换到「场景查看器」后，共享 Canvas 被隐藏，改为一个可平移 / 缩放的视口，里面是两张
-绝对定位、像素级对齐的 `<img>`：场景底图 + SOL 叠加层。
+绝对定位、像素级对齐的 `<canvas>`：场景底图 + SOL 叠加层。
 
 - **加载**：进入该模式会自动调用 `scene.list` 填充「场景」下拉；点「加载场景」调用
   `scene.build {id, archive, archives, preview_max_width:1000}`。默认使用目录
   `sprite.list` 收集到的 MPQ 档案栈（`allArchives`），也可在「MPQ 路径」输入框里
   手动覆盖主档案。
 - **数据契约**：后端返回 `image_base64` / `overlay_base64`（均为 PNG 字节的 base64），
-  前端拼 `data:image/png;base64,` 直接赋给 `img.src`。两张图由同一
+  前端把 base64 解码为 Blob → `createImageBitmap` → `drawImage` 到两张 canvas。
+  不创建 `<img src>`、不拼 `data:` URL。两张图由同一
   `SceneProjection` 生成、按同一整数 `scale` 降采样，尺寸完全一致。PNG 的 IDAT 由后端
   `src/decoders/deflate.cpp`（fixed-Huffman + 贪心 LZ77）压缩，`scene.build(tristram)`
   预览约 343 KB base64，远低于 Firefox `data:` URL ~2 MB 上限（早期未压缩 stored 块
   ≈2.2 MB 会显示「无法显示的图片/空图」），可被标准 zlib 无损解压。
 - **缩放 / 平移**：滑块（1–8×）或滚轮缩放，视口内按下拖拽平移；「复位视图」回到
-  全图适配。`applySceneTransform()` 对两张图施加同一组 `width/height/left/top`，
+  全图适配。`applySceneTransform()` 对两张 canvas 施加同一组 `width/height/left/top`，
   因此叠加层永远与底图对齐。`image-rendering:pixelated` 保证放大后仍是清晰像素。
 - **叠加层**：半透明等距网格线 + 每格 SOL 标志着色（红=Solid、蓝=透明、
   黄=BlockLight），由后端按网格数组生成；开关控制显隐。
+- **光照（dLight）**：勾选后 `loadScene()` 传 `scene.build(lighting:true)`，后端按
+  场景环境光（城镇 0、地牢 15）+ 中心 radius-15 火把计算每格光照，用 DevilutionX
+  `LightTables` 烘焙调色板暗部；切换复选框会重建场景。
 - **提亮**：Tristram 夜景均值亮度仅 13、67% 像素 <24，不提亮观感近似空图。
   「提亮（夜景）」**默认勾选**，`loadScene()` 每次按开关状态给 `#sceneLayers` 施加
   `.bright` 类（`web/src/main.js`），CSS `web/styles.css` 用
@@ -234,6 +238,8 @@ web/
   不改变后端输出。
 
 场景由后端 `scene.build` 用 DevilutionX 两遍绘制（地板菱形 + 墙体）复原，输出
-**不透明背景、无透明空洞**（`transparent_pixel_count == 0`）。初始场景为 Tristram
-城镇（4 个 sector DUN + 预填微瓦片），另含两个 L1 大教堂预设。原理与资产路径见
+**不透明背景、无透明空洞**（`transparent_pixel_count == 0`）。场景目录：Tristram
+城镇（4 个 sector DUN + 预填微瓦片）+ L1/L2/L3/L4 预设（`l1_rnd2`、`l1_skngdo`、
+`l2_blind`、`l3_anvil`、`l4_diab1`）。`scene.path` 可在同一 SOL 网格上做 A* 寻路并返回
+与预览对齐的路径坐标（供后续前端叠加）。原理与资产路径见
 `docs/ARCHITECTURE.md` §9.3 与 `docs/PROJECT.md`。

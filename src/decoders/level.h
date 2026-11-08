@@ -94,6 +94,12 @@ struct MapRenderOptions {
     // being skipped. DevilutionX prefills every dPiece cell with a floor micro,
     // so a real scene has no empty cells. Set to kNoMicro to leave holes.
     uint16_t prefillMicro = kNoMicro;
+    // Optional per-cell light levels (gridW*gridH, 0 = fully lit, 15 = dark).
+    // Empty = the historical FullyLit render (no palette shading). Populate it
+    // with decoders::buildLightMap() to get DevilutionX's dLight look.
+    std::vector<uint8_t> lightLevels;
+    // 0 = Normal, 1 = Hell, 2 = Soft (see decoders::LightStyle).
+    uint8_t lightStyle = 0;
 };
 
 // Isometric bounding box of a (gw x gh) micro grid with `microLen` blocks per
@@ -227,6 +233,7 @@ struct MapRenderResult {
     std::vector<uint8_t> blockLight;  // gridW*gridH (0/1)
     std::vector<uint8_t> blockMissile;// gridW*gridH (0/1)
     std::vector<uint8_t> transparent; // gridW*gridH (0/1), from DUN micro-scale
+    std::vector<uint8_t> light;       // gridW*gridH light level (0..15) used
 };
 
 // Render a single micro-tile (one dPiece cell) into a 64 x H RGBA column

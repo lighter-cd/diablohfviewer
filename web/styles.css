@@ -250,9 +250,10 @@ canvas { background: transparent; image-rendering: pixelated; }
 .combat-hint-err { color: #f0a0a0; }
 
 /* ---- Scene viewer (5th browse mode) ----
-   The canvas is hidden in this mode; instead a scrollable viewport holds two
-   absolutely-stacked <img> layers (base scene + aligned SOL overlay). Both are
-   transformed identically by applySceneTransform(), so zoom/pan stay in sync. */
+   The sprite canvas is hidden in this mode; instead a scrollable viewport holds
+   two absolutely-stacked <canvas> layers (base scene + aligned SOL overlay),
+   each drawn from a decoded PNG bitmap. Both are transformed identically by
+   applySceneTransform(), so zoom/pan stay in sync. */
 .canvas-wrap[hidden], .scene-view[hidden] { display: none; }
 .scene-view {
   flex: 1; display: flex; flex-direction: column; min-height: 0;
@@ -264,10 +265,10 @@ canvas { background: transparent; image-rendering: pixelated; }
 }
 .scene-viewport.dragging { cursor: grabbing; }
 .scene-layers { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
-.scene-layers img {
+.scene-layers canvas {
   position: absolute; left: 0; top: 0;
   image-rendering: pixelated;   /* crisp nearest-neighbour at any zoom */
-  -webkit-user-drag: none; user-select: none; pointer-events: none;
+  user-select: none; pointer-events: none;
 }
 #sceneOverlay { pointer-events: none; }
 #sceneOverlay[hidden] { display: none; }
@@ -283,4 +284,4 @@ canvas { background: transparent; image-rendering: pixelated; }
 /* Night/dusk town scenes (Tristram) render very dark and look blank. A mild
    contrast reduction lifts shadow detail while keeping the diamond background
    near-black; brightness restores overall level. Toggle defaults to ON. */
-.scene-layers.bright img { filter: brightness(1.7) contrast(0.85) saturate(1.1); }
+.scene-layers.bright canvas { filter: brightness(1.7) contrast(0.85) saturate(1.1); }

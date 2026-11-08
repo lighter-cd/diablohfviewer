@@ -8,7 +8,9 @@
 > 阶段 4 地图管线（TIL/MIN/DUN/SOL + level CEL 重编码 + 等距合成，`src/decoders/level_*.cpp`
 > + `src/tools/map_tools.cpp` 的 `map.build`）已于 2026-11-08 落地并配齐单元/集成测试。
 > 2026-11-09：修正索引/背景/两遍绘制（消除「黑块」），新增 `scene.*` 完整场景复原工具与
-> 前端第 5 种「场景查看器」模式（§9.3 / §10.5）。
+> 前端第 5 种「场景查看器」模式（§9.3 / §10.5）。同日补齐 **静态 dLight 光照**
+> （`src/decoders/level_light.cpp`）与 **A\* 寻路**（`level_path.cpp` + `scene.path`），
+> 场景目录扩到 Tristram + L1/L2/L3/L4 共 6 个预设。
 
 ---
 
@@ -81,15 +83,17 @@ src/
 │   ├── level.h          #   关卡数据结构 + kNoMicro/MapRenderOptions/SceneProjection
 │   ├── level_decode.cpp #   loadTil/loadMin/loadDun/loadSol + buildMicroGrid（0-based, DRLG_LPass3）
 │   ├── level_cel.cpp    #   reencodeLevelCel + decodeReencodedFrame[As]（Square/三角/梯形）
-│   ├── level_render.cpp #   renderMicroTile/renderMap（两遍等距合成 + 不透明背景 + 空格预填）
-│   └── level_scene.*    #   SceneSpec/SceneGrid + buildTownScene/buildDungeonScene + sceneCatalog
+│   ├── level_render.cpp #   renderMicroTile/renderMap（两遍等距合成 + 不透明背景 + 空格预填 + 逐格 dLight）
+│   ├── level_scene.*    #   SceneSpec/SceneGrid + buildTownScene/buildDungeonScene + sceneCatalog
+│   ├── level_light.*    #   LightTables(Normal/Hell/Soft) + falloff/cone + buildLightMap（DoLighting）
+│   └── level_path.*     #   8 方向 A*（SOL Solid 网格，100/101 步长，scene.path 后端）
 │
 ├── tools/               # 工具注册表：把 engine + decoders 组合成"工具"
 │   ├── registry.h/.cpp  #   工具注册、按名分发、参数 schema、返回 JSON
 │   ├── mpq_tools.*      #   mpq.list / mpq.extract / mpq.verify / mpq.recover / mpq.dump
 │   ├── sprite_tools.*   #   sprite.decode / palette.load
 │   ├── map_tools.*      #   map.build（阶段 4，已落地）
-│   └── scene_tools.*    #   scene.list / scene.build（完整场景复原，阶段 4/5）
+│   └── scene_tools.*    #   scene.list / scene.build / scene.path（完整场景 + 光照 + 寻路）
 │
 ├── mcp/                 # MCP 服务端：传输 + 协议分派
 │   ├── server.h/.cpp    #   初始化 registry、启动传输
@@ -157,8 +161,9 @@ public:
 | `sprite.list`  | `{dict?,devilutionx_root?,family?,class?,kind?}` | `{count,sprites:[{name,archive,archive_path,family,class,type,width}]}`（从 `recovered.json` + DevilutionX 数据表枚举**真实存在的**精灵名并分类 family/class/type、带自动帧宽，供前端建目录树；`archive_path` 直接取自 recovered.json 的档案 `path`，前端无需再手动填 MPQ 路径；`kind` 默认 `sprite`（CL2/CEL），可传 `palette` 仅列 `.pal` 调色板、`all` 两者都列，用于前端调色板下拉框；无 listfile 时 `mpq.list` 给的是占位名，故需此工具） | ✅ |
 | `spell.list`   | `{devilutionx_root?,source?,id?}` | `{count,spell_count,monster_attack_count,ability_count,trap_count,cast_action_map,impact_catalog[],spells[],monster_attacks[],abilities[],traps[]}`（从 `spelldat`/`misdat`/`missile_sprites`/`monstdat` 四表 join 出**玩家技能与怪物远程攻击的有序阶段目录**：`stages[]` 固定 `cast→projectile→impact→debuff`；每层 `L={kind,role,anchor,confidence,...}`，`sprite` 层带编号 `missiles\{name}{N}.cl2` 文件清单 + 显式 `width` + `frames`，`trn` 层带 `trn:{name,preset,apply_to}`；`impact_catalog` 为候选命中特效。**每条 `spells[]`/`monster_attacks[]` 额外带 `name_zh`（中文名，取自 `Translations/zh_TW.po` → `zh_CN.po` 的 `msgctxt "spell"`，无翻译则回退英文名）、`description`（按已解析的阶段链 + 玩家法力/智力消耗合成的中文说明），以及**法术级别参数**：`level`（`spelldat.bookLevel` 法术阶）、`staff_level`、`mana_cost`、`mana_multiplier`（每升 1 级训练减的法力）、`min_mana`、与 `mana_by_level`（按 `GetManaAmount` 公式算出的 1..bookLevel 各级基础法力 `{level, mana}`，含 `min_mana` 下限、未乘职业系数）；另含 `visual_by_level`（玩家 1..bookLevel / 怪物 1..16 各级视觉参数：持续时间 `duration_ticks`/`duration_sec`、弹速 `speed`、范围 `range_tiles`/`radius_tiles`、弹射物数 `count` 及法术特有字段如 `segments`/`wall_length_tiles`，含角色/地下城层依赖项标 `_note`，无级别缩放为空；键因各法术硬编码公式而不同，由 `spell_visual_model.h` 逐法术转录）；**怪物攻击除 `GetMissileType()` 的 14 类 AI 外**，还包含**在 AI 函数内直接 `AddMissile` 的形态**（`monsterAttackForms()`，转录自 `CounselorAi`/`BatAi`/`MegaAi`：Counselor 按智力 0..3 → Firebolt/ChargedBolt/LightningControl/Fireball，外加近身 Flash 双层；Familiar → Lightning；Gloom → Rhino 冲撞；Mega → InfernoControl）。这些形态各自独立成条（`id` = `AI` 或 `AI.variant`），并带 `variant`（形态名）与 `condition`（中文触发条件），`monsters` 按智力/怪物 id 精确收窄。**`unique_monstdat.tsv` 会作为额外怪物行合并**（唯一怪的 `ai`/`intelligence` 覆盖基础怪），因此 Hork Demon（唯一怪 `ai=HorkDemon`）的 `HorkSpawn`、Zhar/Lazarus（`ZharAi`/`LazarusAi` 委托 `CounselorAi`，`normalizedMonsterAi()` 归一为 Counselor）以及 Red Vex/Black Jade（`LazarusSuccubus`）都能正确归属。`abilities[]` 另列**引擎级怪物特殊能力**（`monsterAbilities()`：`Blink` 受重击瞬移、`AcidPuddle` 酸液怪死亡留池、`Hidden` 潜行系隐身），每条带 `monsters`/`trigger`/`source_ref`；Diablo 1 / Hellfire **没有** Diablo 2 式词缀（Thunderstorm / Waller / Vortex / Shielding 在引擎中不存在）。`traps[]` 列**陷阱法术**（`trapSpecs()`，转录自 `objects.cpp`）：`OBJ_TRAPL/R` 墙陷阱按 `GenerateRnd((effLevel/3)+1)` 依次解锁 Arrow / Firebolt(≥3 层) / LightningControl(≥6 层)；`OBJ_TCHEST1..3` 带陷阱宝箱按类型 0..2 发 Arrow/FireArrow/Nova，地狱火扩到 0..5 追加 RingOfFire/StealPotions/StealMana；地狱火的 `OBJ_FLAMEHOLE`/`OBJ_FLAMELVR` 喷火口与火焰拉杆为对象火焰动画 + 直接伤害（伤害类型记 `FireWallControl`，无 missile 图形）。每条 `traps[]` 带 `objects`（宿主 `OBJ_*`）、`trigger`、`source_ref`。当前实测 `spell_count=51`、`monster_attack_count=25`、`ability_count=3`、`trap_count=10`） | ✅ |
 | `map.build`    | `{archive,cel,til,min,sol,dun,palette?,archives?,micro_len?,blocks?,out?}`（L1 例：`levels/l1data/l1.cel/til/min/sol` + `levels/l1data/rnd2.dun`） | `{image_path,preview_path,meta_path,preview_base64,width,height,grid_width,grid_height,micro_len,frame_count,micro_count,solid_count,transparent_count}`；写完整地图 PNG + ≤400px 预览 PNG + 每格标志 sidecar JSON 到 `out/maps/`；`meta` 含 `solid`/`transparent`/`block_light`/`block_missile` 四个 `grid_width×grid_height` 数组 | ✅ |
-| `scene.list`   | `{}` | `{count,scenes:[{id,title,layout,grid_width,grid_height,micro_len,blocks}]}`；内置完整场景目录（Tristram 城镇 + 2 个 L1 预设），无需 MPQ | ✅ |
-| `scene.build`  | `{id,archive,archives?,out?,preview_max_width?}` | 复原**完整场景**（两遍绘制 + 不透明背景 + 预填，0 透明像素）。返回 `{image_path,preview_path,overlay_path,meta_path,image_base64,overlay_base64,width,height,preview_width,preview_height,scale,grid_width,grid_height,micro_len,frame_count,solid_count,transparent_count,transparent_pixel_count,meta}`；原生 PNG 落盘到 `out/scenes/`，WS 只传 ≤1000px 预览 + 对齐叠加层 | ✅ |
+| `scene.list`   | `{}` | `{count,scenes:[{id,title,layout,grid_width,grid_height,micro_len,blocks,ambient_light,light_style}]}`；内置完整场景目录（Tristram + L1/L2/L3/L4 共 6 个预设），无需 MPQ | ✅ |
+| `scene.build`  | `{id,archive,archives?,out?,preview_max_width?,lighting?,ambient?,lights?,auto_light?}` | 复原**完整场景**（两遍绘制 + 不透明背景 + 预填，0 透明像素；可选 dLight 光照）。返回 `{image_path,preview_path,overlay_path,meta_path,image_base64,overlay_base64,width,height,preview_width,preview_height,scale,grid_width,grid_height,micro_len,frame_count,solid_count,walkable_count,transparent_count,transparent_pixel_count,lighting,ambient,light_lit_count,meta}`；`meta` 含 `solid`/`transparent`/`block_light`/`block_missile`/`walkable` + 可选 `light`；原生 PNG 落盘到 `out/scenes/`，WS 只传 ≤1000px 预览 + 对齐叠加层 | ✅ |
+| `scene.path`   | `{id,archive,archives?,from:{x,y},to:{x,y},max_steps?,preview_max_width?}` | `{found,cost,steps,grid_width,grid_height,micro_len,walkable_count,scale,native_width,native_height,preview_width,preview_height,path:[{x,y,screen_x,screen_y,preview_x,preview_y}]}`；SOL `Solid` 网格 8 方向 A*（直行 100 / 斜行 101），坐标与 `scene.build` 投影对齐 | ✅ |
 
 > **PCX 已并入 `sprite.decode`**（按 `.pcx` 扩展名自动路由），不再单独设 `pcx.decode` 工具。
 > `sprite.decode` 的调色板解析优先级：`palette`（base64 或名称）→ 文件内嵌（PCX）→ 同目录
@@ -352,9 +357,10 @@ cmake --build . --target mcp-server
    - **端到端验证**：`palette.load` 对 `devilutionx.mpq` 的 `gendata\cut2.pal` 返回 256 色
      + 合法 RGBA base64；`sprite.decode` 对 `devilutionx.mpq` 的 `data\health.clx` +
      `ui_art\diablo.pal` 返回正确 264×19 RGBA 帧。
-8. **地图（阶段 4，已完成 2026-11-08）**：`src/decoders/level_*.cpp` + `src/tools/map_tools.cpp`
-   的 `map.build`（在 `main.cpp` 调 `registerMapTools(reg)`，stdio + WS 双传输复用同一套
-   handler）。详见 §9.2。
+8. **地图（阶段 4，已完成 2026-11-08，2026-11-09 补光照/寻路）**：`src/decoders/level_*.cpp`
+   + `src/tools/map_tools.cpp` 的 `map.build`（在 `main.cpp` 调 `registerMapTools(reg)`，
+   stdio + WS 双传输复用同一套 handler），以及 `level_light.cpp` / `level_path.cpp`
+   + `scene_tools.cpp` 的 `scene.list`/`scene.build`/`scene.path`。详见 §9.2/§9.3。
 
 > 第 2–6 步即用户选定的 “option B”：(1) 后端重构为 C tools/mcp 模块、
 > (2) 移植 mpq-recover/mpq-inspect 到 C、(3) 脚手架 C MCP Server（stdio + WS 桥）。
@@ -399,7 +405,8 @@ MPQ 抽取
        ├─ Pass 1 地板：每格 mt[0]/mt[1] 强制左/右三角 → 64×32 菱形（铺满地面）
        ├─ Pass 2 墙体：降序 i+j, mt[2..] 成对向上叠, hasValue() 守卫
        ├─ 背景：每像素先填 opts.background（不透明）→ 0 透明像素，无「黑块」
-       └─► MapRenderResult: rgba 全图 + solid/blockLight/blockMissile/transparent 每格标志
+       ├─ 光照（可选 opts.lightLevels）：每格用 LightTables[level] 烘焙调色板解码
+       └─► MapRenderResult: rgba 全图 + solid/blockLight/blockMissile/transparent/light 每格数组
 ```
 
 **TileType**（`dun_tile.hpp`）：Square(0)、TransparentSquare(1)、LeftTriangle(2)、
@@ -426,18 +433,37 @@ RightTriangle(3)、LeftTrapezoid(4)、RightTrapezoid(5)。新增 `decodeReencode
 sidecar JSON（`grid_width/grid_height/micro_len/frame_count` + 四个每格标志数组）、
 返回摘要与 base64 预览。**`scene.build` 产出**（`out/scenes/<id>.*`）：原生 PNG + 整数
 降采样预览 PNG + 对齐的叠加层 PNG + sidecar JSON，返回 `image_base64`/`overlay_base64`、
-`preview_width/height`、`scale`、`meta`（每格标志 + `transparent_pixel_count`）。
-两者均为 **FullyLit** 渲染，不应用逐像素光照图（运行时效果，延后）。
+`preview_width/height`、`scale`、`meta`（每格标志 + `walkable` + 可选 `light` +
+`transparent_pixel_count`）。`map.build` 固定 FullyLit；`scene.build` 默认 FullyLit，
+`lighting:true` 时应用静态 dLight（见下）。
+
+**静态光照（`level_light.cpp`，2026-11-09）**：忠实移植 `MakeLightTable` 的 16 级
+`LightTables`（Normal / Hell / Soft 三套色阶）与 `DoLighting` 的 `LightFalloffs` /
+`LightConeInterpolations`。`buildLightMap(gw,gh,ambient,lights,soft)` 生成每格 0..15
+（0 全亮、15 全黑）；`renderMap` 对每格选择 `LightTables[level]` 烘焙后的 RGBA palette 解码
+瓦片，因此暗部是**调色板索引重映射**而非 RGB 近似。`scene.build` 参数：
+`lighting`（默认 false）、`ambient`（默认城镇 0 / 地牢 15）、`lights[]`
+（`{x,y,radius,offset_x,offset_y}` 微瓦片坐标）、`auto_light`（无光源时中心 radius-15 火把）。
+`meta.light` 输出逐格级别；`light_lit_count` 为 level 0 格数。
+
+**寻路（`level_path.cpp` + `scene.path`，2026-11-09）**：在 SOL `Solid` 网格上做 8 方向 A*：
+直行代价 100、斜行 101（照搬 `Source/engine/path.cpp`），斜向不额外限制转角（`CanStep`
+对斜向返回 true），目标格允许 Solid（同 `FindPath` 对 destination 的放宽）。`scene.path`
+输入微瓦片 `from`/`to`，返回 `found`/`cost`/`steps`/`walkable_count` 与 `path[]`（每格
+`x/y`、原生 `screen_x/screen_y`、按 `preview_max_width` 换算的 `preview_x/preview_y`），
+坐标与 `scene.build` 的 `SceneProjection` 完全一致，可直接叠图。
 
 **测试**（见 `README.md` §测试 / §6）：
 - `out/unit_tests.cpp`：TIL/MIN/DUN/SOL、`buildMicroGrid` 0-based、Square/Triangle CEL、
   强制三角形、`encodePNG`、`renderMap` 两遍绘制 + 不透明背景 + 0 透明像素 + 空格预填 +
-  frame()==0 守卫、`buildTownScene`/`buildDungeonScene`、`sceneProjection`、
-  **`testDeflateRoundTrip`**（`compressZlib`↔`decompressZlib` 回环 + 5 组代表数据 +
+  frame()==0 守卫、**`level_light` 光照表/falloff/cone/buildLightMap 与逐格着色**、
+  **`level_path` A\*（墙体/斜角/Solid 目标/maxSteps）**、`buildTownScene`/`buildDungeonScene`、
+  `sceneProjection`、**`testDeflateRoundTrip`**（`compressZlib`↔`decompressZlib` 回环 + 5 组代表数据 +
   length 3–258 × distance 全 30 码边界 15 万+ 组合，覆盖 RFC 1951 额外位边界），
   PNG write round-trip 改用 `decompressZlib` 解压 IDAT。
 - `out/integration_tests.cpp`：`testLevelMap`（真实 L1，断言 0 透明像素）、
-  `testSceneTools`（真实 Tristram，断言 0 透明像素 + PNG/叠加层/标志数组）。
+  `testSceneTools`（真实 Tristram，断言 0 透明像素 + PNG/叠加层/标志/`walkable` 数组 +
+  `scene.path` 起止与坐标；`l1_rnd2` lighting、`l4_diab1` 12/16 瓦片）。
 
 ### 9.3 场景管线（阶段 4/5，`scene.*` + 前端场景查看器）
 
@@ -445,23 +471,28 @@ sidecar JSON（`grid_width/grid_height/micro_len/frame_count` + 四个每格标�
 模型与产出详见 `docs/PROJECT.md`「游戏场景如何组织」一节，此处只列工具与数据流：
 
 ```
-scene.list  ─► 静态目录（tristram / l1_rnd2 / l1_skngdo），无需 MPQ
-scene.build {id,archive,archives?,out?,preview_max_width?=1000}
+scene.list  ─► 静态目录（tristram / l1_rnd2 / l1_skngdo / l2_blind / l3_anvil / l4_diab1）
+scene.build {id,archive,archives?,out?,preview_max_width?=1000,lighting?,ambient?,lights?,auto_light?}
    ├─ 抽取: town.{cel,til,min,sol,pal} + sector1s..4s.dun（城镇）
-   │        或 l1.{cel,til,min,sol} + *.dun + cut2.pal（地牢）
+   │        或 lN.{cel,til,min,sol} + *.dun + lN palette（地牢 L1..L4）
    ├─ 组装: buildTownScene（预填 426 + 4 sector, DUN word0→218, 96×96）
-   │        或 buildDungeonScene（Dirt 预填 + DUN@16,16）
-   ├─ 渲染: buildFrameTypes → reencodeLevelCel → renderMap(两遍, 不透明背景, prefill)
+   │        或 buildDungeonScene（L1..L4 prefill 22/12/8/30 + DUN@16,16）
+   ├─ 光照: buildLightMap(ambient + lights) → LightTables 烘焙每格 palette（可选）
+   ├─ 渲染: buildFrameTypes → reencodeLevelCel → renderMap(两遍, 不透明背景, prefill, dLight)
    ├─ 叠加层: buildOverlay（sceneProjection 同坐标；主要网格 + SOL 着色，preview 分辨率）
    └─ 产出: encodePNG 原生/预览/叠加 → 文件 + base64；
-            meta{solid[],transparent[],block_light[],block_missile[],transparent_pixel_count}
+            meta{solid[],transparent[],block_light[],block_missile[],walkable[],light[]?,transparent_pixel_count}
+
+scene.path {id,archive,archives?,from:{x,y},to:{x,y},max_steps?=1024,preview_max_width?=1000}
+   └─ loadSceneAssets → SOL solid[] → findPath(A*,100/101) → path[]{x,y,screen_*,preview_*}
 ```
 
 - 原生 PNG 只落盘（城镇 96×96 网格约 6145×3296），**WS 只传整数降采样后的
   ≤1000px 预览 + 同尺寸叠加层**，二者由同一 `SceneProjection` + 同一 `step` 生成，
   像素级对齐。`src/decoders/png.cpp::encodePNG` 提供内存 PNG 字节（供 base64）。
-- 前端 `web/` 第 5 种浏览模式（§10.5）把两张 PNG 叠成 `<img>`，用同一 transform 做
-  缩放/平移。后端 `src/main.cpp` 调 `registerSceneTools(reg)`，stdio + WS 共用 registry。
+- 前端 `web/` 第 5 种浏览模式（§10.5）把两张 PNG 解码为 bitmap 后绘制到叠放的两个
+  `<canvas>`，用同一 transform 做缩放/平移；新增「光照」开关触发 `scene.build(lighting:true)`。
+  后端 `src/main.cpp` 调 `registerSceneTools(reg)`，stdio + WS 共用 registry。
 
 ---
 
@@ -666,23 +697,27 @@ Archive 输入框——点选精灵即可直接解码，无需用户手填路径
 互不干扰）、`scene.list`/`scene.build` 调用、缩放平移与叠加层逻辑。
 
 - **数据路径**：`scene.build` 返回 `image_base64` / `overlay_base64`（PNG 字节 base64），
-  前端拼 `data:image/png;base64,` 赋给两张绝对定位 `<img>`；**不经过** `viewer.js`
-  的 RGBA/`ImageData` 路径（那是精灵帧专用）。原生大图只落盘，WS 只传 ≤1000px 预览。
+  前端把 base64 解码为 Blob → `createImageBitmap` → `drawImage` 到两张绝对定位
+  `<canvas>`（`sceneBase` / `sceneOverlay`）；**不经过** `viewer.js` 的 RGBA 精灵帧路径。
+  不创建 `<img src>`，也不拼巨大的 `data:` URL。原生大图只落盘，WS 只传 ≤1000px 预览。
   PNG 的 IDAT 由 `src/decoders/deflate.cpp::compressZlib`（fixed-Huffman + 贪心 LZ77）
   生成，`scene.build(tristram)` 预览约 343 KB base64，远低于 Firefox `data:` URL ~2 MB
   上限；早期 stored 块版本 ≈2.2 MB 会触发「无法显示的图片/空图」。
 - **对齐**：两张图由同一 `SceneProjection` + 同一整数 `scale` 生成，尺寸完全一致；
   `applySceneTransform()` 对共享容器 `#sceneLayers` 施加一组 `width/height/left/top`，
-  两张 `<img>` 用同一 transform，缩放 1–8×（滑块/滚轮）、视口内拖拽平移、
+  两张 `<canvas>` 用同一 transform，缩放 1–8×（滑块/滚轮）、视口内拖拽平移、
   「复位视图」全图适配、`image-rendering:pixelated` 保证清晰放大。
 - **叠加层**：半透明主网格线（每 8 格）+ 每格 SOL 着色（红=Solid / 蓝=透明 /
   黄=BlockLight），开关控制显隐；「提亮」给夜景城镇加 CSS
-  `brightness(1.7) contrast(0.85) saturate(1.1)`（`web/styles.css` 的 `.scene-layers.bright img`），
+  `brightness(1.7) contrast(0.85) saturate(1.1)`（`web/styles.css` 的 `.scene-layers.bright canvas`），
   开关**默认勾选**且 `loadScene()` 每次按开关状态施加 `.bright` 类，避免 Tristram 夜景过暗
   （均值亮度 13、67% 像素 <24）被误认为空图。
+- **光照**：新增「光照（dLight 暗部 + 中心火把）」开关，`loadScene()` 传
+  `scene.build(lighting:true)`；后端按场景 ambient + 中心 radius-15 火把生成每格 dLight，
+  用 `LightTables` 烘焙调色板，城镇全亮、地牢/地狱呈现暗部与光照范围。切换开关会重建场景。
 - **MPQ 路径**：默认用 `sprite.list` 收集到的 `allArchives` 栈（后端 `Archive` 统一
   `/`→`\` 归一化），可在 `sceneArchive` 输入框手动覆盖主档案。
-- 静态资源 `?v=20261109a`（CSS / main.js / 3 个 import）一并刷新缓存。
+- 静态资源 `?v=20261109b`（CSS / main.js / 3 个 import）一并刷新缓存。
 
 > 场景模型、资产路径、两遍绘制与「黑块」根因见 `docs/PROJECT.md`「游戏场景如何组织」
 > 与本文 §9.2/§9.3；前端使用说明见 `web/README.md`。

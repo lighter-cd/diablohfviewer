@@ -278,3 +278,7 @@
 ## 2026-11-09 05:07:17
 - 修复前端「空图/无法显示的图片」根因：把 PNG 的 zlib 编码从 stored 未压缩块重写为 RFC1951 fixed-Huffman + 贪心 LZ77（修正 kLenExtra 表偏移与 length/distance 额外位/距离码位序），新增 decompressZlib 及 length 3–258×distance 全码边界 15 万+ 组合穷举回环单测，真实 scene.build(tristram) 预览由 2.2MB 降到 257KB PNG/343KB base64 且可被标准 zlib 无损解；前端「提亮（夜景）」改为默认勾选、loadScene 每次施加 .bright 类、CSS 增强为 brightness(1.7) contrast(0.85) saturate(1.1) 以消除 Tristram 夜景过暗观感；同步 docs 与 README，core/unit/integration 三套测试与 CMake mcp-server 全绿。
 - 涉及: src/decoders/deflate.cpp, src/decoders/deflate.h, src/decoders/png.cpp, out/unit_tests.cpp, out/integration_tests.cpp, web/index.html, web/src/main.js, web/styles.css, web/README.md, README.md, docs/PROJECT.md, docs/ARCHITECTURE.md
+
+## 2026-11-09 07:51:14
+- 继续阶段 4 地图还原：新增忠实 DevilutionX 的静态 dLight 光照（level_light.cpp：LightTables Normal/Hell/Soft + LightFalloffs/LightConeInterpolations + buildLightMap，renderMap 逐格用 lit palette 解码）、SOL 碰撞网格 8 方向 A* 寻路（level_path.cpp + 新 scene.path 工具，100/101 步长，返回原生/预览坐标）、scene.build 光照参数与 meta.light/walkable、场景目录扩到 Tristram + L1/L2/L3/L4 共 6 个预设；前端场景查看器由 canvas 绘制 PNG 并新增「光照」开关；补齐单元/集成测试与 README/PROJECT/ARCHITECTURE/web 文档。
+- 涉及: src/decoders/level_light.h, src/decoders/level_light.cpp, src/decoders/level_path.h, src/decoders/level_path.cpp, src/decoders/level.h, src/decoders/level_render.cpp, src/decoders/level_scene.h, src/decoders/level_scene.cpp, src/tools/scene_tools.cpp, out/unit_tests.cpp, out/integration_tests.cpp, web/index.html, web/src/main.js, web/styles.css, web/README.md, README.md, docs/PROJECT.md, docs/ARCHITECTURE.md

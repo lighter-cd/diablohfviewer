@@ -22,6 +22,8 @@
 #include "engine/archive.h"
 #include "tools/base64.h"
 #include "decoders/level.h"
+#include "decoders/level_light.h"
+#include "decoders/level_path.h"
 #include "decoders/level_scene.h"
 #include "decoders/palette.h"
 #include "decoders/png.h"
@@ -67,6 +69,113 @@ std::string sanitize(const std::string& s) {
     for (char& c : r)
         if (c == '\\' || c == '/' || c == ':' || c == '.') c = '_';
     return r;
+}
+
+// ---- Scene asset loading (shared by scene.build / scene.path) --------------
+
+struct SceneAssets {
+    decoders::SceneGrid grid;
+    std::vector<decoders::MicroTileRef> micros;
+    std::vector<uint8_t> solFlags;
+    std::vector<uint8_t> palRgba;
+    decoders::ReencodedLevelCel reencoded;
+    std::vector<uint8_t> solid; // per-cell, from SOL (1 = blocks walking)
+};
+
+SceneAssets loadSceneAssets(const decoders::SceneSpec& spec,
+                            const std::vector<std::string>& archives) {
+    std::vector<uint8_t> celBuf, tilBuf, minBuf, solBuf, palBuf, dunBuf;
+    std::vector<std::vector<uint8_t>> sectorBufs;
+    auto need = [&](const std::string& n, std::vector<uint8_t>& b) {
+        if (!extractAny(archives, n, b))
+            throw std::runtime_error("extract failed (name not found?): " + n);
+    };
+    need(spec.cel, celBuf);
+    need(spec.til, tilBuf);
+    need(spec.min, minBuf);
+    need(spec.sol, solBuf);
+    need(spec.palette, palBuf);
+    if (spec.layout == decoders::SceneLayout::Town) {
+        for (const auto& s : spec.sectorDuns) {
+            std::vector<uint8_t> b;
+            need(s, b);
+            sectorBufs.push_back(std::move(b));
+        }
+    } else {
+        need(spec.dun, dunBuf);
+    }
+
+    SceneAssets out;
+    auto megatiles = decoders::loadTil(tilBuf);
+    out.micros = decoders::loadMin(minBuf, spec.blocks, spec.microLen);
+    out.solFlags = decoders::loadSol(solBuf);
+    auto palRgb = decoders::loadPalette(palBuf);
+    if (megatiles.empty()) throw std::runtime_error("TIL parse failed");
+    if (out.micros.empty()) throw std::runtime_error("MIN parse failed");
+    if (palRgb.empty()) throw std::runtime_error("palette parse failed");
+    out.palRgba = decoders::paletteToRGBA(palRgb);
+
+    if (spec.layout == decoders::SceneLayout::Town)
+        out.grid = decoders::buildTownScene(spec, megatiles, sectorBufs);
+    else
+        out.grid = decoders::buildDungeonScene(spec, megatiles, decoders::loadDun(dunBuf));
+
+    auto frameTypes = decoders::buildFrameTypes(out.micros, spec.microLen);
+    out.reencoded = decoders::reencodeLevelCel(celBuf, frameTypes);
+    if (out.reencoded.numFrames == 0)
+        throw std::runtime_error("level CEL parse failed");
+
+    // Per-cell SOL flags, exactly like renderMap() resolves them: the cell's
+    // 0-based micro index is the SOLData index; kNoMicro falls back to prefill.
+    const size_t cells = static_cast<size_t>(out.grid.gw) * out.grid.gh;
+    out.solid.assign(cells, 0);
+    for (int j = 0; j < out.grid.gh; ++j) {
+        for (int i = 0; i < out.grid.gw; ++i) {
+            const size_t idx = static_cast<size_t>(j) * out.grid.gw + i;
+            uint16_t mi = out.grid.micro[idx];
+            if (mi == decoders::kNoMicro || mi >= out.micros.size())
+                mi = spec.prefillMicro;
+            if (mi == decoders::kNoMicro || mi >= out.micros.size())
+                continue;
+            if (!out.solFlags.empty() && mi < out.solFlags.size())
+                out.solid[idx] = (out.solFlags[mi] & decoders::TileFlags::Solid) ? 1 : 0;
+        }
+    }
+    return out;
+}
+
+// Parse optional static lights and build the per-cell light map. When lighting
+// is enabled for a dungeon and no explicit light is given, a single central
+// "torch" is added (auto_light) so the preview is not pitch black; this is a
+// viewer convenience, not part of the map data.
+std::vector<uint8_t> makeSceneLighting(const mcp::json& params,
+                                       const decoders::SceneSpec& spec,
+                                       int gw, int gh, uint8_t& ambientOut,
+                                       std::vector<decoders::LightSource>& lightsOut,
+                                       bool& autoLightOut) {
+    ambientOut = static_cast<uint8_t>(
+        std::clamp<int>(params.value("ambient", static_cast<int>(spec.ambientLight)), 0, 15));
+    autoLightOut = params.value("auto_light", true);
+    lightsOut.clear();
+    if (params.contains("lights") && params["lights"].is_array()) {
+        for (const auto& l : params["lights"]) {
+            if (!l.is_object()) continue;
+            decoders::LightSource src;
+            src.x = l.value("x", 0);
+            src.y = l.value("y", 0);
+            src.radius = static_cast<uint8_t>(std::clamp<int>(l.value("radius", 15), 0, 15));
+            src.offsetX = static_cast<int8_t>(l.value("offset_x", 0));
+            src.offsetY = static_cast<int8_t>(l.value("offset_y", 0));
+            lightsOut.push_back(src);
+        }
+    }
+    if (params.value("lighting", false) || params.contains("lights") || params.contains("ambient")) {
+        if (lightsOut.empty() && autoLightOut)
+            lightsOut.push_back(decoders::LightSource{ gw / 2, gh / 2, 15, 0, 0 });
+        const bool soft = spec.lightStyle == 2;
+        return decoders::buildLightMap(gw, gh, ambientOut, lightsOut, soft).levels;
+    }
+    return {};
 }
 
 // Nearest-neighbour integer downscale. `step` is chosen once and applied to
@@ -186,6 +295,7 @@ mcp::ToolResult toolSceneList(const mcp::json&) {
             {"layout", s.layout == decoders::SceneLayout::Town ? "town" : "dungeon"},
             {"grid_width", gw}, {"grid_height", gh},
             {"micro_len", s.microLen}, {"blocks", s.blocks},
+            {"ambient_light", s.ambientLight}, {"light_style", s.lightStyle},
         });
     }
     mcp::ToolResult r;
@@ -202,50 +312,8 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
     const std::string outDir = params.value("out", std::string("out/scenes"));
     const int maxW = params.value("preview_max_width", 1000);
 
-    // Extract assets.
-    std::vector<uint8_t> celBuf, tilBuf, minBuf, solBuf, palBuf, dunBuf;
-    std::vector<std::vector<uint8_t>> sectorBufs;
-    auto need = [&](const std::string& n, std::vector<uint8_t>& b) {
-        if (!extractAny(archives, n, b))
-            throw std::runtime_error("extract failed (name not found?): " + n);
-    };
-    need(spec->cel, celBuf);
-    need(spec->til, tilBuf);
-    need(spec->min, minBuf);
-    need(spec->sol, solBuf);
-    need(spec->palette, palBuf);
-    if (spec->layout == decoders::SceneLayout::Town) {
-        for (const auto& s : spec->sectorDuns) {
-            std::vector<uint8_t> b;
-            need(s, b);
-            sectorBufs.push_back(std::move(b));
-        }
-    } else {
-        need(spec->dun, dunBuf);
-    }
-
-    auto megatiles = decoders::loadTil(tilBuf);
-    auto micros = decoders::loadMin(minBuf, spec->blocks, spec->microLen);
-    auto solFlags = decoders::loadSol(solBuf);
-    auto palRgb = decoders::loadPalette(palBuf);
-    if (megatiles.empty()) throw std::runtime_error("TIL parse failed");
-    if (micros.empty()) throw std::runtime_error("MIN parse failed");
-    if (palRgb.empty()) throw std::runtime_error("palette parse failed");
-    std::vector<uint8_t> palRgba = decoders::paletteToRGBA(palRgb);
-
-    // Assemble the full dPiece grid.
-    decoders::SceneGrid grid;
-    if (spec->layout == decoders::SceneLayout::Town) {
-        grid = decoders::buildTownScene(*spec, megatiles, sectorBufs);
-    } else {
-        grid = decoders::buildDungeonScene(*spec, megatiles, decoders::loadDun(dunBuf));
-    }
-
-    // Re-encode the level CEL and render.
-    auto frameTypes = decoders::buildFrameTypes(micros, spec->microLen);
-    decoders::ReencodedLevelCel reencoded = decoders::reencodeLevelCel(celBuf, frameTypes);
-    if (reencoded.numFrames == 0) throw std::runtime_error("level CEL parse failed");
-
+    SceneAssets assets = loadSceneAssets(*spec, archives);
+    const decoders::SceneGrid& grid = assets.grid;
     decoders::MapRenderOptions opts;
     opts.prefillMicro = spec->prefillMicro;
     const uint32_t bgc = spec->background;
@@ -254,9 +322,18 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
     opts.background[2] = static_cast<uint8_t>(bgc & 0xFF);
     opts.background[3] = static_cast<uint8_t>((bgc >> 24) & 0xFF);
 
+    uint8_t ambient = spec->ambientLight;
+    std::vector<decoders::LightSource> lights;
+    bool autoLight = false;
+    opts.lightLevels = makeSceneLighting(params, *spec, grid.gw, grid.gh,
+                                         ambient, lights, autoLight);
+    opts.lightStyle = spec->lightStyle;
+    const bool lightingEnabled = !opts.lightLevels.empty();
+
     decoders::MapRenderResult map = decoders::renderMap(
-        reencoded, micros, grid.micro, grid.gw, grid.gh, solFlags,
-        std::vector<int8_t>{}, palRgba.data(), spec->microLen, opts);
+        assets.reencoded, assets.micros, grid.micro, grid.gw, grid.gh,
+        assets.solFlags, std::vector<int8_t>{}, assets.palRgba.data(),
+        spec->microLen, opts);
     if (map.width == 0 || map.height == 0)
         throw std::runtime_error("scene render produced empty output");
 
@@ -302,30 +379,43 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
     // Sidecar metadata (per-cell flag grids).
     mcp::json solidArr = mcp::json::array(), transArr = mcp::json::array();
     mcp::json blArr = mcp::json::array(), bmArr = mcp::json::array();
+    mcp::json walkArr = mcp::json::array(), lightArr = mcp::json::array();
     for (size_t i = 0; i < map.solid.size(); ++i) {
         solidArr.push_back(map.solid[i]);
         transArr.push_back(map.transparent[i]);
         blArr.push_back(map.blockLight[i]);
         bmArr.push_back(map.blockMissile[i]);
+        walkArr.push_back(map.solid[i] ? 0 : 1);
+        if (lightingEnabled && i < map.light.size())
+            lightArr.push_back(map.light[i]);
     }
     mcp::json meta = mcp::json{
         {"scene_id", id}, {"grid_width", map.gridW}, {"grid_height", map.gridH},
-        {"micro_len", spec->microLen}, {"frame_count", reencoded.numFrames},
+        {"micro_len", spec->microLen}, {"frame_count", assets.reencoded.numFrames},
         {"native_width", map.width}, {"native_height", map.height},
         {"transparent_pixel_count", transparentCount},
         {"solid", solidArr}, {"transparent", transArr},
         {"block_light", blArr}, {"block_missile", bmArr},
+        {"walkable", walkArr},
     };
+    if (lightingEnabled) {
+        meta["light"] = lightArr;
+        meta["ambient"] = ambient;
+        meta["light_style"] = spec->lightStyle;
+    }
     {
         std::ofstream f(metaPath);
         if (f) f << meta.dump();
     }
 
-    size_t solidCount = 0, transCount = 0;
+    size_t solidCount = 0, transCount = 0, lightLitCount = 0;
     for (size_t i = 0; i < map.solid.size(); ++i) {
         if (map.solid[i]) ++solidCount;
         if (map.transparent[i]) ++transCount;
+        if (lightingEnabled && i < map.light.size() && map.light[i] == 0) ++lightLitCount;
     }
+    const int walkableCount =
+        decoders::countWalkableCells(assets.solid, map.gridW, map.gridH);
 
     mcp::ToolResult r;
     r.value = mcp::json{
@@ -337,10 +427,84 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
         {"width", map.width}, {"height", map.height},
         {"preview_width", pw}, {"preview_height", ph}, {"scale", step},
         {"grid_width", map.gridW}, {"grid_height", map.gridH},
-        {"micro_len", spec->microLen}, {"frame_count", reencoded.numFrames},
-        {"solid_count", solidCount}, {"transparent_count", transCount},
+        {"micro_len", spec->microLen}, {"frame_count", assets.reencoded.numFrames},
+        {"solid_count", solidCount}, {"walkable_count", walkableCount},
+        {"transparent_count", transCount},
         {"transparent_pixel_count", transparentCount},
+        {"lighting", lightingEnabled}, {"ambient", ambient},
+        {"light_lit_count", lightLitCount},
         {"meta", meta},
+    };
+    return r;
+}
+
+mcp::ToolResult toolScenePath(const mcp::json& params) {
+    const std::string id = reqStr(params, "id");
+    const decoders::SceneSpec* spec = decoders::findScene(id);
+    if (!spec)
+        throw std::runtime_error("unknown scene id: " + id);
+    const std::vector<std::string> archives = archiveStack(params);
+
+    auto readPoint = [&](const char* key) -> decoders::PathPoint {
+        if (!params.contains(key) || !params[key].is_object())
+            throw std::invalid_argument(std::string("missing point object param: ") + key);
+        const mcp::json& p = params[key];
+        if (!p.contains("x") || !p.contains("y") || !p["x"].is_number_integer()
+            || !p["y"].is_number_integer())
+            throw std::invalid_argument(std::string("point `") + key + "` needs integer x/y");
+        return decoders::PathPoint{ p["x"].get<int>(), p["y"].get<int>() };
+    };
+    const decoders::PathPoint from = readPoint("from");
+    const decoders::PathPoint to = readPoint("to");
+    const int maxSteps = std::clamp<int>(params.value("max_steps", 1024), 1, 100000);
+
+    SceneAssets assets = loadSceneAssets(*spec, archives);
+    const int gw = assets.grid.gw;
+    const int gh = assets.grid.gh;
+    const decoders::PathResult found = decoders::findPath(
+        assets.solid, gw, gh, from.x, from.y, to.x, to.y, maxSteps);
+
+    const decoders::SceneProjection proj =
+        decoders::sceneProjection(gw, gh, spec->microLen);
+    const int maxW = params.value("preview_max_width", 1000);
+    const int scale = (proj.width > maxW && maxW > 0)
+                          ? static_cast<int>((proj.width + maxW - 1) / maxW) : 1;
+    const int Hm = (spec->microLen / 2) * 32;
+
+    // Project a cell to the centre of its 64x32 floor diamond, matching
+    // renderMap()/buildOverlay() exactly.
+    auto project = [&](const decoders::PathPoint& p) {
+        const long sx = (static_cast<long>(p.y) - p.x) * 32 - proj.minX + 32;
+        const long colTop = -(static_cast<long>(p.y) + p.x) * 16 - proj.minY - Hm + 1;
+        const long sy = colTop + (Hm - 32) + 16;
+        return std::pair<int, int>{ static_cast<int>(sx), static_cast<int>(sy) };
+    };
+
+    mcp::json pathArr = mcp::json::array();
+    for (const decoders::PathPoint& p : found.path) {
+        const auto [sx, sy] = project(p);
+        pathArr.push_back(mcp::json{
+            {"x", p.x}, {"y", p.y},
+            {"screen_x", sx}, {"screen_y", sy},
+            {"preview_x", sx / scale}, {"preview_y", sy / scale},
+        });
+    }
+
+    mcp::ToolResult r;
+    r.value = mcp::json{
+        {"scene_id", id}, {"title", spec->title},
+        {"found", found.found}, {"cost", found.cost},
+        {"steps", found.path.empty() ? 0 : static_cast<int>(found.path.size()) - 1},
+        {"grid_width", gw}, {"grid_height", gh},
+        {"micro_len", spec->microLen},
+        {"from", mcp::json{{"x", from.x}, {"y", from.y}}},
+        {"to", mcp::json{{"x", to.x}, {"y", to.y}}},
+        {"walkable_count", decoders::countWalkableCells(assets.solid, gw, gh)},
+        {"scale", scale},
+        {"native_width", proj.width}, {"native_height", proj.height},
+        {"preview_width", static_cast<int>(proj.width / scale)},
+        {"preview_height", static_cast<int>(proj.height / scale)},
+        {"path", pathArr},
     };
     return r;
 }
@@ -353,8 +517,9 @@ namespace tools {
 void registerSceneTools(ToolRegistry& reg) {
     reg.registerTool(ToolDef{
         "scene.list",
-        "List available Diablo 1 / Hellfire scenes (Tristram town + L1 presets) "
-        "that scene.build can render. Returns id/title/layout/grid dims; no MPQ needed.",
+        "List available Diablo 1 / Hellfire scenes (Tristram town + L1/L2/L3/L4 "
+        "presets) that scene.build can render. Returns id/title/layout/grid dims/"
+        "ambient light; no MPQ needed.",
         json{{"type", "object"}, {"properties", json::object()}},
         toolSceneList});
 
@@ -362,9 +527,11 @@ void registerSceneTools(ToolRegistry& reg) {
         "scene.build",
         "Assemble and render a COMPLETE Diablo 1 / Hellfire scene (two-pass "
         "DevilutionX floor+wall rendering, opaque background, prefilled dPiece, "
-        "no transparent holes). Writes a native PNG + per-cell SOL metadata JSON "
-        "to disk and returns a bounded base64 PNG preview plus an aligned overlay "
-        "PNG (grid lines + solid/transparent/blockLight tint).",
+        "no transparent holes). Writes a native PNG + per-cell SOL/walkable "
+        "metadata JSON to disk and returns a bounded base64 PNG preview plus an "
+        "aligned overlay PNG (grid lines + solid/transparent/blockLight tint). "
+        "Optional `lighting:true` applies DevilutionX dLight shade tables "
+        "(ambient + `lights`, auto central torch by default).",
         json{{"type", "object"},
              {"properties", json{
                  {"id", json{{"type", "string"}, {"description", "scene id from scene.list, e.g. tristram"}}},
@@ -374,9 +541,43 @@ void registerSceneTools(ToolRegistry& reg) {
                  {"out", json{{"type", "string"}, {"description", "output dir (default out/scenes)"}}},
                  {"preview_max_width", json{{"type", "integer"},
                                              {"description", "max preview width, default 1000"}}},
+                 {"lighting", json{{"type", "boolean"},
+                                    {"description", "apply per-cell dLight shading (default false = FullyLit)"}}},
+                 {"ambient", json{{"type", "integer"},
+                                  {"description", "ambient light level 0..15 (default per scene: town 0, dungeon 15)"}}},
+                 {"lights", json{{"type", "array"}, {"items", json{{"type", "object"}}},
+                                  {"description", "static lights: {x,y,radius,offset_x,offset_y} in MICRO coords"}}},
+                 {"auto_light", json{{"type", "boolean"},
+                                     {"description", "when lighting and no lights: add a central radius-15 torch (default true)"}}},
              }},
              {"required", json::array({"id", "archive"})}},
         toolSceneBuild});
+
+    reg.registerTool(ToolDef{
+        "scene.path",
+        "A* path finding over a decoded scene's SOL collision grid (DevilutionX "
+        "debug/devices/paths.cpp costs: 100 axis-aligned, 101 diagonal). Returns "
+        "the MICRO-tile path plus native/preview screen coordinates aligned with "
+        "scene.build's projection. `from`/`to` are {x,y} micro cells.",
+        json{{"type", "object"},
+             {"properties", json{
+                 {"id", json{{"type", "string"}, {"description", "scene id from scene.list"}}},
+                 {"archive", json{{"type", "string"}, {"description", "primary MPQ path"}}},
+                 {"archives", json{{"type", "array"}, {"items", json{{"type", "string"}}},
+                                    {"description", "additional MPQ search paths"}}},
+                 {"from", json{{"type", "object"},
+                                {"properties", json{{"x", json{{"type", "integer"}}},
+                                                    {"y", json{{"type", "integer"}}}}}}},
+                 {"to", json{{"type", "object"},
+                              {"properties", json{{"x", json{{"type", "integer"}}},
+                                                  {"y", json{{"type", "integer"}}}}}}},
+                 {"max_steps", json{{"type", "integer"},
+                                     {"description", "search step budget, default 1024"}}},
+                 {"preview_max_width", json{{"type", "integer"},
+                                             {"description", "match scene.build preview scale, default 1000"}}},
+             }},
+             {"required", json::array({"id", "archive", "from", "to"})}},
+        toolScenePath});
 }
 
 } // namespace tools

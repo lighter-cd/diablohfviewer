@@ -15,6 +15,7 @@
 //       src/decoders/sprite_width.cpp \
 //       src/decoders/level_decode.cpp src/decoders/level_cel.cpp \
 //       src/decoders/level_render.cpp src/decoders/level_scene.cpp \
+//       src/decoders/level_light.cpp src/decoders/level_path.cpp \
 //       -static-libgcc -static-libstdc++ \
 //       -o out/unit_tests.exe && out/unit_tests.exe
 //
@@ -30,6 +31,8 @@
 #include "decoders/deflate.h"
 #include "decoders/sprite_width.h"
 #include "decoders/level.h"
+#include "decoders/level_light.h"
+#include "decoders/level_path.h"
 #include "decoders/level_scene.h"
 #include "decoders/png.h"
 #include "tools/base64.h"
@@ -1201,6 +1204,29 @@ static void testLevelRender()
     lvlChk(mapT.transparent[0] == 1 && mapT.transparent[3] == 1,
            "level.render transparent flag set from DUN layer (t>0)");
 
+    // Faithful dLight shading: level 15 maps the grey tile palette to black.
+    decoders::MapRenderOptions darkOpts;
+    darkOpts.lightLevels.assign(4, 15);
+    auto mapDark = decoders::renderMap(re, micros, grid, gw, gh, sol,
+                                       std::vector<int8_t>{}, pal.data(), 10, darkOpts);
+    size_t darkNonBlack = 0;
+    for (size_t i = 0; i < mapDark.rgba.size(); i += 4)
+        if (mapDark.rgba[i] || mapDark.rgba[i + 1] || mapDark.rgba[i + 2]) ++darkNonBlack;
+    lvlChk(darkNonBlack == 0, "level.render light level 15 shades tiles to black");
+    lvlChk(mapDark.light.size() == 4u && mapDark.light[0] == 15,
+           "level.render stores the per-cell light levels");
+
+    decoders::MapRenderOptions litOpts;
+    litOpts.lightLevels.assign(4, 0);
+    auto mapLit = decoders::renderMap(re, micros, grid, gw, gh, sol,
+                                      std::vector<int8_t>{}, pal.data(), 10, litOpts);
+    size_t litNonBlack = 0;
+    for (size_t i = 0; i < mapLit.rgba.size(); i += 4)
+        if (mapLit.rgba[i] || mapLit.rgba[i + 1] || mapLit.rgba[i + 2]) ++litNonBlack;
+    lvlChk(litNonBlack > 0, "level.render light level 0 keeps tiles visible");
+    lvlChk(mapLit.light[0] == 0 && mapLit.light[3] == 0,
+           "level.render light level 0 stored");
+
     // kNoMicro cells are filled from prefillMicro -> still no transparent gaps.
     std::vector<uint16_t> holeGrid(4, decoders::kNoMicro);
     decoders::MapRenderOptions opts;
@@ -1323,8 +1349,18 @@ static void testLevelScene()
 
     // Catalog + projection.
     auto& cat = decoders::sceneCatalog();
-    lvlChk(cat.size() >= 3 && decoders::findScene("tristram") != nullptr,
+    lvlChk(cat.size() >= 6 && decoders::findScene("tristram") != nullptr,
            "sceneCatalog contains tristram");
+    lvlChk(decoders::findScene("l2_blind") != nullptr &&
+               decoders::findScene("l3_anvil") != nullptr &&
+               decoders::findScene("l4_diab1") != nullptr,
+           "sceneCatalog exposes L2/L3/L4 presets");
+    const decoders::SceneSpec* l4 = decoders::findScene("l4_diab1");
+    lvlChk(l4 && l4->microLen == 12 && l4->blocks == 16 && l4->ambientLight == 15 &&
+               l4->lightStyle == 1,
+           "L4 preset uses 12/16 blocks, dark ambient and hell lighting");
+    const decoders::SceneSpec* town = decoders::findScene("tristram");
+    lvlChk(town && town->ambientLight == 0, "Tristram uses fully-lit ambient 0");
     lvlChk(decoders::findScene("nope") == nullptr, "findScene rejects unknown id");
     auto p = decoders::sceneProjection(4, 4, 10);
     lvlChk(p.width > 0 && p.height > 0, "sceneProjection positive dims");
@@ -1332,6 +1368,147 @@ static void testLevelScene()
     lvlChk(dims.first == 54 && dims.second == 54,
            "sceneGridDims matches dungeon DUN-derived grid");
     printf("level.scene: %s\n", allOk ? "PASS" : "FAIL");
+}
+
+static void testLevelLight()
+{
+    decoders::LightTableView normal;
+    normal.build(decoders::LightStyle::Normal);
+    bool identity = true;
+    for (int i = 0; i < 255; ++i)
+        if (normal.tables[0][static_cast<size_t>(i)] != (uint8_t)i) identity = false;
+    lvlChk(identity, "light table level 0 is identity (fully lit, 0..254)");
+    lvlChk(normal.tables[0][255] == 0,
+           "light table level 0 maps palette entry 255 to black (engine rule)");
+    bool dark = true;
+    for (int i = 0; i < 256; ++i)
+        if (normal.tables[15][static_cast<size_t>(i)] != 0) dark = false;
+    lvlChk(dark, "light table level 15 is pitch black");
+
+    // Shading rewrites palette entries within their colour ramp; level 0 is a
+    // pass-through (except 255), darker levels are no longer pass-through.
+    lvlChk(normal.tables[0][200] == 200 && normal.tables[8][200] != 200,
+           "light levels rewrite bright palette entries");
+    lvlChk(normal.tables[14][200] != normal.tables[0][200],
+           "higher light levels shade bright entries");
+
+    // applyToPalette: identity for level 0 (except 255), black RGB for 15.
+    auto pal = synthPaletteRGBA();
+    std::vector<uint8_t> out(1024, 0);
+    normal.applyToPalette(0, pal.data(), out.data());
+    bool preserved = true;
+    for (int i = 0; i < 255; ++i)
+        for (int c = 0; c < 4; ++c)
+            if (out[static_cast<size_t>(i) * 4 + c] != pal[static_cast<size_t>(i) * 4 + c])
+                preserved = false;
+    lvlChk(preserved, "applyToPalette level 0 preserves the palette (0..254)");
+    lvlChk(out[255 * 4] == 0 && out[255 * 4 + 1] == 0 && out[255 * 4 + 2] == 0,
+           "applyToPalette level 0 maps 255 to black");
+    normal.applyToPalette(15, pal.data(), out.data());
+    bool allBlack = true;
+    for (int i = 0; i < 256; ++i)
+        if (out[static_cast<size_t>(i) * 4] != 0 || out[static_cast<size_t>(i) * 4 + 1] != 0
+            || out[static_cast<size_t>(i) * 4 + 2] != 0)
+            allBlack = false;
+    lvlChk(allBlack, "applyToPalette level 15 maps all colours to black");
+
+    // Hell style rewrites the blood-wall colour ramp; soft style makes the
+    // first 16 entries fully bright (lava) even at the darkest level.
+    decoders::LightTableView hell;
+    hell.build(decoders::LightStyle::Hell);
+    lvlChk(hell.tables[0][1] != 0, "hell light table keeps blood-red ramp");
+    decoders::LightTableView soft;
+    soft.build(decoders::LightStyle::Soft);
+    lvlChk(soft.tables[15][0] == 0 && soft.tables[15][5] == 1,
+           "soft light table keeps lava entries non-black at level 15");
+
+    // Falloff curves.
+    uint8_t fall[16][128];
+    decoders::makeLightFalloffs(false, fall);
+    lvlChk(fall[0][0] == 0 && fall[0][7] == 13 && fall[0][8] == 15,
+           "normal light falloff radius 0");
+    lvlChk(fall[15][0] == 0 && fall[15][127] == 15,
+           "normal light falloff radius 15 endpoints");
+    uint8_t softFall[16][128];
+    decoders::makeLightFalloffs(true, softFall);
+    lvlChk(softFall[15][8] < fall[15][8],
+           "soft (nest/crypt) falloff over-exposes near lava");
+
+    uint8_t cone[8][8][16][16];
+    decoders::makeLightConeInterpolations(cone);
+    lvlChk(cone[0][0][0][0] == 0 && cone[0][0][1][0] == 8,
+           "light cone interpolation distance");
+
+    // Ambient only.
+    auto ambient = decoders::buildLightMap(5, 4, 15, {}, false);
+    lvlChk(ambient.levels.size() == 20 && ambient.minLevel == 15 && ambient.maxLevel == 15,
+           "buildLightMap fills the grid with ambient");
+
+    // One central light: centre fully lit, corners darker, monotonic.
+    std::vector<decoders::LightSource> lights = { { 2, 2, 15, 0, 0 } };
+    auto lit = decoders::buildLightMap(5, 5, 15, lights, false);
+    lvlChk(lit.levels[static_cast<size_t>(2) * 5 + 2] == 0,
+           "buildLightMap light centre is level 0");
+    lvlChk(lit.levels[0] > lit.levels[static_cast<size_t>(2) * 5 + 1],
+           "buildLightMap light falls off with distance");
+    lvlChk(lit.litCells == 1, "buildLightMap counts fully lit cells");
+
+    // Out-of-grid lights are ignored, not a crash.
+    auto ignored = decoders::buildLightMap(3, 3, 15, { { -1, -1, 15, 0, 0 } }, false);
+    lvlChk(ignored.minLevel == 15 && ignored.maxLevel == 15,
+           "buildLightMap ignores out-of-grid lights");
+    printf("level.light: %s\n", allOk ? "PASS" : "FAIL");
+}
+
+static void testLevelPath()
+{
+    // 5x5 open grid (row-major y*gridW+x). Diagonal path is optimal.
+    std::vector<uint8_t> open(25, 0);
+    auto p = decoders::findPath(open, 5, 5, 0, 0, 4, 4);
+    lvlChk(p.found && p.path.size() == 5, "findPath diagonal open grid has 5 cells");
+    lvlChk(p.cost == 4 * 101, "findPath diagonal cost is 101/step (DevilutionX)");
+    lvlChk(p.path.front().x == 0 && p.path.front().y == 0 &&
+               p.path.back().x == 4 && p.path.back().y == 4,
+           "findPath returns start..destination inclusive");
+    bool contiguous = true;
+    for (size_t i = 1; i < p.path.size(); ++i) {
+        const int dx = std::abs(p.path[i].x - p.path[i - 1].x);
+        const int dy = std::abs(p.path[i].y - p.path[i - 1].y);
+        if (dx > 1 || dy > 1 || (dx == 0 && dy == 0)) contiguous = false;
+    }
+    lvlChk(contiguous, "findPath steps are 8-connected and non-repeating");
+
+    // A full solid column blocks the only route.
+    std::vector<uint8_t> walled(25, 0);
+    for (int y = 0; y < 5; ++y) walled[static_cast<size_t>(y) * 5 + 2] = 1;
+    auto blocked = decoders::findPath(walled, 5, 5, 0, 0, 4, 4);
+    lvlChk(!blocked.found, "findPath respects solid walls");
+
+    // A destination on a solid tile is admitted (like DevilutionX FindPath).
+    auto door = decoders::findPath(walled, 5, 5, 0, 0, 2, 0);
+    lvlChk(door.found && door.path.back().x == 2 && door.path.back().y == 0,
+           "findPath admits a solid destination tile");
+
+    // Diagonal corner-cutting is allowed (CanStep only guards axis moves).
+    std::vector<uint8_t> corner(9, 0);
+    corner[1] = 1; // (1,0) solid
+    auto diag = decoders::findPath(corner, 3, 3, 0, 0, 1, 1);
+    lvlChk(diag.found && diag.path.size() == 2,
+           "findPath allows diagonal movement around a solid corner");
+
+    // Bounds / limits / walkable counts.
+    lvlChk(!decoders::findPath(open, 5, 5, -1, 0, 4, 4).found,
+           "findPath rejects out-of-bounds start");
+    lvlChk(!decoders::findPath(open, 5, 5, 0, 0, 5, 4).found,
+           "findPath rejects out-of-bounds destination");
+    lvlChk(!decoders::findPath(open, 5, 5, 0, 0, 4, 4, 1).found,
+           "findPath respects maxSteps");
+    lvlChk(decoders::countWalkableCells(walled, 5, 5) == 20,
+           "countWalkableCells counts non-solid cells");
+    lvlChk(decoders::isWalkableCell(open, 5, 5, 4, 4) &&
+               !decoders::isWalkableCell(walled, 5, 5, 2, 2),
+           "isWalkableCell matches the SOL solid flag");
+    printf("level.path: %s\n", allOk ? "PASS" : "FAIL");
 }
 
 static void testLevelPngAndForcedDecode()
@@ -1475,6 +1652,8 @@ int main()
     testLevelRender();
     testLevelRenderGuards();
     testLevelScene();
+    testLevelLight();
+    testLevelPath();
     testLevelPngAndForcedDecode();
     printf("=== %s ===\n", allOk ? "ALL PASS" : "FAILURES PRESENT");
     return allOk ? 0 : 1;

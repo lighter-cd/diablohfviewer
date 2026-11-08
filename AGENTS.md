@@ -1,5 +1,8 @@
 # AGENTS.md
 
+## 优先参考 D:\work\xt\diablo\DevilutionX 的实现
+  面对 **mcp-server 的功能需求**，**优先查看** D:\work\xt\diablo\DevilutionX 的代码实现方式，参考项目中找不到相关实现，再自行寻找解决方案。
+
 ## 改动记录与文档同步（硬规则，不可违反）
 
 1. **文档同步**：每次新增工具/流程，或修改其用法、思路后，必须在本轮内同步更新对应文档目录 docs/ 中，以及项目根目录的 README.md 中 

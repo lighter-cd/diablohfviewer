@@ -161,31 +161,66 @@ const std::vector<SceneSpec>& sceneCatalog()
         town.gridH = 96;
         v.push_back(town);
 
-        // Two L1 cathedral presets (DTYPE_CATHEDRAL), rendered on a proper
-        // Dirt-prefilled 112x112 grid so they are complete scenes too.
-        for (auto [id, title, dun, dw, dh] : {
-                 std::make_tuple("l1_rnd2", "大教堂 L1 · rnd2 房间",
-                                 "levels/l1data/rnd2.dun", 11, 11),
-                 std::make_tuple("l1_skngdo", "大教堂 L1 · skngdo 大厅",
-                                 "levels/l1data/skngdo.dun", 7, 7),
-             }) {
+        // Dungeon presets from the retail campaign. Prefill ids and micro/block
+        // widths are taken from DevilutionX:
+        //   L1 drlg_l1.cpp: DRLG_LPass3(Dirt-1) with Dirt=22, microLen 10
+        //   L2 drlg_l2.cpp: DRLG_LPass3(12-1), microLen 10
+        //   L3 drlg_l3.cpp: DRLG_LPass3(8-1),  microLen 10
+        //   L4 drlg_l4.cpp: DRLG_LPass3(30-1), microLen 12 (blocks 16)
+        struct DunScene {
+            const char* id;
+            const char* title;
+            const char* dataDir;   // levels/lNdata
+            const char* dun;
+            int dunW;
+            int dunH;
+            const char* palette;
+            uint8_t microLen;
+            uint8_t blocks;
+            uint16_t prefill;
+            uint8_t ambient;
+            uint8_t lightStyle;
+        };
+        const DunScene dunScenes[] = {
+            { "l1_rnd2", "大教堂 L1 · rnd2 房间", "levels/l1data",
+              "levels/l1data/rnd2.dun", 11, 11, "gendata/cut2.pal",
+              10, 10, 22, 15, 0 },
+            { "l1_skngdo", "大教堂 L1 · skngdo 大厅", "levels/l1data",
+              "levels/l1data/skngdo.dun", 7, 7, "gendata/cut2.pal",
+              10, 10, 22, 15, 0 },
+            { "l2_blind", "地下墓穴 L2 · blind 房间", "levels/l2data",
+              "levels/l2data/blind1.dun", 11, 11, "levels/l2data/l2_2.pal",
+              10, 10, 12, 15, 0 },
+            { "l3_anvil", "洞穴 L3 · anvil 房间", "levels/l3data",
+              "levels/l3data/anvil.dun", 9, 9, "levels/l3data/l3pfoul.pal",
+              10, 10, 8, 15, 0 },
+            { "l4_diab1", "地狱 L4 · diab1 房间", "levels/l4data",
+              "levels/l4data/diab1.dun", 6, 6, "levels/l4data/l4_1.pal",
+              12, 16, 30, 15, 1 },
+        };
+        for (const DunScene& ds : dunScenes) {
             SceneSpec s;
-            s.id = id;
-            s.title = title;
-            s.cel = "levels/l1data/l1.cel";
-            s.til = "levels/l1data/l1.til";
-            s.min = "levels/l1data/l1.min";
-            s.sol = "levels/l1data/l1.sol";
-            s.palette = "gendata/cut2.pal";
-            s.dun = dun;
+            s.id = ds.id;
+            s.title = ds.title;
+            const std::string dir = ds.dataDir;
+            const std::string stem = dir.substr(dir.find_last_of('/') + 1); // l1data
+            const char level = stem[1];                                     // '1'..'4'
+            s.cel = dir + "/l" + level + ".cel";
+            s.til = dir + "/l" + level + ".til";
+            s.min = dir + "/l" + level + ".min";
+            s.sol = dir + "/l" + level + ".sol";
+            s.palette = ds.palette;
+            s.dun = ds.dun;
             s.layout = SceneLayout::Dungeon;
-            s.microLen = 10;
-            s.blocks = 10;
-            s.prefillMegaTile = 22; // Dirt
-            s.dunW = dw;
-            s.dunH = dh;
-            s.gridW = dw * 2 + 32;
-            s.gridH = dh * 2 + 32;
+            s.microLen = ds.microLen;
+            s.blocks = ds.blocks;
+            s.prefillMegaTile = ds.prefill;
+            s.ambientLight = ds.ambient;
+            s.lightStyle = ds.lightStyle;
+            s.dunW = ds.dunW;
+            s.dunH = ds.dunH;
+            s.gridW = ds.dunW * 2 + 32;
+            s.gridH = ds.dunH * 2 + 32;
             v.push_back(s);
         }
         return v;

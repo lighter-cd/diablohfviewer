@@ -642,7 +642,8 @@ DiabloHFConverter/
 ### 阶段 4：地图还原（目标 1）
 
 > **状态：解码 + 离屏渲染管线完成；`map.build` 工具 + 完整场景复原 `scene.*` 工具 + 前端
-> 场景查看器 + 单元/集成测试全部落地（2026-11-08 初版，2026-11-09 修正）。**
+> 场景查看器 + 静态光照（dLight）+ 寻路 + 单元/集成测试全部落地（2026-11-08 初版，
+> 2026-11-09 修正并补齐光照/寻路）。**
 > 忠實移植 DevilutionX `Source/levels/` 的 DUN→TIL→MIN→level CEL 拼装与
 > `scrollrt.cpp`/`dun_render.cpp` 的两遍等距合成，后端纯 C/C++（`src/decoders/level_*.cpp` +
 > `src/tools/map_tools.cpp` + `src/tools/scene_tools.cpp`），无 Node 运行时。
@@ -699,14 +700,39 @@ DiabloHFConverter/
       - `out/unit_tests.cpp`：TIL/MIN/DUN/SOL 解析、`buildMicroGrid` 0-based/kNoMicro 拼装、
         Square/Triangle CEL 重编码与解码、强制三角形解码、`encodePNG`、
         `renderMap` 两遍绘制 + 不透明背景 + 0 透明像素 + 空格预填 + frame()==0 守卫、
+        **`level_light`（LightTables Normal/Hell/Soft、falloff/cone、`buildLightMap`）与
+        `renderMap` 逐格光照着色**、**`level_path` 8 方向 A\*（开放/墙体/斜角/Solid 目标/maxSteps）**、
         `buildTownScene`（4 sector + 预填 426/218）、`buildDungeonScene`（Dirt 预填 + DUN@16,16）、
         `sceneProjection`/`sceneGridDims`。
       - `out/integration_tests.cpp`：`testLevelMap` 从 `DIABDAT.MPQ` 抽真实 L1 资源跑通全链路并
-        断言 **0 透明像素**；`testSceneTools` 用 `scene.list`/`scene.build` 复原 Tristram 城镇并
-        断言 96×96 网格、0 透明像素、base64 PNG 合法、叠加层与每格标志数组。
+        断言 **0 透明像素**；`testSceneTools` 用 `scene.list`/`scene.build`/`scene.path` 复原
+        Tristram 城镇，断言 96×96 网格、0 透明像素、base64 PNG 合法、叠加层/每格标志/
+        `walkable` 数组、`scene.path` 起止格与原生/预览坐标；`l1_rnd2` + `lighting:true` 断言
+        环境光 15 / 中心火把 / `meta.light` 尺寸；`l4_diab1` 断言 44×44、microLen 12、0 透明像素。
   - 构建/运行见仓库根 `README.md` §测试 与 §6（关卡/场景）。
-- [ ] **光照/寻路细化（可选，后续）**：当前为 FullyLit 渲染，未应用逐像素光照图
-      （Lighting 属运行时效果，已明确延后）；碰撞/光照标志已从 SOL 解出并随图输出，供前端叠加。
+- [x] **静态光照（dLight，2026-11-09）**：`src/decoders/level_light.cpp` 忠实移植
+      `Source/engine/light_tables.cpp::MakeLightTable` 与 `Source/lighting.cpp::DoLighting`：
+      生成 16 级 `LightTables`（Normal / Hell / Soft）、`LightFalloffs[16][128]`、
+      `LightConeInterpolations[8][8][16][16]`，按场景环境光（城镇 0 / 地牢 15）+ 点光源计算
+      每格 `dLight`；`renderMap` 每格用对应的 lit palette 解码瓦片（不是近似 RGB 乘）。
+      `scene.build` 新增 `lighting` / `ambient` / `lights[]` / `auto_light` 参数，`meta.light`
+      输出每格 0..15 光照级别；默认 `lighting:false` 保持 FullyLit 既有行为。Hell 关（L4）
+      使用 `LightStyle::Hell` 血液墙色阶，Nest/Crypt 可走 Soft 曲线。前端场景查看器新增
+      「光照（dLight 暗部 + 中心火把）」开关。
+- [x] **寻路（A\*，2026-11-09）**：`src/decoders/level_path.cpp` 在场景 SOL `Solid` 网格上做
+      8 方向 A*，步长代价照搬 `Source/engine/path.cpp`（直行 100 / 斜行 101），
+      对角只要求目标格可行走（与 `CanStep` 对斜向不设限一致），目标格可 Solid（同 `FindPath`
+      允许 targeting 非可行走目标）。新增 `scene.path` MCP 工具：输入 `from`/`to` 微瓦片坐标，
+      返回 `found`/`cost`/`steps`/`walkable_count` 与每格原生/预览屏幕坐标；`scene.build` 的
+      sidecar 同时输出 `walkable` 数组。
+- [x] **更多关卡预设（2026-11-09）**：`sceneCatalog` 由 Tristram + 2 个 L1 扩到
+      **6 个完整场景**：`tristram`、`l1_rnd2`、`l1_skngdo`、`l2_blind`（L2，prefill 12）、
+      `l3_anvil`（L3，prefill 8）、`l4_diab1`（L4，`microLen=12`/`blocks=16`、prefill 30、
+      Hell 光照）；palette 分别为 `l2_2.pal` / `l3pfoul.pal` / `l4_1.pal`（均已实证存在）。
+- [ ] **逐像素光照 / lightmap（可选，后续）**：当前为 DevilutionX 默认的**每格平地光照**
+      （`LightTables` + `dLight`），未实现 `perPixelLighting` 的 marching-squares 插值光图；
+      也未应用 `dTransVal` 半透明混合、`dSpecial` 树木拱门、任务态 `FillTile`。这些属于
+      运行时/细节保真项，已从阶段 4 主目标中剥离。
 
 ### 游戏场景如何组织（对照 DevilutionX，2026-11-09 澄清）
 
@@ -750,9 +776,11 @@ DiabloHFConverter/
 
 **本实现**（`src/decoders/level_scene.cpp` + `src/tools/scene_tools.cpp`）：
 `buildTownScene`（4 sector + 预填 426/218，裁到 96×96 sector bbox 以约束图像）、
-`buildDungeonScene`（Dirt 预填 + DUN@16,16）、`sceneCatalog`（`tristram` + 2 个 L1 预设）。
-`scene.build` 写原生 PNG 到 `out/scenes/`，整数降采样返回 `image_base64` + 对齐的
-`overlay_base64`（网格线 + SOL 着色）+ 每格标志 `meta`，前端第 5 种浏览模式缩放/平移/叠加。
+`buildDungeonScene`（Dirt 预填 + DUN@16,16）、`sceneCatalog`（`tristram` + L1/L2/L3/L4
+共 6 个预设）、`loadSceneAssets`（工具侧共享抽取/组装）。`scene.build` 写原生 PNG 到
+`out/scenes/`，整数降采样返回 `image_base64` + 对齐的 `overlay_base64`（网格线 + SOL
+着色）+ 每格标志 `meta`，可选 `lighting` 走 `buildLightMap` + `LightTables`；前端第 5 种
+浏览模式缩放/平移/叠加/光照。
 
 **修复空图/无法显示（2026-11-09）**：两处根因。(1) PNG `data:` URL 过大且不可解：
 `src/decoders/deflate.cpp` 早期用未压缩 stored DEFLATE 块，`scene.build(tristram)`
@@ -765,8 +793,13 @@ DiabloHFConverter/
 `brightness(1.7) contrast(0.85) saturate(1.1)`（用轻度降对比抬暗部、菱形背景仍近黑），
 可见像素（亮度≥40）从 8% 提升到约 38%。
 
+**已补（2026-11-09）**：静态 `dLight` 光照（`level_light.cpp`，`scene.build(lighting:true)`）、
+SOL 碰撞网格 A* 寻路（`scene.path`）、L2/L3/L4 预设场景。`scene.build` 默认仍 FullyLit，
+可显式开启光照。
+
 **明确延后**：逐像素光照/lightmap、`dTransVal` 透明混合、`dSpecial` 树木拱门与 special CEL
-`towns`、任务态 `FillTile` 补丁、`automap.dun`（可后续仅用于 SOL）、Hellfire `nlevels` 其它层。
+`towns`、任务态 `FillTile` 补丁、`automap.dun`（可后续仅用于 SOL）、Hellfire `nlevels`
+其它层（L5/L6 随机生成，只有 `uberroom.dun`/`cornerstone.dun` 固定房间）。
 
 ### 阶段 5：GUI 布局与显示（目标 4）
 - [x] **场景查看器（前端 `web/`，2026-11-09）**：新增第 5 种浏览模式，调用 `scene.list` /

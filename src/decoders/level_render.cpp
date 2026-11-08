@@ -23,10 +23,13 @@
 #include "decoders/level.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <utility>
 #include <vector>
+
+#include "decoders/level_light.h"
 
 namespace decoders {
 
@@ -166,6 +169,28 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
     res.blockLight.assign(cells, 0);
     res.blockMissile.assign(cells, 0);
     res.transparent.assign(cells, 0);
+    res.light.assign(cells, 0);
+
+    // Optional faithful dLight shading. When lightLevels is supplied we bake
+    // one RGBA palette per level (DevilutionX LightTables[level][paletteIndex])
+    // and decode each cell's tiles through the cell's lit palette.
+    const bool useLight = opts.lightLevels.size() == cells;
+    LightTableView lightTables;
+    std::array<std::vector<uint8_t>, kNumLightLevels> litPalettes;
+    if (useLight) {
+        const LightStyle style = static_cast<LightStyle>(
+            opts.lightStyle <= static_cast<uint8_t>(LightStyle::Soft)
+                ? opts.lightStyle
+                : static_cast<uint8_t>(LightStyle::Normal));
+        lightTables.build(style);
+        for (int level = 0; level < kNumLightLevels; ++level) {
+            litPalettes[static_cast<size_t>(level)].resize(256 * 4);
+            lightTables.applyToPalette(static_cast<uint8_t>(level), pal,
+                                       litPalettes[static_cast<size_t>(level)].data());
+        }
+        for (size_t i = 0; i < cells; ++i)
+            res.light[i] = static_cast<uint8_t>(opts.lightLevels[i] & 0x0F);
+    }
 
     const SceneProjection proj = sceneProjection(gw, gh, microLen);
     const int nRows = microLen / 2;
@@ -221,6 +246,14 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
         return !(flags[idx] & (TileFlags::Solid | TileFlags::BlockMissile));
     };
 
+    // Palette used to decode a cell's tile frames. Without lighting this is the
+    // plain palette; with lighting it is the cell's baked dLight shade table.
+    const auto paletteAt = [&](size_t idx) -> const uint8_t* {
+        if (!useLight)
+            return pal;
+        return litPalettes[static_cast<size_t>(res.light[idx] & 0x0F)].data();
+    };
+
     const MicroTileRef* floorMicro =
         (opts.prefillMicro == kNoMicro || opts.prefillMicro >= micros.size())
             ? nullptr : &micros[opts.prefillMicro];
@@ -256,7 +289,7 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
                 decodeReencodedFrameAs(cel, blk.frame() - 1,
                                        side == 0 ? TileType::LeftTriangle
                                                  : TileType::RightTriangle,
-                                       pal, frame, fh);
+                                       paletteAt(idx), frame, fh);
                 blitFrame(frame.data(), 32, 32, res.rgba.data(), res.width,
                           res.height, pitch, x + side * 32, slot);
             }
@@ -284,7 +317,7 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
                     if (!blockDrawable(blk, cel))
                         continue;
                     int fh = 0;
-                    decodeReencodedFrame(cel, blk.frame() - 1, pal, frame, fh);
+                    decodeReencodedFrame(cel, blk.frame() - 1, paletteAt(idx), frame, fh);
                     blitFrame(frame.data(), 32, 32, res.rgba.data(), res.width,
                               res.height, pitch, x + side * 32, slotTop(ct, 0));
                 }
@@ -298,7 +331,7 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
                     if (!blockDrawable(blk, cel))
                         continue;
                     int fh = 0;
-                    decodeReencodedFrame(cel, blk.frame() - 1, pal, frame, fh);
+                    decodeReencodedFrame(cel, blk.frame() - 1, paletteAt(idx), frame, fh);
                     blitFrame(frame.data(), 32, 32, res.rgba.data(), res.width,
                               res.height, pitch, x + side * 32, slot);
                 }

@@ -1176,16 +1176,21 @@ static void testSceneTools(const std::string& mpq) {
 
     ToolRegistry reg;
     tools::registerSceneTools(reg);
-    CHECK(reg.has("scene.list") && reg.has("scene.build"),
-          "scene.list / scene.build registered");
+    CHECK(reg.has("scene.list") && reg.has("scene.build") && reg.has("scene.path"),
+          "scene.list / scene.build / scene.path registered");
 
     ToolResult lr = reg.dispatch("scene.list", json::object());
     CHECK(lr.ok, "scene.list dispatch ok");
     json scenes = lr.value.value("scenes", json::array());
-    bool hasTristram = false;
-    for (auto& s : scenes)
-        if (s.value("id", "") == "tristram") hasTristram = true;
+    bool hasTristram = false, hasL2 = false, hasL4 = false;
+    for (auto& s : scenes) {
+        const std::string id = s.value("id", "");
+        if (id == "tristram") hasTristram = true;
+        if (id == "l2_blind") hasL2 = true;
+        if (id == "l4_diab1") hasL4 = true;
+    }
     CHECK(hasTristram, "scene.list contains tristram");
+    CHECK(hasL2 && hasL4, "scene.list contains L2/L4 presets");
 
     json args = json{{"id", "tristram"}, {"archive", archives[0]},
                      {"preview_max_width", 400}};
@@ -1221,6 +1226,10 @@ static void testSceneTools(const std::string& mpq) {
           "scene.build solid array sized gw*gh");
     CHECK(v["meta"]["transparent"].size() == (size_t)(96 * 96),
           "scene.build transparent array sized gw*gh");
+    CHECK(v["meta"]["walkable"].size() == (size_t)(96 * 96),
+          "scene.build walkable array sized gw*gh");
+    CHECK(v.value("walkable_count", 0) > 0,
+          "scene.build walkable_count positive");
     // Decode the base64 and confirm the PNG signature.
     auto pngSigOk = [](const std::string& b64) {
         auto bytes = base64::decode(b64);
@@ -1229,7 +1238,64 @@ static void testSceneTools(const std::string& mpq) {
     };
     CHECK(pngSigOk(img), "scene.build image_base64 is a PNG");
     CHECK(pngSigOk(ovl), "scene.build overlay_base64 is a PNG");
-    printf("scene.* (tristram): %s\n", allOk ? "PASS" : "FAIL");
+
+    // scene.path over the town's SOL grid (centre -> nearby tile).
+    json pargs = json{{"id", "tristram"}, {"archive", archives[0]},
+                      {"archives", stack},
+                      {"from", json{{"x", 48}, {"y", 48}}},
+                      {"to", json{{"x", 50}, {"y", 52}}},
+                      {"preview_max_width", 400}};
+    ToolResult pr = reg.dispatch("scene.path", pargs);
+    CHECK(pr.ok, "scene.path dispatch ok");
+    if (pr.ok) {
+        CHECK(pr.value.value("found", false), "scene.path finds a town path");
+        CHECK(pr.value["path"].size() >= 2, "scene.path returns start..destination");
+        CHECK(pr.value["path"][0].value("x", -1) == 48 &&
+                  pr.value["path"][0].value("y", -1) == 48,
+              "scene.path starts at `from`");
+        const auto& last = pr.value["path"].back();
+        CHECK(last.value("x", -1) == 50 && last.value("y", -1) == 52,
+              "scene.path ends at `to`");
+        CHECK(pr.value["path"][0].contains("screen_x") &&
+                  pr.value["path"][0].contains("preview_x"),
+              "scene.path projects native + preview coordinates");
+    }
+
+    // Faithful dLight shading on a dungeon preset.
+    json largs = json{{"id", "l1_rnd2"}, {"archive", archives[0]},
+                      {"archives", stack}, {"preview_max_width", 200},
+                      {"lighting", true}};
+    ToolResult lbr = reg.dispatch("scene.build", largs);
+    CHECK(lbr.ok, "scene.build lighting dispatch ok");
+    if (lbr.ok) {
+        const json& lv = lbr.value;
+        CHECK(lv.value("lighting", false), "scene.build reports lighting enabled");
+        CHECK(lv.value("ambient", -1) == 15, "L1 ambient is 15 (dark)");
+        CHECK(lv.value("light_lit_count", 0) >= 1,
+              "L1 central torch fully lights at least one cell");
+        CHECK(lv.value("transparent_pixel_count", 1) == 0,
+              "lit dungeon still has 0 transparent pixels");
+        const int lgw = lv.value("grid_width", 0), lgh = lv.value("grid_height", 0);
+        CHECK(lv["meta"]["light"].size() == (size_t)(lgw * lgh),
+              "scene.build light array sized gw*gh");
+    }
+
+    // L4 uses 12 microLen / 16 blocks and the hell light style.
+    json l4args = json{{"id", "l4_diab1"}, {"archive", archives[0]},
+                       {"archives", stack}, {"preview_max_width", 200}};
+    ToolResult l4r = reg.dispatch("scene.build", l4args);
+    CHECK(l4r.ok, "scene.build L4 dispatch ok");
+    if (l4r.ok) {
+        CHECK(l4r.value.value("grid_width", 0) == 44 &&
+                  l4r.value.value("grid_height", 0) == 44,
+              "L4 diab1 grid 44x44");
+        CHECK(l4r.value.value("micro_len", 0) == 12, "L4 microLen is 12");
+        CHECK(l4r.value.value("transparent_pixel_count", 1) == 0,
+              "L4 has 0 transparent pixels");
+        CHECK(l4r.value.value("frame_count", 0) > 0, "L4 reencoded CEL frames");
+    }
+    printf("scene.* (tristram + lighting + L4 + path): %s\n",
+           allOk ? "PASS" : "FAIL");
 }
 
 int main() {
