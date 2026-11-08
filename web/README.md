@@ -218,14 +218,20 @@ web/
   手动覆盖主档案。
 - **数据契约**：后端返回 `image_base64` / `overlay_base64`（均为 PNG 字节的 base64），
   前端拼 `data:image/png;base64,` 直接赋给 `img.src`。两张图由同一
-  `SceneProjection` 生成、按同一整数 `scale` 降采样，尺寸完全一致。
+  `SceneProjection` 生成、按同一整数 `scale` 降采样，尺寸完全一致。PNG 的 IDAT 由后端
+  `src/decoders/deflate.cpp`（fixed-Huffman + 贪心 LZ77）压缩，`scene.build(tristram)`
+  预览约 343 KB base64，远低于 Firefox `data:` URL ~2 MB 上限（早期未压缩 stored 块
+  ≈2.2 MB 会显示「无法显示的图片/空图」），可被标准 zlib 无损解压。
 - **缩放 / 平移**：滑块（1–8×）或滚轮缩放，视口内按下拖拽平移；「复位视图」回到
   全图适配。`applySceneTransform()` 对两张图施加同一组 `width/height/left/top`，
   因此叠加层永远与底图对齐。`image-rendering:pixelated` 保证放大后仍是清晰像素。
 - **叠加层**：半透明等距网格线 + 每格 SOL 标志着色（红=Solid、蓝=透明、
   黄=BlockLight），由后端按网格数组生成；开关控制显隐。
-- **提亮**：Tristram 是夜景、调色板偏暗，勾选「提亮」给两张图加 CSS
-  `brightness(1.7)`，不改变后端输出。
+- **提亮**：Tristram 夜景均值亮度仅 13、67% 像素 <24，不提亮观感近似空图。
+  「提亮（夜景）」**默认勾选**，`loadScene()` 每次按开关状态给 `#sceneLayers` 施加
+  `.bright` 类（`web/src/main.js`），CSS `web/styles.css` 用
+  `brightness(1.7) contrast(0.85) saturate(1.1)` 抬暗部、菱形背景仍近黑，
+  不改变后端输出。
 
 场景由后端 `scene.build` 用 DevilutionX 两遍绘制（地板菱形 + 墙体）复原，输出
 **不透明背景、无透明空洞**（`transparent_pixel_count == 0`）。初始场景为 Tristram

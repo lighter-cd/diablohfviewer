@@ -280,4 +280,7 @@ canvas { background: transparent; image-rendering: pixelated; }
   border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 13px;
 }
 #sceneLoadBtn:hover, #sceneFitBtn:hover { background: #3a3a44; }
-.scene-layers.bright img { filter: brightness(1.7) saturate(1.1); }
+/* Night/dusk town scenes (Tristram) render very dark and look blank. A mild
+   contrast reduction lifts shadow detail while keeping the diamond background
+   near-black; brightness restores overall level. Toggle defaults to ON. */
+.scene-layers.bright img { filter: brightness(1.7) contrast(0.85) saturate(1.1); }

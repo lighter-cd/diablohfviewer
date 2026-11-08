@@ -368,10 +368,19 @@ DiabloHFConverter/
       `decodeClx`/`decodeClxList` 处理帧组（sheet）、CL2 帧 RLE 与透明（alpha=0），
       输出 `DecodedFrame`（RGBA8，4B/px，行主序）。
 - [x] PCX 解码：`src/decoders/pcx.cpp`（`decodePcx`，含内嵌调色板）。
-- [x] 产出：任意精灵 → PNG 的离屏渲染：`src/decoders/png.cpp`（`writePNG`，**无依赖 zlib** 的
-      存储块 deflate 编码器）+ `mpq-info/render_sprite.cpp`（串联 CL2/CEL→CLX→RGBA→PNG，
+- [x] 产出：任意精灵 → PNG 的离屏渲染：`src/decoders/png.cpp`（`writePNG`/`encodePNG`，
+      调用 `src/decoders/deflate.cpp` 的 **RFC 1951 fixed-Huffman + 贪心 LZ77 压缩器**，
+      无外部 zlib 依赖）+ `mpq-info/render_sprite.cpp`（串联 CL2/CEL→CLX→RGBA→PNG，
       把 `out/extracted/` 中已抽取精灵渲染为 PNG）。已验证 `plrgfx\warrior\wlu\wluas.cl2`
       渲染为 96×96 战士立姿（80 帧 = 8 方向×10 均可解码无错位）。
+  - **修复 PNG 压缩器（2026-11-09）**：早期实现用 `stored`（未压缩）DEFLATE 块，
+      导致 `scene.build` 预览 PNG 约 2.2 MB、base64 后超过 Firefox `data:` URL ~2 MB 上限，
+      前端显示「无法显示的图片」/ 空图。改为真正的 fixed-Huffman + 贪心 LZ77 压缩器
+      （`src/decoders/deflate.cpp` 的 `compressZlib`，配套 `decompressZlib` 做单测回环），
+      并修正两处关键错误：`kLenExtra` 表偏移（RFC 1951 §3.2.5 中 257–264 为 0 额外位）
+      与 length/distance 额外位/距离码的位序。真实 `scene.build(tristram)` 预览降为
+      **257 KB PNG / 343 KB base64（0.33 MB）**，可由标准 `zlib.decompress` 无损解出。
+      单测 `testDeflateRoundTrip` 穷举 length 3–258 × distance 全 30 码边界共 15 万+ 组合。
   - **注意**：CL2/CEL 文件**不存储帧宽**，渲染时需按 DevilutionX 动画表传入 `width`
     （如 warrior Stand=96、Attack/Death=128，见各 `sprites.tsv` 的 `stand`/`attack`… 列；
     怪物/导弹/物品/物件/NPC 各有对应宽度）。**`render_sprite` 已支持把 `<width>` 传 `auto` 自动查表**：
@@ -744,6 +753,17 @@ DiabloHFConverter/
 `buildDungeonScene`（Dirt 预填 + DUN@16,16）、`sceneCatalog`（`tristram` + 2 个 L1 预设）。
 `scene.build` 写原生 PNG 到 `out/scenes/`，整数降采样返回 `image_base64` + 对齐的
 `overlay_base64`（网格线 + SOL 着色）+ 每格标志 `meta`，前端第 5 种浏览模式缩放/平移/叠加。
+
+**修复空图/无法显示（2026-11-09）**：两处根因。(1) PNG `data:` URL 过大且不可解：
+`src/decoders/deflate.cpp` 早期用未压缩 stored DEFLATE 块，`scene.build(tristram)`
+预览 PNG ≈2.2 MB、base64 后超 Firefox ~2 MB 上限 → 前端显示「无法显示的图片/空图」；
+改为 fixed-Huffman + 贪心 LZ77 后降为 257 KB PNG / 343 KB base64（标准 zlib 可无损解），
+见阶段 1 条目。(2) 夜景过暗：`town.pal` 本身正常（mean 亮度 73），但等距菱形大面积
+近黑 + 暗色地砖使均值亮度仅 13、67% 像素 <24，观感近似空图。前端「提亮（夜景）」
+开关改为**默认勾选**（`web/index.html`），`loadScene` 每次加载按开关状态施加
+`.bright` 类（`web/src/main.js`），CSS 滤镜由 `brightness(1.7)` 增强为
+`brightness(1.7) contrast(0.85) saturate(1.1)`（用轻度降对比抬暗部、菱形背景仍近黑），
+可见像素（亮度≥40）从 8% 提升到约 38%。
 
 **明确延后**：逐像素光照/lightmap、`dTransVal` 透明混合、`dSpecial` 树木拱门与 special CEL
 `towns`、任务态 `FillTile` 补丁、`automap.dun`（可后续仅用于 SOL）、Hellfire `nlevels` 其它层。

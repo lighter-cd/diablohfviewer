@@ -76,7 +76,8 @@ src/
 │   ├── cl2.*            #   .cl2 编译型动画 -> 帧组（含 cl2_to_clx 思路）
 │   ├── clx.*            #   .clx DevilutionX 内部格式
 │   ├── pcx.*            #   .pcx PC Paintbrush 静态图
-│   ├── png.*            #   encodePNG（内存）+ writePNG（文件），stored zlib 无 -lz 依赖
+│   ├── deflate.*        #   compressZlib/decompressZlib：RFC1951 fixed-Huffman+贪心LZ77，无 -lz 依赖
+│   ├── png.*            #   encodePNG（内存）+ writePNG（文件），IDAT 调 deflate::compressZlib
 │   ├── level.h          #   关卡数据结构 + kNoMicro/MapRenderOptions/SceneProjection
 │   ├── level_decode.cpp #   loadTil/loadMin/loadDun/loadSol + buildMicroGrid（0-based, DRLG_LPass3）
 │   ├── level_cel.cpp    #   reencodeLevelCel + decodeReencodedFrame[As]（Square/三角/梯形）
@@ -431,7 +432,10 @@ sidecar JSON（`grid_width/grid_height/micro_len/frame_count` + 四个每格标�
 **测试**（见 `README.md` §测试 / §6）：
 - `out/unit_tests.cpp`：TIL/MIN/DUN/SOL、`buildMicroGrid` 0-based、Square/Triangle CEL、
   强制三角形、`encodePNG`、`renderMap` 两遍绘制 + 不透明背景 + 0 透明像素 + 空格预填 +
-  frame()==0 守卫、`buildTownScene`/`buildDungeonScene`、`sceneProjection`。
+  frame()==0 守卫、`buildTownScene`/`buildDungeonScene`、`sceneProjection`、
+  **`testDeflateRoundTrip`**（`compressZlib`↔`decompressZlib` 回环 + 5 组代表数据 +
+  length 3–258 × distance 全 30 码边界 15 万+ 组合，覆盖 RFC 1951 额外位边界），
+  PNG write round-trip 改用 `decompressZlib` 解压 IDAT。
 - `out/integration_tests.cpp`：`testLevelMap`（真实 L1，断言 0 透明像素）、
   `testSceneTools`（真实 Tristram，断言 0 透明像素 + PNG/叠加层/标志数组）。
 
@@ -664,12 +668,18 @@ Archive 输入框——点选精灵即可直接解码，无需用户手填路径
 - **数据路径**：`scene.build` 返回 `image_base64` / `overlay_base64`（PNG 字节 base64），
   前端拼 `data:image/png;base64,` 赋给两张绝对定位 `<img>`；**不经过** `viewer.js`
   的 RGBA/`ImageData` 路径（那是精灵帧专用）。原生大图只落盘，WS 只传 ≤1000px 预览。
+  PNG 的 IDAT 由 `src/decoders/deflate.cpp::compressZlib`（fixed-Huffman + 贪心 LZ77）
+  生成，`scene.build(tristram)` 预览约 343 KB base64，远低于 Firefox `data:` URL ~2 MB
+  上限；早期 stored 块版本 ≈2.2 MB 会触发「无法显示的图片/空图」。
 - **对齐**：两张图由同一 `SceneProjection` + 同一整数 `scale` 生成，尺寸完全一致；
   `applySceneTransform()` 对共享容器 `#sceneLayers` 施加一组 `width/height/left/top`，
   两张 `<img>` 用同一 transform，缩放 1–8×（滑块/滚轮）、视口内拖拽平移、
   「复位视图」全图适配、`image-rendering:pixelated` 保证清晰放大。
 - **叠加层**：半透明主网格线（每 8 格）+ 每格 SOL 着色（红=Solid / 蓝=透明 /
-  黄=BlockLight），开关控制显隐；「提亮」给夜景城镇加 CSS `brightness(1.7)`。
+  黄=BlockLight），开关控制显隐；「提亮」给夜景城镇加 CSS
+  `brightness(1.7) contrast(0.85) saturate(1.1)`（`web/styles.css` 的 `.scene-layers.bright img`），
+  开关**默认勾选**且 `loadScene()` 每次按开关状态施加 `.bright` 类，避免 Tristram 夜景过暗
+  （均值亮度 13、67% 像素 <24）被误认为空图。
 - **MPQ 路径**：默认用 `sprite.list` 收集到的 `allArchives` 栈（后端 `Archive` 统一
   `/`→`\` 归一化），可在 `sceneArchive` 输入框手动覆盖主档案。
 - 静态资源 `?v=20261109a`（CSS / main.js / 3 个 import）一并刷新缓存。

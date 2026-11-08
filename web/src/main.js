@@ -1424,6 +1424,9 @@ async function loadScene() {
     $("sceneOverlay").src = res.overlay_base64
       ? `data:image/png;base64,${res.overlay_base64}` : "";
     $("sceneOverlay").hidden = !$("sceneOverlayToggle").checked;
+    // Night-palette scenes (e.g. Tristram) render very dark and look blank;
+    // the brighten toggle defaults to ON, so apply its state on every load.
+    $("sceneLayers").classList.toggle("bright", $("sceneBrightToggle").checked);
     sceneState.w = res.preview_width || 0;
     sceneState.h = res.preview_height || 0;
     sceneState.loaded = true;

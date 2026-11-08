@@ -3,13 +3,15 @@
 // Covers:
 //   - decoders: CLX list decode, CEL->CLX and CL2->CLX round trips, PCX decode
 //   - decoders/palette: loadPalette + paletteToRGBA
-//   - decoders/png: writePNG -> re-read and verify (round trip)
+//   - decoders/deflate: compressZlib <-> decompressZlib round trip (brute force)
+//   - decoders/png: writePNG -> re-read and verify (round trip via decompressZlib)
 //   - tools/base64: RFC4648 encode/decode round trip
 //
 // Build & run (MinGW-w64, from repo root):
 //   g++ -I src -std=c++17 out/unit_tests.cpp \
 //       src/decoders/clx.cpp src/decoders/cel.cpp src/decoders/cl2.cpp \
 //       src/decoders/pcx.cpp src/decoders/palette.cpp src/decoders/png.cpp \
+//       src/decoders/deflate.cpp \
 //       src/decoders/sprite_width.cpp \
 //       src/decoders/level_decode.cpp src/decoders/level_cel.cpp \
 //       src/decoders/level_render.cpp src/decoders/level_scene.cpp \
@@ -25,6 +27,7 @@
 #include "decoders/endian_util.h"
 #include "decoders/palette.h"
 #include "decoders/png.h"
+#include "decoders/deflate.h"
 #include "decoders/sprite_width.h"
 #include "decoders/level.h"
 #include "decoders/level_scene.h"
@@ -500,7 +503,7 @@ static void testPngWrite()
     if (ihdrW != W || ihdrH != H) { printf("PNG write: FAIL dimensions\n"); allOk = false; return; }
 
     std::vector<uint8_t> raw;
-    if (!inflateStored(idat, raw)) { printf("PNG write: FAIL inflate\n"); allOk = false; return; }
+    if (!decoders::deflate::decompressZlib(idat, raw)) { printf("PNG write: FAIL inflate\n"); allOk = false; return; }
     std::vector<uint8_t> px;
     size_t stride = static_cast<size_t>(W) * 4;
     for (uint16_t y = 0; y < H; ++y) {
@@ -1373,6 +1376,80 @@ static void testLevelPngAndForcedDecode()
     printf("level.png + forced decode: %s\n", allOk ? "PASS" : "FAIL");
 }
 
+// ---------------------------------------------------------------------------
+// decoders/deflate: compressZlib <-> decompressZlib round trip. Exercises every
+// length/distance base+extra boundary (RFC 1951 §3.2.5) so a shifted table or
+// bit-ordering regression surfaces as a failed round trip.
+// ---------------------------------------------------------------------------
+static void testDeflateRoundTrip()
+{
+    bool ok = true;
+    auto chk = [&](bool cond, const char* msg) {
+        if (!cond) { printf("deflate round-trip: FAIL %s\n", msg); ok = false; }
+    };
+
+    // Representative buffers (mirrors the standalone rt_* cases).
+    std::vector<std::vector<uint8_t>> reps;
+    { // 877x470 RGBA image-like
+        std::vector<uint8_t> b; b.reserve(877 * 470 * 4);
+        for (int y = 0; y < 470; ++y) for (int x = 0; x < 877; ++x) {
+            b.push_back(static_cast<uint8_t>(x & 0xFF));
+            b.push_back(static_cast<uint8_t>(y & 0xFF));
+            b.push_back(static_cast<uint8_t>((x + y) & 0xFF));
+            b.push_back(255);
+        }
+        reps.push_back(std::move(b));
+    }
+    { // periodic "ABCDEFGH"*200
+        std::vector<uint8_t> b;
+        for (int i = 0; i < 200; ++i) for (char c : std::string("ABCDEFGH")) b.push_back(static_cast<uint8_t>(c));
+        reps.push_back(std::move(b));
+    }
+    reps.push_back(std::vector<uint8_t>(300, 'A'));  // repeated
+    { // pseudo-random
+        std::vector<uint8_t> b; uint32_t s = 12345;
+        for (int i = 0; i < 5000; ++i) { s = s * 1664525u + 1013904223u; b.push_back(static_cast<uint8_t>(s >> 16)); }
+        reps.push_back(std::move(b));
+    }
+    reps.push_back({'A', 'B', 'C'});  // tiny
+
+    for (size_t r = 0; r < reps.size(); ++r) {
+        auto& raw = reps[r];
+        auto z = decoders::deflate::compressZlib(raw);
+        std::vector<uint8_t> dec;
+        chk(decoders::deflate::decompressZlib(z, dec), "decompress returns true");
+        chk(dec == raw, "representative round-trip exact");
+    }
+
+    // Brute force: every length 3..258 against a distance sweep that covers all
+    // 30 distance codes and their extra-bit boundaries.
+    std::vector<int> dists;
+    for (int d = 1; d <= 600; ++d) dists.push_back(d);  // covers low codes
+    for (int d : {1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289,
+                  16385, 24577, 24578, 30000, 32768})
+        dists.push_back(d);  // high codes
+    size_t checked = 0;
+    for (int len = 3; len <= 258; ++len) {
+        for (int dist : dists) {
+            if (dist <= 0) continue;
+            std::vector<uint8_t> buf;
+            buf.reserve(dist + len);
+            for (int k = 0; k < dist; ++k) buf.push_back(static_cast<uint8_t>((k * 37 + 11) & 0xFF));
+            for (int k = 0; k < len; ++k) buf.push_back(buf[buf.size() - dist]);
+            auto z = decoders::deflate::compressZlib(buf);
+            std::vector<uint8_t> dec;
+            if (!decoders::deflate::decompressZlib(z, dec) || dec != buf) {
+                printf("deflate round-trip: FAIL len=%d dist=%d\n", len, dist);
+                ok = false;
+                break;
+            }
+            checked++;
+        }
+        if (!ok) break;
+    }
+    if (ok) printf("deflate round-trip: PASS (%zu pair checks)\n", checked);
+}
+
 int main()
 {
     printf("=== DiabloHFConverter unit tests ===\n");
@@ -1385,6 +1462,7 @@ int main()
     testPalette();
     testBase64();
     testPngWrite();
+    testDeflateRoundTrip();
     testSpriteWidth();
     testSpellTables();
     testLevelTil();

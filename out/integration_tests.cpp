@@ -20,7 +20,7 @@
 //       src/tools/scene_tools.cpp \
 //       src/decoders/palette.cpp src/decoders/clx.cpp src/decoders/cel.cpp \
 //       src/decoders/cl2.cpp src/decoders/pcx.cpp src/decoders/sprite_width.cpp \
-//       src/decoders/png.cpp \
+//       src/decoders/png.cpp src/decoders/deflate.cpp \
 //       src/decoders/level_decode.cpp src/decoders/level_cel.cpp \
 //       src/decoders/level_render.cpp src/decoders/level_scene.cpp \
 //       src/mcp/jsonrpc.cpp \

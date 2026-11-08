@@ -108,13 +108,14 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
 g++ -I src -std=c++17 out/unit_tests.cpp \
     src/decoders/clx.cpp src/decoders/cel.cpp src/decoders/cl2.cpp \
     src/decoders/pcx.cpp src/decoders/palette.cpp src/decoders/png.cpp \
+    src/decoders/deflate.cpp \
     src/decoders/sprite_width.cpp \
     src/decoders/level_decode.cpp src/decoders/level_cel.cpp src/decoders/level_render.cpp \
     src/decoders/level_scene.cpp \
     -static-libgcc -static-libstdc++ \
     -o out/unit_tests.exe && out/unit_tests.exe
 ```
-覆盖：CLX 解码、CEL→CLX / CL2→CLX 往返、**CL2/CEL 畸形输入与错误 `width` 拒绝（不崩溃）**、**`spell_tables.h` 纯 join（TSV/CRLF、编号文件生成、AI→导弹、阶段派生）**、PCX 解码、调色板加载、base64 编解码往返；以及**关卡/场景解码器**（`loadTil` / `loadMin` / `loadDun` / `loadSol` 解析、`buildMicroGrid` 0-based 微索引/kNoMicro 拼装、Square/Triangle 的 level CEL 重编码与 RGBA 帧解码、强制三角形解码、调色板 4 字节步长回归、`renderMap` 两遍绘制 + 不透明背景 + 0 透明像素 + 空格预填 + frame()==0 守卫、`buildTownScene` 4 sector/预填、`buildDungeonScene` Dirt 预填、`sceneProjection`、`encodePNG`）。
+覆盖：CLX 解码、CEL→CLX / CL2→CLX 往返、**CL2/CEL 畸形输入与错误 `width` 拒绝（不崩溃）**、**`spell_tables.h` 纯 join（TSV/CRLF、编号文件生成、AI→导弹、阶段派生）**、PCX 解码、调色板加载、base64 编解码往返、**`testDeflateRoundTrip`（`compressZlib`↔`decompressZlib` 回环 + 5 组代表数据 + length 3–258 × distance 全 30 码边界 15 万+ 组合，覆盖 RFC 1951 额外位）**、**PNG write round-trip（IDAT 用 `decompressZlib` 解压校验）**；以及**关卡/场景解码器**（`loadTil` / `loadMin` / `loadDun` / `loadSol` 解析、`buildMicroGrid` 0-based 微索引/kNoMicro 拼装、Square/Triangle 的 level CEL 重编码与 RGBA 帧解码、强制三角形解码、调色板 4 字节步长回归、`renderMap` 两遍绘制 + 不透明背景 + 0 透明像素 + 空格预填 + frame()==0 守卫、`buildTownScene` 4 sector/预填、`buildDungeonScene` Dirt 预填、`sceneProjection`、`encodePNG`）。
 源码路径：`src/decoders/*.cpp`、`src/tools/base64.h`、`src/tools/spell_tables.h`；测试脚本 `out/unit_tests.cpp`。
 
 ### 2. Registry + JSON-RPC（纯逻辑，无需 MPQ）
@@ -141,7 +142,7 @@ g++ -I 3rdparty/StormLib/src -I 3rdparty -I src -std=c++17 \
     src/tools/mpq_tools.cpp src/tools/sprite_tools.cpp src/tools/scene_tools.cpp \
     src/decoders/palette.cpp src/decoders/clx.cpp src/decoders/cel.cpp \
     src/decoders/cl2.cpp src/decoders/pcx.cpp src/decoders/sprite_width.cpp \
-    src/decoders/png.cpp \
+    src/decoders/png.cpp src/decoders/deflate.cpp \
     src/decoders/level_decode.cpp src/decoders/level_cel.cpp src/decoders/level_render.cpp \
     src/decoders/level_scene.cpp \
     src/mcp/jsonrpc.cpp \
@@ -215,7 +216,9 @@ out/recover_phase0.exe [devilutionx_root] [mpq_root]
 
 `mpq-info/render_sprite.cpp` 把 `out/extracted/` 里已抽取的精灵（CL2/CEL）经解码管线
 渲染成 PNG：`CL2/CEL → CLX`（`cl2ToClx`/`celToClx`）→ `RGBA` 帧（`decodeClx`）→
-`PNG`（`src/decoders/png.cpp`，自带**无依赖 zlib** 的存储块编码器，无需 `-lz`）。
+`PNG`（`src/decoders/png.cpp` 调 `src/decoders/deflate.cpp` 的 **RFC 1951 fixed-Huffman +
+贪心 LZ77** 压缩器，自带无外部 zlib 依赖，无需 `-lz`；输出可被标准 zlib 无损解压，
+体积远小于早期的未压缩 stored 块版本）。
 
 > 注意：CL2/CEL 文件**不存储帧宽**，需按 DevilutionX 动画表传入 `width`
 > （如 warrior Stand=96、Attack/Death=128，详见各 `sprites.tsv` 的 `stand`/`attack`…列；
@@ -228,6 +231,7 @@ g++ -I 3rdparty -I 3rdparty/StormLib/src -I src -std=c++17 -static \
     mpq-info/render_sprite.cpp src/decoders/sprite_width.cpp \
     src/decoders/clx.cpp src/decoders/cl2.cpp src/decoders/cel.cpp \
     src/decoders/pcx.cpp src/decoders/palette.cpp src/decoders/png.cpp \
+    src/decoders/deflate.cpp \
     -o out/render_sprite.exe
 # 用法: render_sprite <sprite> <palette.pal> <width|auto> [out.png] [frameIndex] [devilutionx_root]
 # 自动查表（width 传 auto，默认 devilutionx_root = D:/work/xt/diablo/DevilutionX）
@@ -242,8 +246,9 @@ out/render_sprite.exe \
     out/render/warrior_attack.png 0
 ```
 
-- 源码路径：`mpq-info/render_sprite.cpp` + `src/decoders/png.cpp`；PNG 编码器含于单元测试
-  （writePNG → 回读校验 round-trip）。
+- 源码路径：`mpq-info/render_sprite.cpp` + `src/decoders/png.cpp` + `src/decoders/deflate.cpp`；
+  PNG 编码器与 DEFLATE 压缩器含于单元测试（`writePNG` → 回读校验 round-trip、
+  `testDeflateRoundTrip` 的 compress↔decompress 穷举回环）。
 - 自动查表覆盖 5 类精灵：`plrgfx`（按 `sprites.tsv` 的 `stand`/`walk`/`attack`(含 `bow`)/`swHit`/`lightning`/`fire`/`magic`/`death`/`block` 列）、`monsters`（按 `monstdat.tsv` 的 `width`）、`missiles`（按 `missile_sprites.tsv` 的 `width`）、`objects`（按 `objdat.tsv` 的 `animWidth`）、`towners`（按 `towners.tsv` 的 `animWidth`）。`items` 无宽度表，需手填。
 - 已验证：`plrgfx\warrior\wlu\wluas.cl2` 自动查表取宽 96 渲染为 96×96 战士立姿精灵（含盾牌），
   80 帧（8 方向 × 10）均可解码无错位；怪物 `monsters\acid\acida.cl2`（宽 128）、导弹
@@ -311,10 +316,15 @@ sidecar JSON 写到 `out/scenes/`。原生大图只落盘，WS 只传降采样�
 **前端场景查看器**：浏览器打开 `web/`（见 README §运行 与 `web/README.md`），切到
 第 5 种「场景查看器」→ 选场景 → 加载，可缩放（1–8×）/ 拖拽平移 / 切换 SOL 叠加层 /
 夜景提亮 / 复位。场景目录：`tristram`（城镇，96×96）、`l1_rnd2`、`l1_skngdo`（L1 预设）。
+「提亮（夜景）」**默认勾选**：Tristram 夜景均值亮度仅 13、67% 像素 <24，不提亮观感近似
+空图；CSS 用 `brightness(1.7) contrast(0.85) saturate(1.1)` 抬暗部、菱形背景仍近黑。
+预览 PNG 由 `src/decoders/deflate.cpp` 压缩，`scene.build(tristram)` 约 343 KB base64，
+远低于 Firefox `data:` URL ~2 MB 上限（早期 stored 块 ≈2.2 MB 会显示「无法显示的图片」）。
 
 - 源码路径：`src/tools/map_tools.cpp`、`src/tools/scene_tools.cpp`、
   `src/decoders/level.h` / `level_decode.cpp` / `level_cel.cpp` / `level_render.cpp` /
-  `level_scene.cpp`、`src/decoders/png.cpp`、`web/index.html` / `src/main.js` / `styles.css`；
+  `level_scene.cpp`、`src/decoders/png.cpp` / `deflate.cpp`、
+  `web/index.html` / `src/main.js` / `styles.css`；
   测试脚本 `out/unit_tests.cpp`、`out/integration_tests.cpp`；管线与已踩坑详见
   `docs/ARCHITECTURE.md` §9.2/§9.3、§10.5。
 

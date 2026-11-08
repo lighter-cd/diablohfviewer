@@ -274,3 +274,7 @@
 ## 2026-11-09 01:58:43
 - 消除关卡地图「黑块」并复原完整初始场景：参考 DevilutionX 澄清场景三层组织（dungeon→dPiece→MIN/CEL），更正 TIL 微索引为 0-based（0 是合法地板，kNoMicro 表界外）、SOL 按微瓦片 piece id 索引；渲染器重写为两遍绘制（地板菱形 + 墙体）+ 不透明背景 + 空格预填，输出 0 透明像素；新增 scene.list/scene.build 工具与 level_scene 组装（Tristram 城镇 4 sector + L1 预设）、encodePNG、档案内名归一化；web 新增第 5 种「场景查看器」模式（缩放/平移/SOL 叠加/提亮）；同步文档与三套测试，全部 ALL PASS，mcp-server 构建通过。
 - 涉及: src/decoders/level.h, level_decode.cpp, level_cel.cpp, level_render.cpp, level_scene.cpp, level_scene.h, png.cpp, png.h, src/engine/archive.cpp, archive.h, src/tools/map_tools.cpp, scene_tools.cpp, scene_tools.h, src/main.cpp, src/decoders/png.cpp, out/unit_tests.cpp, out/integration_tests.cpp, web/index.html, web/src/main.js, web/styles.css, web/README.md, README.md, docs/PROJECT.md, docs/ARCHITECTURE.md, .gitignore
+
+## 2026-11-09 05:07:17
+- 修复前端「空图/无法显示的图片」根因：把 PNG 的 zlib 编码从 stored 未压缩块重写为 RFC1951 fixed-Huffman + 贪心 LZ77（修正 kLenExtra 表偏移与 length/distance 额外位/距离码位序），新增 decompressZlib 及 length 3–258×distance 全码边界 15 万+ 组合穷举回环单测，真实 scene.build(tristram) 预览由 2.2MB 降到 257KB PNG/343KB base64 且可被标准 zlib 无损解；前端「提亮（夜景）」改为默认勾选、loadScene 每次施加 .bright 类、CSS 增强为 brightness(1.7) contrast(0.85) saturate(1.1) 以消除 Tristram 夜景过暗观感；同步 docs 与 README，core/unit/integration 三套测试与 CMake mcp-server 全绿。
+- 涉及: src/decoders/deflate.cpp, src/decoders/deflate.h, src/decoders/png.cpp, out/unit_tests.cpp, out/integration_tests.cpp, web/index.html, web/src/main.js, web/styles.css, web/README.md, README.md, docs/PROJECT.md, docs/ARCHITECTURE.md
