@@ -632,10 +632,21 @@ DiabloHFConverter/
 
 ### 阶段 4：地图还原（目标 1）
 
-> **状态：解码 + 离屏渲染管线完成，已实现 `map.build` MCP 工具并配齐单元/集成测试（2026-11-08）。**
+> **状态：解码 + 离屏渲染管线完成；`map.build` 工具 + 完整场景复原 `scene.*` 工具 + 前端
+> 场景查看器 + 单元/集成测试全部落地（2026-11-08 初版，2026-11-09 修正）。**
 > 忠實移植 DevilutionX `Source/levels/` 的 DUN→TIL→MIN→level CEL 拼装与
-> `dun_render.cpp` 的等距合成，后端纯 C/C++（`src/decoders/level_*.cpp` +
-> `src/tools/map_tools.cpp`），无 Node 运行时。
+> `scrollrt.cpp`/`dun_render.cpp` 的两遍等距合成，后端纯 C/C++（`src/decoders/level_*.cpp` +
+> `src/tools/map_tools.cpp` + `src/tools/scene_tools.cpp`），无 Node 运行时。
+
+> **2026-11-09 重要修正（黑块根因 + 索引约定）**：初版渲染把背景留成全透明
+> （RGBA alpha=0，任何查看器压到黑就成了「黑块」），对 `mi==0` 的格子直接跳过，
+> 且把 TIL 微瓦片索引误当成 1-based。经 DevilutionX 源码 + 真实 MPQ 数据核对，
+> 三点全部更正，详见下方「游戏场景如何组织」：
+> ① **背景填充不透明色**（`MapRenderOptions.background`），输出 0 透明像素；
+> ② **TIL 微索引是 0-based**（`micros[mi]`，`0` 是合法地板，空用 `kNoMicro` 哨兵）；
+> ③ **场景没有空格**：DevilutionX 把整个 `dPiece` 预填成地板微瓦片，本实现用
+> `prefillMicro` 复现，并改为 **两遍绘制**（`DrawFloor` 地板菱形 + `DrawCell` 墙体）。
+> 修正后 `scene.build(tristram)` 返回 `transparent_pixel_count == 0`，地图为完整无空洞的等距菱形。
 
 - [x] **TIL 解码**：`src/decoders/level_decode.cpp::loadTil` —— 每 8 字节 = 4 个
       little-endian uint16（micro1..micro4，即 TL/TR/BL/BR 四个角微瓦片索引）。
@@ -645,41 +656,104 @@ DiabloHFConverter/
       /16（地狱火），`microLen`=10/12。
 - [x] **DUN 解码**：`loadDun` —— 头 2 个 uint16（宽/高）+ 宽×高 个 uint16 兆瓦片层
       （0=空），并可选地读取微尺度透明层（位于 tile 层后 3 个 (2w×2h) 层之后）。
-- [x] **SOL 解码**：`loadSol` —— 固定 `MAXTILES=1379` 字节的每兆瓦片碰撞/光照标志位
-      （Solid/BlockLight/BlockMissile/Transparent/…）。
+- [x] **SOL 解码**：`loadSol` —— 按**微瓦片 piece id** 索引的碰撞/光照标志位
+      （`SOLData[dPiece[x][y]]`，`dun_tile_data.hpp:219-221`）；磁盘文件只有 `pieceCount`
+      字节（`l1.sol=453`、`town.sol=1258`），读入 `MAXTILES=1379` 的零填充表，
+      其余项保持 0；标志位 Solid/BlockLight/BlockMissile/Transparent/…（与 `dun_tile.hpp` 一致）。
 - [x] **兆瓦片→微瓦片网格拼装**：`buildMicroGrid`（忠实 `DRLG_LPass3`）——DUN 每个兆瓦片
-      展开为 2×2 个微瓦片索引，网格为 (2w)×(2h)。**关键约定**：TIL 的微瓦片索引与
-      `LevelCelBlock.frame()` 同为 **1-based**（`0`=空），`renderMap` 读 `micros[mi-1]`；
-      早期曾误把索引再 `+1` 导致内部瓦片缺失，已修正并经 `rnd2.dun`（完整空房间，350 格全地板）
-      与 `skngdo.dun`（地板环+内部墙，真实关卡数据）双向验证。
+      展开为 2×2 个微瓦片索引，网格为 (2w)×(2h)。**关键约定（2026-11-09 更正）**：TIL 的
+      微瓦片索引是 **0-based 原样值**（`micros[mi]`，见 `gendung.cpp:607-610`、
+      `town.cpp:52-55`、`scrollrt.cpp:551-553`），`0` 是合法地板；真正界外用 `kNoMicro`
+      哨兵表示。`LevelCelBlock.frame()` 的 1-based 是 **CEL 帧号**的另一套约定，二者不可混淆。
+      实证：`l1.til` 微索引 0..452 ↔ `l1.min` 453 pieces；`town.til` 0..1257 ↔ `town.min` 1258 pieces。
 - [x] **level CEL 重编码**：`reencodeLevelCel` —— 忠实 `ReencodeDungeonCels`，把原始 level CEL
       逐帧重编码为定长缓冲（Square=1024B / 三角=512B / 梯形=784B / 透明方保留 RLE），便于渲染器
       直接读取；`buildFrameTypes` 用每个微瓦片引用的 CEL 块推导每帧 TileType。
-- [x] **帧解码 → RGBA**：`decodeReencodedFrame` + `decodeReencodedFrame` 的三角形分支
-      （`DecodeLeft/RightTriangle/Trapezoid`）——按 TileType 还原 32×H 调色板索引像素；
-      **已修调色板索引为 4 字节 RGBA 步长**（`paletteToRGBA` 产出 1024 字节表），修正了此前
-      3 字节步长导致的彩虹噪点。
-- [x] **等距合成渲染**：`renderMap` —— 移植 `DrawCell`+`worldToScreen`：
-      `screenX=(j-i)*32`、`screenY=-(j+i)*16`，微瓦片按 `microLen/2` 行、每行左右两块
-      32×32 CEL 帧、CEL 行 0 画在底部（垂直翻转）；**从远到近（降序 i+j）绘制**，使近处瓦片
-      正确遮挡远端墙基（升序会导致墙浮空/棋盘）。附带输出每格 `solid`/`blockLight`/
-      `blockMissile`/`transparent` 标志（来自 SOL 与 DUN 微尺度透明层）。
+- [x] **帧解码 → RGBA**：`decodeReencodedFrame` + 各 TileType 分支
+      （`DecodeLeft/RightTriangle/Trapezoid/Square/TransparentSquare`）——按 TileType 还原 32×32
+      调色板索引像素；新增 `decodeReencodedFrameAs` 支持**强制按三角形解码**（`DrawFloorTile`
+      无条件把 mt[0]/mt[1] 当左/右三角形）；**已修调色板索引为 4 字节 RGBA 步长**
+      （`paletteToRGBA` 产出 1024 字节表），修正了此前 3 字节步长导致的彩虹噪点。
+- [x] **等距合成渲染（2026-11-09 重写为忠实两遍绘制）**：`renderMap` 移植 `DrawGame` →
+      `DrawFloor` + `DrawTileContent/DrawCell` + `worldToScreen`：
+      `screenX=(j-i)*32`、`screenY=-(j+i)*16`。**Pass 1** 为每个格子把 `mt[0]/mt[1]` 强制画成
+      左/右三角形、组成 64×32 地板菱形（完整地面平面，无空洞）；**Pass 2** 从远到近
+      （降序 `i+j`）把 `mt[2..microLen-1]` 成对向上叠墙（每对高 32px），`hasValue()` 守卫。
+      每像素先填 `opts.background`（默认不透明黑）→ **输出 0 透明像素，黑块消失**；
+      `kNoMicro` 格子用 `prefillMicro` 补地板；SOL 按微瓦片 piece id 取标志（IsFloor 判定）。
+      `sceneProjection(gw,gh,microLen)` 抽出包围盒，供渲染器与叠加层共用。
 - [x] **`map.build` MCP 工具**：`src/tools/map_tools.cpp::toolMapBuild` —— 串起上述全链路，
       写完整地图 PNG + ≤400px 预览 PNG + 每格标志 sidecar JSON 到 `out/maps/`，并返回摘要与
-      base64 预览；已注册到 Tool Registry（stdio + WS 双传输复用）。
+      base64 预览；已注册到 Tool Registry（stdio + WS 双传输复用）。2026-11-09 同步改用修正后的
+      两遍渲染 + 不透明背景 + 空格预填。
 - [x] **单元/集成测试**：
-      - `out/unit_tests.cpp` 新增 8 个用例（纯合成数据，无需 MPQ）：TIL/MIN/DUN/SOL 解析器、
-        `buildMicroGrid` 拼装、Square CEL 重编码+解码（调色板步长回归）、LeftTriangle 解码形状
-        + 透明、`renderMap`/`renderMicroTile` 合成与 SOL/DUN 透明标志。
-      - `out/integration_tests.cpp` 新增 `testLevelMap`：从 `DIABDAT.MPQ` 抽取真实 L1 资源
-        （`levels/l1data/l1.{cel,til,min,sol}` + `rnd2.dun` + `gendata/cut2.pal`），跑通全链路并
-        断言产出可见像素。
-  - 构建/运行见仓库根 `README.md` §6（关卡地图测试）。
+      - `out/unit_tests.cpp`：TIL/MIN/DUN/SOL 解析、`buildMicroGrid` 0-based/kNoMicro 拼装、
+        Square/Triangle CEL 重编码与解码、强制三角形解码、`encodePNG`、
+        `renderMap` 两遍绘制 + 不透明背景 + 0 透明像素 + 空格预填 + frame()==0 守卫、
+        `buildTownScene`（4 sector + 预填 426/218）、`buildDungeonScene`（Dirt 预填 + DUN@16,16）、
+        `sceneProjection`/`sceneGridDims`。
+      - `out/integration_tests.cpp`：`testLevelMap` 从 `DIABDAT.MPQ` 抽真实 L1 资源跑通全链路并
+        断言 **0 透明像素**；`testSceneTools` 用 `scene.list`/`scene.build` 复原 Tristram 城镇并
+        断言 96×96 网格、0 透明像素、base64 PNG 合法、叠加层与每格标志数组。
+  - 构建/运行见仓库根 `README.md` §测试 与 §6（关卡/场景）。
 - [ ] **光照/寻路细化（可选，后续）**：当前为 FullyLit 渲染，未应用逐像素光照图
-      （Lighting 属运行时效果，已明确延后）；碰撞/光照标志已从 SOL/DUN 解出并随图输出，供前端叠加。
+      （Lighting 属运行时效果，已明确延后）；碰撞/光照标志已从 SOL 解出并随图输出，供前端叠加。
+
+### 游戏场景如何组织（对照 DevilutionX，2026-11-09 澄清）
+
+> 用户提出「测试输出仍有黑块、看起来不完整」，追根是**把一个孤立 `.dun` 预设当成完整场景**，
+> 且渲染器不符合引擎的场景模型。以下为经 `D:\work\xt\diablo\DevilutionX` 源码 + 真实 MPQ
+> 数据核对后的场景组织方式，是 `scene.*` 工具与前端场景查看器的设计依据。
+
+**三层数据模型**（`Source/levels/gendung_defs.hpp`、`dun_tile_data.hpp`、`dun_tile.hpp`）：
+
+| 层 | 结构 | 内容 |
+|----|------|------|
+| ① 兆瓦片层 | `dungeon[40][40]`（DMAXX/DMAXY=40） | 1-based 兆瓦片 id（0=空）；城镇另由 `automap.dun` 填充此层 |
+| ② 微瓦片层 | `dPiece[112][112]`（MAXDUNX/Y=16+40*2+16） | 每格一个 **0-based 微瓦片 piece id**（原样来自 TIL），四周 16 格为预填边界 |
+| ③ 瓦片图形 | `.til` → `pMegaTiles[]`（4 个微索引）、`.min` → `DPieceMicros[1379]`（每 piece ≤16 个 `LevelCelBlock`）、`.cel` → 32×32 像素帧 | 渲染基元 |
+
+- `LevelCelBlock`（16-bit）：`data` 低 12 位 = **1-based CEL 帧号**、高 3 位 = `TileType`
+  （Square/TransparentSquare/LeftTriangle/RightTriangle/LeftTrapezoid/RightTrapezoid）；
+  `data==0` 表示「无帧」。`.min` 的块按 DevilutionX `SetDungeonMicros` 的置换
+  `pieces[blocks-2+(b&1)-(b&0xE)]` 读入。
+- **索引约定（关键，初版曾弄错）**：`dungeon[i][j]` 与 DUN word 是 **1-based** 进 `pMegaTiles`
+  （`-1`）；但 **TIL 的 micro1..4 是 0-based 微瓦片索引，原样写进 `dPiece`**
+  （`DPieceMicros[dPiece[x][y]]`，无 `-1`）。`SOLData` 同样按微瓦片 piece id 索引。
+
+**场景组装**：
+
+- **Tristram 城镇（初始场景 `DTYPE_TOWN`，`currlevel=0`）**：`DrlgTPass3()`（`town.cpp:193-256`）
+  先把整个 `dPiece` 预填微瓦片 **426**，再 `FillSector()` 铺 4 个 sector `.dun`
+  （`town_data.cpp:116-125`：sector1s@(46,46) 25×25、sector2s@(46,0) 25×23、
+  sector3s@(0,46) 23×25、sector4s@(0,0) 23×23）。DUN word=0 → 微瓦片 **218**，
+  word≥1 → `pMegaTiles[word-1]` 的 4 个微索引展开成 2×2。城镇 `microLen=16`/`blocks=16`，
+  资源 `levels\towndata\town.{cel,til,min,sol,pal}`（均在 DIABDAT.MPQ 实证存在）。
+- **地牢（L1 等）**：`DRLG_LPass3()`（`gendung.cpp:582-615`）用「Dirt」兆瓦片
+  （L1 `Dirt=22` → `pMegaTiles[21]`）预填整个 `dPiece`，再把 DUN 层叠在偏移 (16,16)。
+  L1 `microLen=10`/`blocks=10`；L4/Hell 为 12/16。
+
+**渲染（两遍，`scrollrt.cpp:1231-1285` + `dun_render.cpp`）**：`DrawGame` 先 `DrawFloor`
+（每格 `mt[0]` 强制左三角 + `mt[1]` 强制右三角 → 64×32 地板菱形，铺满地面），
+再 `DrawTileContent`/`DrawCell`（`IsFloor` 判定：SOL 非 Solid/非 BlockMissile；墙体 `mt[2..]`
+成对向上叠，每对高 `TILE_HEIGHT=32`，`hasValue()` 守卫）。**因此真实场景没有空格**——
+初版把 `mi==0` 当空跳过、背景留透明，才是黑块的真正来源。
+
+**本实现**（`src/decoders/level_scene.cpp` + `src/tools/scene_tools.cpp`）：
+`buildTownScene`（4 sector + 预填 426/218，裁到 96×96 sector bbox 以约束图像）、
+`buildDungeonScene`（Dirt 预填 + DUN@16,16）、`sceneCatalog`（`tristram` + 2 个 L1 预设）。
+`scene.build` 写原生 PNG 到 `out/scenes/`，整数降采样返回 `image_base64` + 对齐的
+`overlay_base64`（网格线 + SOL 着色）+ 每格标志 `meta`，前端第 5 种浏览模式缩放/平移/叠加。
+
+**明确延后**：逐像素光照/lightmap、`dTransVal` 透明混合、`dSpecial` 树木拱门与 special CEL
+`towns`、任务态 `FillTile` 补丁、`automap.dun`（可后续仅用于 SOL）、Hellfire `nlevels` 其它层。
 
 ### 阶段 5：GUI 布局与显示（目标 4）
-- [ ] 还原 `DiabloUI/` 的全部界面布局与元素。
+- [x] **场景查看器（前端 `web/`，2026-11-09）**：新增第 5 种浏览模式，调用 `scene.list` /
+      `scene.build` 复原完整关卡场景（初始场景 Tristram 城镇），支持缩放（1–8×）/ 平移 /
+      SOL 叠加层（网格 + Solid/透明/BlockLight 着色）/ 夜景提亮 / 复位。详见 `web/README.md`
+      与 `docs/ARCHITECTURE.md` §10.5。
+- [ ] 还原 `DiabloUI/` 的全部界面布局与元素（主菜单 / 角色面板 / 血蓝球 / 商店 / 对话框等）。
 - [ ] 输出界面布局数据与可视化。
 
 > 每个阶段都以“确认该类资源被正确解码”为完成标准，优先产出可验证的

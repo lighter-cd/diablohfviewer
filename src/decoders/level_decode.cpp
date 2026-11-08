@@ -5,6 +5,7 @@
 
 #include "decoders/level.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <stdexcept>
 
@@ -105,9 +106,15 @@ DunFile loadDun(const std::vector<uint8_t>& data)
 std::vector<uint8_t> loadSol(const std::vector<uint8_t>& data)
 {
     std::vector<uint8_t> out;
-    if (data.size() < MAXTILES)
+    if (data.empty())
         return out;
-    out.assign(data.data(), data.data() + MAXTILES);
+    // SOL is one byte per MICRO piece (dPiece index). The file is shorter than
+    // MAXTILES; copy what is present and zero-fill the rest (DevilutionX loads
+    // into a fixed SOLData[MAXTILES] array, leaving unused entries at 0).
+    out.assign(MAXTILES, 0);
+    const size_t n = data.size() < static_cast<size_t>(MAXTILES)
+                         ? data.size() : static_cast<size_t>(MAXTILES);
+    std::copy(data.data(), data.data() + n, out.data());
     return out;
 }
 
@@ -119,7 +126,9 @@ void buildMicroGrid(const DunFile& dun,
 {
     gw = static_cast<int>(dun.width) * 2;
     gh = static_cast<int>(dun.height) * 2;
-    microGrid.assign(static_cast<size_t>(gw) * gh, 0);
+    // kNoMicro = truly outside the scene. `0` is a VALID micro index
+    // (DPieceMicros[0]), so it cannot be used as the "empty" default.
+    microGrid.assign(static_cast<size_t>(gw) * gh, kNoMicro);
     for (uint16_t j = 0; j < dun.height; ++j) {
         for (uint16_t i = 0; i < dun.width; ++i) {
             const uint16_t tileId = dun.tileLayer[static_cast<size_t>(j) * dun.width + i];
@@ -129,10 +138,10 @@ void buildMicroGrid(const DunFile& dun,
                 continue;
             const MegaTile& m = megatiles[tileId - 1];
             const size_t base = static_cast<size_t>(j) * 2 * gw + static_cast<size_t>(i) * 2;
-            // The TIL megatile -> micro indices are 1-based into `micros`
-            // (0 = none), matching DevilutionX's LevelCelBlock.frame() 1-based
-            // convention. So we store the raw value; renderMap reads
-            // micros[mi - 1] and treats mi == 0 as an empty cell.
+            // TIL megatile -> micro indices are copied VERBATIM and used
+            // 0-based into `micros` (`micros[mi]`) by renderMap. Verified vs
+            // DevilutionX gendung.cpp:607-610 / scrollrt.cpp:551-553 and real
+            // l1.til (0..452) <-> l1.min (453 pieces).
             microGrid[base + 0] = m.micro1;
             microGrid[base + 1] = m.micro2;
             microGrid[base + gw] = m.micro3;

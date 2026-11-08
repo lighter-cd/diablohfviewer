@@ -16,6 +16,12 @@
 
 namespace decoders {
 
+// Encode `rgba` (width*height*4, RGBA8, row-major) as PNG bytes in memory.
+// Returns an empty vector on invalid input. Used both to write files and to
+// build base64 payloads for the MCP/WebSocket layer (which cannot serve files).
+std::vector<uint8_t> encodePNG(uint16_t width, uint16_t height,
+                               const std::vector<uint8_t>& rgba);
+
 // Write `rgba` (width*height*4, RGBA8, row-major) to `path` as a PNG.
 // Returns true on success. `width`/`height` must be > 0.
 bool writePNG(const std::string& path, uint16_t width, uint16_t height,

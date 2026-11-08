@@ -13,8 +13,8 @@ Diablo 1 / Hellfire 的 MPQ 研究与精灵查看工具。**后端为纯 C/C++ �
 | 目录 | 说明 |
 |------|------|
 | `src/engine/` | StormLib 封装（open / list / extract / verify） |
-| `src/decoders/` | 格式解码器（palette / clx / cel / cl2 / pcx / png / `level_*` 关卡管线） |
-| `src/tools/` | Tool Registry + `mpq_tools` + `sprite_tools` + `map_tools`（`map.build`） |
+| `src/decoders/` | 格式解码器（palette / clx / cel / cl2 / pcx / png / `level_*` 关卡与场景管线） |
+| `src/tools/` | Tool Registry + `mpq_tools` + `sprite_tools` + `map_tools`（`map.build`）+ `scene_tools`（`scene.list`/`scene.build`） |
 | `src/mcp/` | MCP 服务端（jsonrpc / stdio / ws 桥） |
 | `3rdparty/StormLib/` | StormLib 源码（git submodule；构建脚本见仓库根 `build-stormlib.sh`） |
 | `mpq-info/` | MPQ 文件名恢复字典与产出（参考数据，非代码） |
@@ -83,8 +83,9 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
 | `sprite.decode` | 解码 `.clx` / `.cel` / `.cl2` / `.pcx` 精灵为 RGBA 帧；`.cl2`/`.cel` 传 `width` 整数或 `"auto"` 自动按路径查表。可选 `archives`（额外 MPQ 路径数组）：精灵/调色板可来自与 `archive` 不同的 MPQ，用于跨档案解析调色板。**损坏/截断的 CL2/CEL 或错误 `width` 会返回错误而非崩溃**（`src/tools/sprite_tools.cpp`、`src/decoders/cl2.cpp`、`src/decoders/cel.cpp`） |
 | `sprite.list` | 枚举 `recovered.json` 中真实存在的精灵名（按 family/class/type 分类并带自动帧宽），供前端建目录树（`src/tools/sprite_tools.cpp`） |
 | `spell.list` | 从 DevilutionX 数据表（`spelldat` / `misdat` / `missile_sprites` / `monstdat`）合成**玩家技能与怪物远程攻击的全阶段视觉目录**：每个条目按 施法 → 投射 → 命中 → debuff 四阶段组织；`sprite` 层给出编号 `missiles\{name}{N}.cl2` 文件清单 + 显式 `width`（编号文件**不能**用 `width:"auto"`），`trn` 层给出目标 debuff 的调色板重映射；另附 `impact_catalog` 候选命中特效。每条还带 `name_zh`（中文名，取自 `Translations/zh_TW.po`→`zh_CN.po` 的 `msgctxt "spell"`，无翻译则回退英文名）、`description`（按已解析阶段链 + 玩家法力/智力消耗合成的中文说明），以及**法术级别参数**：`level`（`spelldat.bookLevel`，法术等级/阶）、`staff_level`、`mana_cost`、`mana_multiplier`（每升 1 级训练减少的法力）、`min_mana`、`staff_min/staff_max`，与 `mana_by_level`（按 `GetManaAmount` 公式算出的 1..bookLevel 各级基础法力 `{level, mana}`，含 `min_mana` 下限，未乘职业系数）；另含 `visual_by_level`（玩家 1..bookLevel / 怪物 1..16 各级**视觉参数**，逐法术从 DevilutionX handler 转录：持续时间 `duration_ticks`/`duration_sec`、弹速 `speed`、范围 `range_tiles`/`radius_tiles`、弹射物数 `count` 及法术特有字段如 `segments`/`wall_length_tiles`，含角色/地下城层依赖的项标 `_note`；无级别视觉缩放的法术为空）。**怪物攻击侧**除 `GetMissileType()` 的 14 类远程 AI 外，还覆盖**在 AI 函数里直接 `AddMissile` 的形态**（Counselor 按智力发 Firebolt/ChargedBolt/LightningControl/Fireball + 近身双层 Flash、Familiar 闪电、Gloom 冲撞、Mega 近身地狱火），每个形态单独一条并有 `variant` / `condition` 字段（`id` 为 `AI` 或 `AI.variant`）；`unique_monstdat` 的唯一怪会额外叠加，故 Hork Demon（HorkSpawn）、Zhar / Lazarus（按智力 3 归入 Counselor.Fireball）、Red Vex / Black Jade（LazarusSuccubus）均按真实 AI 归属。另含 **`abilities[]` 引擎级怪物特殊能力**：`Blink` 受重击瞬移、`AcidPuddle` 酸怪死亡留池、`Hidden` 潜行系隐身，每条带 `monsters` / `trigger` / `source_ref`（Diablo 1 没有 D2 式 Thunderstorm / Waller / Vortex / Shielding 词缀）。另含 **`traps[]` 陷阱法术** 10 条：墙上机关陷阱（箭矢 / 火焰弹 / 闪电，按有效层数出现）、带陷阱宝箱（箭矢 / 火焰箭 / 新星，地狱火另有火焰之环 / 偷药水 / 吸法力）、地狱火喷火口与火焰拉杆，每条带 `objects`（宿主 `OBJ_*`）/ `trigger` / `source_ref`。当前为 51 技能 / 25 怪物攻击 / 3 特殊能力 / 10 陷阱。可用 `source` / `id` 过滤（`src/tools/sprite_tools.cpp`、`src/tools/spell_tables.h`、`src/tools/spell_visual_model.h`） |
-
 | `map.build` | 解码 Diablo 1 / Hellfire 关卡（TIL / MIN / DUN / SOL / level CEL）并渲染完整等距地图 PNG + ≤400px 预览 PNG + 每格碰撞/光照/透明标志 sidecar JSON 到 `out/maps/`，返回摘要与 base64 预览。必填 `archive` + `cel`/`til`/`min`/`sol`/`dun`（档案内名），可选 `palette`（默认 `gendata/cut2.pal`）、`archives`（额外 MPQ 搜索栈）、`micro_len`（10 原版 / 12 地狱火）、`blocks`（10 / 16）、`out`。当前为 FullyLit 渲染（逐像素光照为运行时效果，延后）。L1 示例：`levels/l1data/l1.cel`/`l1.til`/`l1.min`/`l1.sol` + `levels/l1data/rnd2.dun`（`src/tools/map_tools.cpp`、`src/decoders/level_*.cpp`） |
+| `scene.list` | 列出可复原的**完整场景**（Tristram 城镇 + 2 个 L1 预设），返回 id/title/layout/网格尺寸，无需 MPQ（`src/tools/scene_tools.cpp`） |
+| `scene.build` | 复原完整关卡场景：忠实 DevilutionX 两遍绘制（地板菱形 + 墙体）+ 不透明背景 + 空格预填，**0 透明像素、无黑块**。必填 `id` + `archive`，可选 `archives`（MPQ 搜索栈）、`out`（默认 `out/scenes`）、`preview_max_width`（默认 1000）。返回 `image_base64`/`overlay_base64`（对齐的 SOL 叠加层）+ `preview_width/height` + `meta`（每格 `solid`/`transparent`/`block_light`/`block_missile` + `transparent_pixel_count`）；原生 PNG 落盘。初始场景 `tristram`（`src/tools/scene_tools.cpp`、`src/decoders/level_scene.cpp`） |
 
 请求示例（JSON-RPC 2.0，stdio 与 WS 同构）：
 
@@ -98,7 +99,8 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
 ## 测试
 
 后端各单元均配合单元测试，分三个套件，全部在 `out/` 下，用 MinGW-w64 的 `g++` 直接构建运行。
-（注意：`GLOB_RECURSE` 仅用于 CMake 的 `mcp-server`；测试用 g++ 单文件直接编译，新增源文件无需重跑 cmake。）
+（注意：`GLOB_RECURSE` 用于 CMake 的 `mcp-server`；新增 `src/**/*.cpp` 后需重跑一次
+`cmake -S . -B build-mcp` 才会被纳入构建。测试用 g++ 单文件直接编译，把新增源文件加进命令即可。）
 
 ### 1. 解码器 + base64（无需 MPQ / StormLib）
 
@@ -108,10 +110,11 @@ g++ -I src -std=c++17 out/unit_tests.cpp \
     src/decoders/pcx.cpp src/decoders/palette.cpp src/decoders/png.cpp \
     src/decoders/sprite_width.cpp \
     src/decoders/level_decode.cpp src/decoders/level_cel.cpp src/decoders/level_render.cpp \
+    src/decoders/level_scene.cpp \
     -static-libgcc -static-libstdc++ \
     -o out/unit_tests.exe && out/unit_tests.exe
 ```
-覆盖：CLX 解码、CEL→CLX / CL2→CLX 往返、**CL2/CEL 畸形输入与错误 `width` 拒绝（不崩溃）**、**`spell_tables.h` 纯 join（TSV/CRLF、编号文件生成、AI→导弹、阶段派生）**、PCX 解码、调色板加载、base64 编解码往返；以及**关卡解码器**（`loadTil` / `loadMin` / `loadDun` / `loadSol` 解析、`buildMicroGrid` 兆瓦片→微瓦片拼装、Square/Triangle 的 level CEL 重编码与 RGBA 帧解码、调色板 4 字节步长回归、三角形解码形状与透明、`renderMap` / `renderMicroTile` 等距合成与 SOL/DUN 标志）。
+覆盖：CLX 解码、CEL→CLX / CL2→CLX 往返、**CL2/CEL 畸形输入与错误 `width` 拒绝（不崩溃）**、**`spell_tables.h` 纯 join（TSV/CRLF、编号文件生成、AI→导弹、阶段派生）**、PCX 解码、调色板加载、base64 编解码往返；以及**关卡/场景解码器**（`loadTil` / `loadMin` / `loadDun` / `loadSol` 解析、`buildMicroGrid` 0-based 微索引/kNoMicro 拼装、Square/Triangle 的 level CEL 重编码与 RGBA 帧解码、强制三角形解码、调色板 4 字节步长回归、`renderMap` 两遍绘制 + 不透明背景 + 0 透明像素 + 空格预填 + frame()==0 守卫、`buildTownScene` 4 sector/预填、`buildDungeonScene` Dirt 预填、`sceneProjection`、`encodePNG`）。
 源码路径：`src/decoders/*.cpp`、`src/tools/base64.h`、`src/tools/spell_tables.h`；测试脚本 `out/unit_tests.cpp`。
 
 ### 2. Registry + JSON-RPC（纯逻辑，无需 MPQ）
@@ -135,10 +138,12 @@ MPQ 路径取环境变量 `DHFC_TEST_MPQ`，缺省为本地 DevilutionX 安装�
 g++ -I 3rdparty/StormLib/src -I 3rdparty -I src -std=c++17 \
     out/integration_tests.cpp \
     src/engine/archive.cpp src/tools/registry.cpp \
-    src/tools/mpq_tools.cpp src/tools/sprite_tools.cpp \
+    src/tools/mpq_tools.cpp src/tools/sprite_tools.cpp src/tools/scene_tools.cpp \
     src/decoders/palette.cpp src/decoders/clx.cpp src/decoders/cel.cpp \
     src/decoders/cl2.cpp src/decoders/pcx.cpp src/decoders/sprite_width.cpp \
+    src/decoders/png.cpp \
     src/decoders/level_decode.cpp src/decoders/level_cel.cpp src/decoders/level_render.cpp \
+    src/decoders/level_scene.cpp \
     src/mcp/jsonrpc.cpp \
     3rdparty/StormLib/build/libStormLib.a \
     -lws2_32 -lwininet -static-libgcc -static-libstdc++ \
@@ -153,8 +158,10 @@ g++ -I 3rdparty/StormLib/src -I 3rdparty -I src -std=c++17 \
 Fire Wall 双文件、Flash 双层、Torchant→Fireball、default→Arrow，以及 Counselor 四弹按智力分流 +
 近身 Flash、Familiar 闪电、Gloom 冲撞、Mega 地狱火等 AI 内直接发弹的形态）；以及
 **`testLevelMap` 关卡全链路**：从 `DIABDAT.MPQ` 抽真实 L1 资源（`levels/l1data/l1.{cel,til,min,sol}`
-+ `rnd2.dun` + `gendata/cut2.pal`）跑通解析→重编码→等距合成并断言产出可见像素（默认
-`devilutionx.mpq` 无 L1 关卡，会自动探测同目录 `DIABDAT.MPQ`；两者皆无则 SKIP）。
++ `rnd2.dun` + `gendata/cut2.pal`）跑通解析→重编码→等距合成并断言产出可见像素、**0 透明像素**（默认
+`devilutionx.mpq` 无 L1 关卡，会自动探测同目录 `DIABDAT.MPQ`；两者皆无则 SKIP）；以及
+**`testSceneTools` 场景全链路**：`scene.list` / `scene.build` 从真实 MPQ 复原 Tristram
+城镇，断言 96×96 网格、**0 透明像素**、base64 PNG 合法、叠加层 PNG、每格标志数组长度）。
 源码路径：`src/engine/archive.cpp`、`src/tools/mpq_tools.cpp`、`src/tools/sprite_tools.cpp`、
 `src/tools/spell_tables.h`、`src/decoders/cl2.cpp`、`src/decoders/cel.cpp`、
 `src/decoders/sprite_width.cpp`、`src/decoders/level_*.cpp`；测试脚本 `out/integration_tests.cpp`。
@@ -243,13 +250,18 @@ out/render_sprite.exe \
   `missiles\arrows.cl2`（宽 96）、物件 `objects\armstand.cel`（宽 96）、NPC `towners\drunk\twndrunk.cel`
   （宽 96）均经自动查表渲染成功。
 
-### 6. 关卡地图测试与 `map.build` 使用（阶段 4）
+### 6. 关卡地图与完整场景（阶段 4/5）
 
-**测试**：关卡解码器单测在 §1 的 `out/unit_tests.cpp`，真实关卡全链路集成测试在 §3 的
-`out/integration_tests.cpp::testLevelMap`（从 `DIABDAT.MPQ` 渲染 `rnd2.dun`）。两个套件把
-`src/decoders/level_decode.cpp`、`level_cel.cpp`、`level_render.cpp` 直接编入，新增源码无需重跑 cmake。
-`mcp-server`（CMake `GLOB_RECURSE src/*.cpp`）会一并编译它们，`cmake --build build-mcp --target mcp-server`
-即可确认全绿。
+> 2026-11-09 修正：渲染器改为忠实 DevilutionX **两遍绘制**（地板菱形 + 墙体）、
+> **TIL 微索引 0-based**、**不透明背景 + 空格预填**，输出 **0 透明像素**，
+> 彻底消除查看器把透明区压黑造成的「黑块 / 不完整」。详见 `docs/PROJECT.md`
+> 「游戏场景如何组织」与 `docs/ARCHITECTURE.md` §9.2/§9.3。
+
+**测试**：关卡/场景单测在 §1 的 `out/unit_tests.cpp`，真实全链路集成测试在 §3 的
+`out/integration_tests.cpp::testLevelMap`（L1 `rnd2.dun`）与 `::testSceneTools`
+（Tristram 城镇），均断言 **0 透明像素**。套件直接编入 `src/decoders/level_*.cpp` 与
+`src/tools/scene_tools.cpp`；`mcp-server`（CMake `GLOB_RECURSE src/*.cpp`）新增源文件后
+重跑一次 `cmake -S . -B build-mcp` 再 `cmake --build build-mcp --target mcp-server` 即可全绿。
 
 **使用 `map.build`**（stdio 或 WS 的 `tools/call`，L1 cathedral 示例）：
 
@@ -276,9 +288,35 @@ out/render_sprite.exe \
   `solid` / `transparent` / `block_light` / `block_missile` 四个每格标志数组（来自 SOL 与 DUN 微尺度透明层）。
 
 - 地狱火层级把 `micro_len`、`blocks` 改为 `12`、`16`，并指向对应 `nlevels/` 的 cel/til/min/sol。
-- 源码路径：`src/tools/map_tools.cpp`、`src/decoders/level.h` /
-  `level_decode.cpp` / `level_cel.cpp` / `level_render.cpp`；测试脚本 `out/unit_tests.cpp`、
-  `out/integration_tests.cpp`；管线与已踩坑详见 `docs/ARCHITECTURE.md` §9.2。
+
+**使用 `scene.build`（完整场景，初始场景 Tristram 城镇）**：
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call",
+ "params":{"name":"scene.list", "arguments":{}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/call",
+ "params":{"name":"scene.build",
+           "arguments":{
+             "id":"tristram",
+             "archive":"D:/work/xt/diablo/DevilutionX-Hell Fire/DIABDAT.MPQ",
+             "preview_max_width":1000}}}
+```
+
+`scene.build` 返回 `image_base64`（≤1000px 预览 PNG）、`overlay_base64`（同尺寸 SOL 叠加层
+PNG）、`preview_width/height`、`scale`、`width/height`（原生尺寸）、`grid_width/height`、
+`transparent_pixel_count`（=0）、`meta`（每格标志数组），并把原生 PNG / 预览 / 叠加层 /
+sidecar JSON 写到 `out/scenes/`。原生大图只落盘，WS 只传降采样预览，两层由同一
+`SceneProjection` 生成、像素级对齐。
+
+**前端场景查看器**：浏览器打开 `web/`（见 README §运行 与 `web/README.md`），切到
+第 5 种「场景查看器」→ 选场景 → 加载，可缩放（1–8×）/ 拖拽平移 / 切换 SOL 叠加层 /
+夜景提亮 / 复位。场景目录：`tristram`（城镇，96×96）、`l1_rnd2`、`l1_skngdo`（L1 预设）。
+
+- 源码路径：`src/tools/map_tools.cpp`、`src/tools/scene_tools.cpp`、
+  `src/decoders/level.h` / `level_decode.cpp` / `level_cel.cpp` / `level_render.cpp` /
+  `level_scene.cpp`、`src/decoders/png.cpp`、`web/index.html` / `src/main.js` / `styles.css`；
+  测试脚本 `out/unit_tests.cpp`、`out/integration_tests.cpp`；管线与已踩坑详见
+  `docs/ARCHITECTURE.md` §9.2/§9.3、§10.5。
 
 ## 开发文档
 

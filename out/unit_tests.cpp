@@ -12,7 +12,7 @@
 //       src/decoders/pcx.cpp src/decoders/palette.cpp src/decoders/png.cpp \
 //       src/decoders/sprite_width.cpp \
 //       src/decoders/level_decode.cpp src/decoders/level_cel.cpp \
-//       src/decoders/level_render.cpp \
+//       src/decoders/level_render.cpp src/decoders/level_scene.cpp \
 //       -static-libgcc -static-libstdc++ \
 //       -o out/unit_tests.exe && out/unit_tests.exe
 //
@@ -27,6 +27,8 @@
 #include "decoders/png.h"
 #include "decoders/sprite_width.h"
 #include "decoders/level.h"
+#include "decoders/level_scene.h"
+#include "decoders/png.h"
 #include "tools/base64.h"
 #include "tools/spell_tables.h"
 
@@ -1015,13 +1017,23 @@ static void testLevelDun()
 
 static void testLevelSol()
 {
-    lvlChk(decoders::loadSol(std::vector<uint8_t>(1378)).empty(),
-           "loadSol rejects < MAXTILES bytes");
+    // SOL is one byte per MICRO piece (l1.sol=453, town.sol=1258). It is copied
+    // into a MAXTILES-sized, zero-filled table; a short file is NOT an error.
+    lvlChk(decoders::loadSol(std::vector<uint8_t>{}).empty(),
+           "loadSol returns empty for empty input");
+    std::vector<uint8_t> shortSol(453);
+    for (int i = 0; i < 453; ++i) shortSol[i] = static_cast<uint8_t>(i & 0xFF);
+    auto s = decoders::loadSol(shortSol);
+    lvlChk(s.size() == 1379, "loadSol zero-fills short SOL file to MAXTILES");
+    lvlChk(s[0] == 0 && s[452] == (uint8_t)(452 & 0xFF),
+           "loadSol preserves short SOL bytes");
+    lvlChk(s[453] == 0 && s[1378] == 0,
+           "loadSol zero-fills SOL entries beyond file length");
     std::vector<uint8_t> full(1379);
     for (int i = 0; i < 1379; ++i) full[i] = static_cast<uint8_t>(i & 0xFF);
-    auto s = decoders::loadSol(full);
-    lvlChk(s.size() == 1379, "loadSol returns exactly MAXTILES bytes");
-    lvlChk(s[0] == 0 && s[1378] == (uint8_t)(1378 & 0xFF), "loadSol preserves bytes");
+    auto s2 = decoders::loadSol(full);
+    lvlChk(s2.size() == 1379 && s2[1378] == (uint8_t)(1378 & 0xFF),
+           "loadSol preserves full SOL table");
     std::vector<uint8_t> big(1400, 0xAB);
     lvlChk(decoders::loadSol(big).size() == 1379, "loadSol truncates to MAXTILES");
     printf("level.sol: %s\n", allOk ? "PASS" : "FAIL");
@@ -1043,11 +1055,13 @@ static void testLevelGrid()
     std::vector<uint16_t> grid;
     decoders::buildMicroGrid(dun, mega, grid, gw, gh);
     lvlChk(gw == 4 && gh == 4, "buildMicroGrid grid is 2x (2x2) = 4x4");
-    // (i=0,j=0) tileId1 -> mega[0]: micro1..micro4 = 1,2,3,4
+    // (i=0,j=0) tileId1 -> mega[0]: micro1..micro4 = 1,2,3,4 (verbatim,
+    // 0-based indices into micros; 0 itself is a VALID micro index).
     lvlChk(grid[0] == 1 && grid[1] == 2 && grid[4] == 3 && grid[5] == 4,
            "buildMicroGrid TL megatile expands to 2x2 micro1..micro4");
-    // (i=1,j=0) tileId0 -> empty
-    lvlChk(grid[2] == 0 && grid[3] == 0, "buildMicroGrid skips empty DUN tile (0)");
+    // (i=1,j=0) tileId0 -> kNoMicro (NOT 0, which is a valid micro index).
+    lvlChk(grid[2] == decoders::kNoMicro && grid[3] == decoders::kNoMicro,
+           "buildMicroGrid marks empty DUN tile with kNoMicro sentinel");
     // (i=0,j=1) tileId3 -> mega[2]: micro1..micro4 = 9,10,11,12 at base 8
     lvlChk(grid[8] == 9 && grid[9] == 10 && grid[12] == 11 && grid[13] == 12,
            "buildMicroGrid BL megatile (tileId3) micros");
@@ -1127,59 +1141,82 @@ static void testLevelTriangleDecode()
     printf("level.cel (triangle decode): %s\n", allOk ? "PASS" : "FAIL");
 }
 
-static void testLevelRender()
+// A minimal 1-frame CEL + palette shared by the render tests.
+static decoders::ReencodedLevelCel oneFrameCel()
 {
-    // 1-frame Square CEL, all palette index 10.
     std::vector<uint8_t> cel(4 + 2 * 4 + 1024, 0);
     WriteLE32(&cel[0], 1);
     WriteLE32(&cel[4], 12);
     WriteLE32(&cel[8], 12 + 1024);
     std::memset(&cel[12], 10, 1024);
-    auto re = decoders::reencodeLevelCel(cel, {decoders::TileType::Square});
+    return decoders::reencodeLevelCel(cel, {decoders::TileType::Square});
+}
+
+static void testLevelRender()
+{
+    auto re = oneFrameCel();
     lvlChk(re.numFrames == 1, "level.render reencode 1 frame");
 
-    // One micro tile whose 10 blocks all reference CEL frame 1 (index 0).
+    // micro 0's 10 blocks all reference CEL frame 1 (index 0). Micro index 0
+    // is VALID (0-based); the old 1-based code would have looked up micros[1].
     decoders::MicroTileRef micro;
     for (int b = 0; b < 10; ++b) micro.blocks[b].data = 0x0001;
-    std::vector<decoders::MicroTileRef> micros = { micro };
+    std::vector<decoders::MicroTileRef> micros = { micro, micro };
 
-    // One megatile whose four corners all reference micro index 1 (-> micros[0]).
-    std::vector<decoders::MegaTile> mega = { decoders::MegaTile{1, 1, 1, 1} };
-
-    decoders::DunFile dun;
-    dun.width = 1; dun.height = 1;
-    dun.tileLayer = {1};
-    int gw = 0, gh = 0;
-    std::vector<uint16_t> grid;
-    decoders::buildMicroGrid(dun, mega, grid, gw, gh);
-    lvlChk(gw == 2 && gh == 2, "level.render grid 2x2");
-
-    // SOL: one flag byte (Solid) at index 0.
-    std::vector<uint8_t> sol = { decoders::TileFlags::Solid };
+    // Grid of micro index 0 everywhere (a complete 2x2 floor).
+    const int gw = 2, gh = 2;
+    std::vector<uint16_t> grid(4, 0);
 
     auto pal = synthPaletteRGBA();
+    // SOL indexed by micro id: mark micro 0 Solid.
+    std::vector<uint8_t> sol(1379, 0);
+    sol[0] = decoders::TileFlags::Solid;
+
     auto map = decoders::renderMap(re, micros, grid, gw, gh, sol,
-                                  std::vector<int8_t>{}, dun.tileLayer,
-                                  dun.width, dun.height, pal.data(), 10);
+                                  std::vector<int8_t>{}, pal.data(), 10);
     lvlChk(map.width > 0 && map.height > 0, "level.render map has positive size");
     lvlChk(map.rgba.size() == (size_t)map.width * map.height * 4,
            "level.render rgba buffer sized width*height*4");
-    size_t nonT = 0;
-    for (size_t i = 0; i < map.rgba.size() / 4; ++i)
-        if (map.rgba[i * 4 + 3] != 0) nonT++;
-    lvlChk(nonT > 0, "level.render produced visible (opaque) pixels");
+    // Opaque background: NO transparent pixels anywhere (the "black blocks" fix).
+    size_t transPixels = 0;
+    for (size_t i = 3; i < map.rgba.size(); i += 4)
+        if (map.rgba[i] == 0) transPixels++;
+    lvlChk(transPixels == 0, "level.render opaque background: 0 transparent pixels");
+    // Background color is opaque black at a corner.
+    lvlChk(map.rgba[0] == 0 && map.rgba[1] == 0 && map.rgba[2] == 0 &&
+               map.rgba[3] == 255, "level.render background is opaque black");
     lvlChk(map.solid.size() == 4u, "level.render solid grid sized gw*gh");
-    lvlChk(map.solid[0] == 1 && map.solid[3] == 1, "level.render solid flag from SOL");
+    lvlChk(map.solid[0] == 1 && map.solid[3] == 1,
+           "level.render solid flag from SOL indexed by micro id");
     lvlChk(map.transparent.size() == 4u && map.transparent[0] == 0,
            "level.render transparent default 0 (no DUN layer)");
 
     // Transparency path: a non-empty DUN transparency layer -> flagged.
     std::vector<int8_t> trans(4, 5);
     auto mapT = decoders::renderMap(re, micros, grid, gw, gh, sol, trans,
-                                   dun.tileLayer, dun.width, dun.height,
                                    pal.data(), 10);
     lvlChk(mapT.transparent[0] == 1 && mapT.transparent[3] == 1,
            "level.render transparent flag set from DUN layer (t>0)");
+
+    // kNoMicro cells are filled from prefillMicro -> still no transparent gaps.
+    std::vector<uint16_t> holeGrid(4, decoders::kNoMicro);
+    decoders::MapRenderOptions opts;
+    opts.prefillMicro = 0;
+    auto mapH = decoders::renderMap(re, micros, holeGrid, gw, gh, sol,
+                                   std::vector<int8_t>{}, pal.data(), 10, opts);
+    size_t transH = 0;
+    for (size_t i = 3; i < mapH.rgba.size(); i += 4)
+        if (mapH.rgba[i] == 0) transH++;
+    lvlChk(transH == 0,
+           "level.render kNoMicro cells prefilled -> 0 transparent pixels");
+
+    // micro 0 renders (0-based) — a cell referencing micro index 0 must draw.
+    // With the old 1-based bug it would have read micros[1] / underflowed.
+    size_t drawn = 0;
+    for (size_t i = 0; i < mapH.rgba.size() / 4; ++i)
+        if (mapH.rgba[i * 4] != 0 || mapH.rgba[i * 4 + 1] != 0 ||
+            mapH.rgba[i * 4 + 2] != 0) drawn++;
+    lvlChk(drawn > 0, "level.render micro index 0 is a valid, drawn floor");
 
     // renderMicroTile shape: 64 x (microLen/2 * 32).
     std::vector<uint8_t> mt; int mw = 0, mh = 0;
@@ -1190,6 +1227,150 @@ static void testLevelRender()
         if (mt[i * 4 + 3] != 0) mtNonT++;
     lvlChk(mtNonT > 0, "renderMicroTile produced opaque pixels");
     printf("level.render: %s\n", allOk ? "PASS" : "FAIL");
+}
+
+static void testLevelRenderGuards()
+{
+    auto re = oneFrameCel();
+    auto pal = synthPaletteRGBA();
+    decoders::MicroTileRef m;
+    // frame()==0 with type bits set (0x2000) must be skipped, not underflow to
+    // frame index 0xFFFFFFFF.
+    m.blocks[0].data = 0x2000;
+    m.blocks[1].data = 0x0001;
+    std::vector<decoders::MicroTileRef> micros = { m };
+    std::vector<uint16_t> grid(4, 0);
+    std::vector<uint8_t> mt; int mw = 0, mh = 0;
+    decoders::renderMicroTile(re, micros[0], pal.data(), 10, mt, mw, mh);
+    lvlChk(mw == 64 && mh == 160, "renderMicroTile guards frame()==0 without crash");
+    // A frame index beyond the CEL must also be skipped.
+    decoders::MicroTileRef bad;
+    bad.blocks[0].data = 0x0FFF; // frame 4095 >> numFrames
+    decoders::renderMicroTile(re, bad, pal.data(), 10, mt, mw, mh);
+    lvlChk(mt.size() == 64u * 160u * 4u,
+           "renderMicroTile guards out-of-range frame without crash");
+    printf("level.render (guards): %s\n", allOk ? "PASS" : "FAIL");
+}
+
+static void testLevelScene()
+{
+    // Synthetic Tristram-like town: 4 sectors over a small grid.
+    decoders::SceneSpec spec;
+    // 12x12 leaves a prefill border beyond the 8x8 area covered by the four
+    // synthetic 2x2 sectors, so both prefill 426 and sector writes are tested.
+    spec.gridW = 12; spec.gridH = 12;
+    spec.prefillMicro = 426;
+    spec.emptyMicro = 218;
+    spec.sectorOffsets = { { 4, 4 }, { 4, 0 }, { 0, 4 }, { 0, 0 } };
+    spec.sectorDuns = { "s1", "s2", "s3", "s4" };
+
+    std::vector<decoders::MegaTile> mega = {
+        decoders::MegaTile{1, 2, 3, 4}, decoders::MegaTile{5, 6, 7, 8},
+    };
+    // Each sector DUN: 2x2 tile layer, one non-zero word (megatile 1) and a 0.
+    auto makeDun = [](uint16_t a, uint16_t b, uint16_t c, uint16_t d) {
+        std::vector<uint8_t> buf(4 + 4 * 2, 0);
+        WriteLE16(&buf[0], 2); WriteLE16(&buf[2], 2);
+        WriteLE16(&buf[4], a); WriteLE16(&buf[6], b);
+        WriteLE16(&buf[8], c); WriteLE16(&buf[10], d);
+        return buf;
+    };
+    std::vector<std::vector<uint8_t>> sectors = {
+        makeDun(1, 0, 0, 0), makeDun(2, 0, 0, 0),
+        makeDun(0, 1, 0, 0), makeDun(0, 0, 0, 2),
+    };
+    auto g = decoders::buildTownScene(spec, mega, sectors);
+    lvlChk(g.gw == 12 && g.gh == 12, "buildTownScene grid dims");
+    lvlChk(g.micro.size() == 144u && g.megaId.size() == 144u,
+           "buildTownScene grid sized gw*gh");
+    // Prefill 426 covers every cell not written by a sector.
+    int n426 = 0, n218 = 0;
+    for (uint16_t v : g.micro) { if (v == 426) n426++; if (v == 218) n218++; }
+    lvlChk(n426 > 0, "buildTownScene prefills unused cells with 426");
+    lvlChk(n218 > 0, "buildTownScene maps DUN word 0 to micro 218");
+    // Sector 1 at (4,4), word 1 -> mega[0] micros 1,2,3,4.
+    const size_t idx = static_cast<size_t>(4) * 12 + 4;
+    lvlChk(g.micro[idx] == 1 && g.micro[idx + 1] == 2 &&
+               g.micro[idx + 12] == 3 && g.micro[idx + 13] == 4,
+           "buildTownScene expands megatile micros into 2x2 block");
+    lvlChk(g.megaId[idx] == 1, "buildTownScene records 1-based megatile id");
+    // Sector 4 at (0,0), word at (1,1)=2 -> mega[1] micros 5..8 at (2,2).
+    const size_t j = static_cast<size_t>(2) * 12 + 2;
+    lvlChk(g.micro[j] == 5 && g.micro[j + 1] == 6 &&
+               g.micro[j + 12] == 7 && g.micro[j + 13] == 8,
+           "buildTownScene applies sector offsets correctly");
+
+    // Dungeon: Dirt megatile prefill + DUN overlay at (16,16).
+    decoders::SceneSpec dspec;
+    dspec.prefillMegaTile = 1; // -> mega[0] = (1,2,3,4)
+    dspec.gridW = 40; dspec.gridH = 40;
+    std::vector<uint8_t> dunBuf(4 + 2 * 2, 0);
+    WriteLE16(&dunBuf[0], 1); WriteLE16(&dunBuf[2], 1);
+    WriteLE16(&dunBuf[4], 2); // megatile 2 -> mega[1]
+    auto dun = decoders::loadDun(dunBuf);
+    auto dg = decoders::buildDungeonScene(dspec, mega, dun);
+    lvlChk(dg.gw == 34 && dg.gh == 34,
+           "buildDungeonScene sizes grid to dun dims + 32-micro border");
+    lvlChk(dg.micro[0] == 1 && dg.micro[1] == 2 &&
+               dg.micro[dg.gw] == 3 && dg.micro[dg.gw + 1] == 4,
+           "buildDungeonScene prefills with Dirt megatile micros");
+    const size_t ov = static_cast<size_t>(16) * dg.gw + 16;
+    lvlChk(dg.micro[ov] == 5 && dg.micro[ov + 1] == 6,
+           "buildDungeonScene overlays DUN at (16,16)");
+
+    // Catalog + projection.
+    auto& cat = decoders::sceneCatalog();
+    lvlChk(cat.size() >= 3 && decoders::findScene("tristram") != nullptr,
+           "sceneCatalog contains tristram");
+    lvlChk(decoders::findScene("nope") == nullptr, "findScene rejects unknown id");
+    auto p = decoders::sceneProjection(4, 4, 10);
+    lvlChk(p.width > 0 && p.height > 0, "sceneProjection positive dims");
+    auto dims = decoders::sceneGridDims(cat[1]);
+    lvlChk(dims.first == 54 && dims.second == 54,
+           "sceneGridDims matches dungeon DUN-derived grid");
+    printf("level.scene: %s\n", allOk ? "PASS" : "FAIL");
+}
+
+static void testLevelPngAndForcedDecode()
+{
+    // encodePNG returns valid PNG bytes equal to what writePNG would emit.
+    std::vector<uint8_t> rgba(4 * 3 * 4, 0);
+    for (size_t i = 0; i < rgba.size(); i += 4) {
+        rgba[i] = 30; rgba[i + 1] = 60; rgba[i + 2] = 90; rgba[i + 3] = 255;
+    }
+    auto png = decoders::encodePNG(4, 3, rgba);
+    lvlChk(png.size() > 8 && png[0] == 137 && png[1] == 80 &&
+               png[2] == 78 && png[3] == 71, "encodePNG emits PNG signature");
+    const uint32_t w = (uint32_t(png[16]) << 24) | (uint32_t(png[17]) << 16) |
+                       (uint32_t(png[18]) << 8) | png[19];
+    const uint32_t h = (uint32_t(png[20]) << 24) | (uint32_t(png[21]) << 16) |
+                       (uint32_t(png[22]) << 8) | png[23];
+    lvlChk(w == 4 && h == 3, "encodePNG IHDR carries correct dims");
+    lvlChk(decoders::encodePNG(0, 3, rgba).empty(), "encodePNG rejects width 0");
+    lvlChk(decoders::encodePNG(4, 3, std::vector<uint8_t>(10)).empty(),
+           "encodePNG rejects mismatched rgba length");
+
+    // decodeReencodedFrameAs forces a TileType regardless of frameTypes.
+    decoders::ReencodedLevelCel tri;
+    tri.numFrames = 1;
+    tri.frameTypes = { decoders::TileType::Square }; // stored as Square
+    // A Square frame is 1024 bytes; the forced LeftTriangle decode reads only
+    // the first 512 (its packed run layout). Provide the full Square size.
+    std::vector<uint8_t> tb(4 + 8 + 1024, 0);
+    WriteLE32(&tb[0], 1); WriteLE32(&tb[4], 12); WriteLE32(&tb[8], 12 + 1024);
+    std::memset(&tb[12], 7, 1024);
+    tri.buffer = tb;
+    auto pal = synthPaletteRGBA();
+    std::vector<uint8_t> rgbaA, rgbaB; int hA = 0, hB = 0;
+    decoders::decodeReencodedFrame(tri, 0, pal.data(), rgbaA, hA); // Square
+    decoders::decodeReencodedFrameAs(tri, 0, decoders::TileType::LeftTriangle,
+                                     pal.data(), rgbaB, hB);        // forced triangle
+    lvlChk(rgbaA.size() == rgbaB.size() && hA == 32 && hB == 32,
+           "decodeReencodedFrameAs same output shape");
+    // Square fills row 0; forced LeftTriangle leaves row 0 transparent.
+    lvlChk(rgbaA[3] == 255, "normal decode uses stored Square (row0 opaque)");
+    lvlChk(rgbaB[3] == 0, "forced decode uses LeftTriangle (row0 transparent)");
+    printf("level.png + forced decode: %s\n", allOk ? "PASS" : "FAIL");
 }
 
 int main()
@@ -1214,6 +1395,9 @@ int main()
     testLevelCelSquare();
     testLevelTriangleDecode();
     testLevelRender();
+    testLevelRenderGuards();
+    testLevelScene();
+    testLevelPngAndForcedDecode();
     printf("=== %s ===\n", allOk ? "ALL PASS" : "FAILURES PRESENT");
     return allOk ? 0 : 1;
 }

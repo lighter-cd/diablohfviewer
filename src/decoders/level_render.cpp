@@ -1,50 +1,86 @@
 // src/decoders/level_render.cpp
 //
-// Composite level-map rendering, ported from DevilutionX's DrawCell +
-// worldToScreen. A micro-tile (one dPiece cell) is drawn as a stack of up to
-// `microLen/2` rows of two 32x32 CEL frames (left block at the base, right
-// block at +32px X), each row 32px higher. The CEL row 0 is drawn at the BOTTOM
-// of each frame (vertical flip), exactly as the engine does. The whole map is
-// composited with the isometric transform:
+// Composite level-map rendering, ported from DevilutionX's DrawGame ->
+// DrawFloor + DrawTileContent/DrawCell + worldToScreen.
 //
+// A scene is a (gw x gh) grid of MICRO indices ("dPiece"). Each micro expands
+// into a stack of 32x32 CEL frames (the LevelCelBlocks of a .min piece):
+//   * Pass 1 (floors): mt[0] + mt[1] are drawn as a Left + Right triangle
+//     forming a 64x32 diamond at the cell base. DevilutionX forces the
+//     triangle shape regardless of the block's stored TileType (DrawFloorTile).
+//     EVERY cell gets a floor diamond, so the ground plane is complete.
+//   * Pass 2 (walls): mt[2..microLen-1] are drawn in pairs, each pair 32px
+//     higher, back-to-front (descending i+j), with hasValue() guards.
+//
+// The isometric transform is worldToScreen:
 //   screenX = (j - i) * 32
 //   screenY = -(j + i) * 16      (base of the cell; stacks grow upward)
 //
-// Cells are painted back-to-front (descending i+j) so nearer tiles overwrite
-// farther ones.
+// Every pixel is filled with opts.background first, so the output has NO
+// transparent gaps. Previously the buffer was left at (0,0,0,0), which any
+// viewer composited as black, producing the "black blocks" / incomplete look.
 
 #include "decoders/level.h"
 
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <utility>
 #include <vector>
-
-#include "decoders/endian_util.h"
 
 namespace decoders {
 
 namespace {
 
-// Blit a decoded 32x32 frame into `dst` (RGBA, row-major, `dstPitch` bytes/row)
-// at column offset `dx` and slot top `slotTopY`. The frame is written with its
-// CEL row 0 at the bottom of the slot (vertical flip), matching the engine.
-// Transparent pixels (alpha == 0) are skipped so lower layers show through.
+// Blit a decoded 32x32 frame into `dst` (RGBA, `dstW` x `dstH`, row pitch
+// `dstPitch` bytes) at column offset `dx` and slot top `slotTopY`. CEL row 0 is
+// written at the BOTTOM of the slot (vertical flip), matching the engine.
+// Transparent source pixels (alpha == 0) are skipped. Bounds-checked so a cell
+// near an image edge can never write out of the buffer.
 void blitFrame(const uint8_t* frame, int frameW, int frameH,
-               uint8_t* dst, int dstPitch, int dx, int slotTopY)
+               uint8_t* dst, int dstW, int dstH, int dstPitch,
+               int dx, int slotTopY)
 {
     for (int fr = 0; fr < frameH; ++fr) {
         const int dr = slotTopY + (frameH - 1 - fr); // vertical flip
-        if (dr < 0)
+        if (dr < 0 || dr >= dstH)
             continue;
         const uint8_t* src = frame + static_cast<size_t>(fr) * frameW * 4;
-        uint8_t* row = dst + static_cast<size_t>(dr) * dstPitch + static_cast<size_t>(dx) * 4;
+        uint8_t* row = dst + static_cast<size_t>(dr) * dstPitch;
         for (int fx = 0; fx < frameW; ++fx) {
+            const int px = dx + fx;
+            if (px < 0 || px >= dstW)
+                continue;
             const uint8_t* p = src + fx * 4;
             if (p[3] != 0)
-                std::memcpy(row + fx * 4, p, 4);
+                std::memcpy(row + static_cast<size_t>(px) * 4, p, 4);
         }
     }
+}
+
+// A CEL block is drawable only if it has a value, a nonzero (1-based) frame,
+// and that frame exists in the re-encoded CEL.
+bool blockDrawable(const LevelCelBlock& b, const ReencodedLevelCel& cel)
+{
+    if (!b.hasValue() || b.frame() == 0)
+        return false;
+    return (b.frame() - 1) < cel.numFrames;
+}
+
+// Resolve the micro INDEX for a cell. `mi` is 0-based into `micros`
+// (kNoMicro = truly outside the scene). kNoMicro / out-of-range cells fall
+// back to opts.prefillMicro so a real scene has no holes (DevilutionX
+// prefills every dPiece cell with a floor micro). The resolved index is also
+// the SOL table index (SOLData[dPiece[x][y]]).
+uint16_t resolveMicroIndex(const std::vector<MicroTileRef>& micros,
+                           uint16_t mi, const MapRenderOptions& opts)
+{
+    uint16_t idx = mi;
+    if (idx == kNoMicro || idx >= micros.size())
+        idx = opts.prefillMicro;
+    if (idx == kNoMicro || idx >= micros.size())
+        return kNoMicro;
+    return idx;
 }
 
 } // namespace
@@ -74,6 +110,19 @@ std::vector<TileType> buildFrameTypes(const std::vector<MicroTileRef>& micros, i
     return types;
 }
 
+SceneProjection sceneProjection(int gw, int gh, int microLen)
+{
+    SceneProjection p;
+    const int Hm = (microLen / 2) * 32;
+    p.minX = -(static_cast<long>(gw) - 1) * 32;
+    p.minY = -(static_cast<long>(gw) + gh - 2) * 16 - Hm + 1;
+    const long maxX = (static_cast<long>(gh) - 1) * 32 + 64;
+    const long maxY = 0;
+    p.width = maxX - p.minX + 1;
+    p.height = maxY - p.minY + 1;
+    return p;
+}
+
 void renderMicroTile(const ReencodedLevelCel& cel, const MicroTileRef& micro,
                      const uint8_t* pal, int microLen,
                      std::vector<uint8_t>& rgba, int& outW, int& outH)
@@ -86,24 +135,15 @@ void renderMicroTile(const ReencodedLevelCel& cel, const MicroTileRef& micro,
     std::vector<uint8_t> frame(32 * 32 * 4);
 
     for (int b = 0; b < nRows; ++b) {
-        const int slotTopY = H - (b + 1) * 32; // top of this row's 32px slot
-        // Left block.
-        {
-            const LevelCelBlock blk = micro.blocks[2 * b];
-            if (blk.hasValue()) {
-                int fh = 0;
-                decodeReencodedFrame(cel, blk.frame() - 1, pal, frame, fh);
-                blitFrame(frame.data(), 32, 32, rgba.data(), pitch, 0, slotTopY);
-            }
-        }
-        // Right block (+32px X).
-        {
-            const LevelCelBlock blk = micro.blocks[2 * b + 1];
-            if (blk.hasValue()) {
-                int fh = 0;
-                decodeReencodedFrame(cel, blk.frame() - 1, pal, frame, fh);
-                blitFrame(frame.data(), 32, 32, rgba.data(), pitch, 32, slotTopY);
-            }
+        const int slotTopY = H - (b + 1) * 32;
+        for (int side = 0; side < 2; ++side) {
+            const LevelCelBlock blk = micro.blocks[2 * b + side];
+            if (!blockDrawable(blk, cel))
+                continue;
+            int fh = 0;
+            decodeReencodedFrame(cel, blk.frame() - 1, pal, frame, fh);
+            blitFrame(frame.data(), 32, 32, rgba.data(), W, H, pitch,
+                      side * 32, slotTopY);
         }
     }
     outW = W;
@@ -115,8 +155,8 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
                           const std::vector<uint16_t>& microGrid, int gw, int gh,
                           const std::vector<uint8_t>& solFlags,
                           const std::vector<int8_t>& transparency,
-                          const std::vector<uint16_t>& tileLayer, int tileW, int tileH,
-                          const uint8_t* pal, int microLen)
+                          const uint8_t* pal, int microLen,
+                          const MapRenderOptions& opts)
 {
     MapRenderResult res;
     res.gridW = gw;
@@ -127,30 +167,75 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
     res.blockMissile.assign(cells, 0);
     res.transparent.assign(cells, 0);
 
+    const SceneProjection proj = sceneProjection(gw, gh, microLen);
     const int nRows = microLen / 2;
     const int Hm = nRows * 32;
 
-    // Bounding box in screen space (long to avoid overflow for large grids).
-    const long minX = -(static_cast<long>(gw) - 1) * 32;
-    const long minY = -(static_cast<long>(gw) + gh - 2) * 16 - Hm + 1;
-    const long maxX = (static_cast<long>(gh) - 1) * 32 + 64;
-    const long maxY = 0;
-    const long width = maxX - minX + 1;
-    const long height = maxY - minY + 1;
-
-    res.width = static_cast<int>(width);
-    res.height = static_cast<int>(height);
-    res.rgba.assign(static_cast<size_t>(width) * static_cast<size_t>(height) * 4, 0);
+    res.width = static_cast<int>(proj.width);
+    res.height = static_cast<int>(proj.height);
+    res.rgba.assign(static_cast<size_t>(res.width) * static_cast<size_t>(res.height) * 4, 0);
+    // Fill the whole canvas with an OPAQUE background (no transparent gaps).
+    const uint8_t bg[4] = { opts.background[0], opts.background[1],
+                            opts.background[2], opts.background[3] };
+    for (size_t i = 0; i < res.rgba.size(); i += 4)
+        std::memcpy(res.rgba.data() + i, bg, 4);
     const int pitch = res.width * 4;
-    const long HmLong = Hm;
-    const long minXLong = minX;
 
     std::vector<uint8_t> frame(32 * 32 * 4);
 
-    // Painter's order: draw nearest cells first (largest i+j, bottom of the
-    // screen) and farther cells last (smallest i+j, top). In this level's
-    // isometric projection the farther cells sit higher on screen and their wall
-    // bases are correctly occluded by the nearer cells drawn underneath.
+    // Screen position of a cell: x = left of the 64px diamond, colTop = top of
+    // the whole (microLen/2 * 32) column. Slot b occupies rows
+    // colTop + (Hm - (b+1)*32) .. +31, so b=0 (floor) is the bottom slot.
+    const auto cellX = [&](int i, int j) {
+        return static_cast<int>((static_cast<long>(j) - i) * 32 - proj.minX);
+    };
+    const auto colTop = [&](int i, int j) {
+        const long baseY = -(static_cast<long>(j) + i) * 16 - proj.minY;
+        return static_cast<int>(baseY - Hm + 1);
+    };
+    const auto slotTop = [&](int ct, int b) {
+        return ct + (Hm - (b + 1) * 32);
+    };
+
+    // Precompute per-cell SOL flags + resolved micro index. SOL is indexed by
+    // the micro piece id (DevilutionX SOLData[dPiece[x][y]]).
+    std::vector<uint8_t> flags(cells, 0);
+    std::vector<uint16_t> cellMicroIdx(cells, kNoMicro);
+    for (int j = 0; j < gh; ++j) {
+        for (int i = 0; i < gw; ++i) {
+            const size_t idx = static_cast<size_t>(j) * gw + i;
+            const uint16_t mi = resolveMicroIndex(micros, microGrid[idx], opts);
+            cellMicroIdx[idx] = mi;
+            if (mi != kNoMicro && !solFlags.empty() && mi < solFlags.size())
+                flags[idx] = solFlags[mi];
+            res.solid[idx] = (flags[idx] & TileFlags::Solid) ? 1 : 0;
+            res.blockLight[idx] = (flags[idx] & TileFlags::BlockLight) ? 1 : 0;
+            res.blockMissile[idx] = (flags[idx] & TileFlags::BlockMissile) ? 1 : 0;
+            if (!transparency.empty() && idx < transparency.size())
+                res.transparent[idx] = (transparency[idx] > 0) ? 1 : 0;
+        }
+    }
+
+    // DevilutionX IsFloor(tilePosition): not Solid and not BlockMissile.
+    const auto isFloor = [&](size_t idx) {
+        return !(flags[idx] & (TileFlags::Solid | TileFlags::BlockMissile));
+    };
+
+    const MicroTileRef* floorMicro =
+        (opts.prefillMicro == kNoMicro || opts.prefillMicro >= micros.size())
+            ? nullptr : &micros[opts.prefillMicro];
+
+    const auto microAt = [&](size_t idx) -> const MicroTileRef* {
+        const uint16_t mi = cellMicroIdx[idx];
+        return (mi == kNoMicro) ? nullptr : &micros[mi];
+    };
+
+    // ---- Pass 1: floor diamonds for EVERY cell (complete ground plane) ----
+    // Drawn far-to-near so nearer diamonds overlap farther ones correctly.
+    // DevilutionX DrawFloorTile forces LeftTriangle / RightTriangle regardless
+    // of the block's stored type; CopyRun writes opaque pixels, so even a frame
+    // encoded as a square/trapezoid yields a filled (if stylized) diamond.
+    // If a cell's own floor block is missing, fall back to the prefill floor.
     const int maxSum = (gw - 1) + (gh - 1);
     for (int s = maxSum; s >= 0; --s) {
         for (int i = 0; i < gw; ++i) {
@@ -158,53 +243,64 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
             if (j < 0 || j >= gh)
                 continue;
             const size_t idx = static_cast<size_t>(j) * gw + i;
-            const uint16_t mi = microGrid[idx];
-            if (mi == 0)
+            const int x = cellX(i, j);
+            const int slot = slotTop(colTop(i, j), 0);
+            for (int side = 0; side < 2; ++side) {
+                const MicroTileRef* m = microAt(idx);
+                LevelCelBlock blk = m ? m->blocks[side] : LevelCelBlock{};
+                if (!blockDrawable(blk, cel) && floorMicro)
+                    blk = floorMicro->blocks[side];
+                if (!blockDrawable(blk, cel))
+                    continue;
+                int fh = 0;
+                decodeReencodedFrameAs(cel, blk.frame() - 1,
+                                       side == 0 ? TileType::LeftTriangle
+                                                 : TileType::RightTriangle,
+                                       pal, frame, fh);
+                blitFrame(frame.data(), 32, 32, res.rgba.data(), res.width,
+                          res.height, pitch, x + side * 32, slot);
+            }
+        }
+    }
+
+    // ---- Pass 2: walls / objects, back-to-front (descending i+j) ----
+    for (int s = maxSum; s >= 0; --s) {
+        for (int i = 0; i < gw; ++i) {
+            const int j = s - i;
+            if (j < 0 || j >= gh)
                 continue;
+            const size_t idx = static_cast<size_t>(j) * gw + i;
+            const MicroTileRef* m = microAt(idx);
+            if (!m)
+                continue;
+            const int x = cellX(i, j);
+            const int ct = colTop(i, j);
 
-            const MicroTileRef& micro = micros[mi - 1];
-            const long baseX = (static_cast<long>(j) - i) * 32 - minXLong;
-            const long baseY = -(static_cast<long>(j) + i) * 16 - minY;
-            const long colTop = baseY - HmLong + 1;
-
-            // Collision / lighting / transparency metadata for this cell.
-            uint8_t flags = 0;
-            if (i < 2 * tileW && j < 2 * tileH) {
-                const uint16_t mega = tileLayer[static_cast<size_t>(j / 2) * tileW + (i / 2)];
-                if (mega > 0 && !solFlags.empty() && mega - 1 < solFlags.size())
-                    flags = solFlags[mega - 1];
-            }
-            res.solid[idx] = (flags & TileFlags::Solid) ? 1 : 0;
-            res.blockLight[idx] = (flags & TileFlags::BlockLight) ? 1 : 0;
-            res.blockMissile[idx] = (flags & TileFlags::BlockMissile) ? 1 : 0;
-            if (!transparency.empty() && idx < transparency.size()) {
-                const int8_t t = transparency[idx];
-                // DUN transparency layer: 0 = fully solid, > 0 = transparent.
-                res.transparent[idx] = (t > 0) ? 1 : 0;
-            }
-
-            // Draw the block stack back-to-front within the cell.
-            for (int b = 0; b < nRows; ++b) {
-                const long slotTopY = colTop + (HmLong - (b + 1) * 32);
-                // Left block at column x = 0.
-                {
-                    const LevelCelBlock blk = micro.blocks[2 * b];
-                    if (blk.hasValue()) {
-                        int fh = 0;
-                        decodeReencodedFrame(cel, blk.frame() - 1, pal, frame, fh);
-                        blitFrame(frame.data(), 32, 32, res.rgba.data(), pitch,
-                                  static_cast<int>(baseX), static_cast<int>(slotTopY));
-                    }
+            // Non-floor cells: draw mt[0]/mt[1] with their REAL TileType at the
+            // cell base (wall base / object), on top of the floor diamond.
+            if (!isFloor(idx)) {
+                for (int side = 0; side < 2; ++side) {
+                    const LevelCelBlock blk = m->blocks[side];
+                    if (!blockDrawable(blk, cel))
+                        continue;
+                    int fh = 0;
+                    decodeReencodedFrame(cel, blk.frame() - 1, pal, frame, fh);
+                    blitFrame(frame.data(), 32, 32, res.rgba.data(), res.width,
+                              res.height, pitch, x + side * 32, slotTop(ct, 0));
                 }
-                // Right block at column x = 32.
-                {
-                    const LevelCelBlock blk = micro.blocks[2 * b + 1];
-                    if (blk.hasValue()) {
-                        int fh = 0;
-                        decodeReencodedFrame(cel, blk.frame() - 1, pal, frame, fh);
-                        blitFrame(frame.data(), 32, 32, res.rgba.data(), pitch,
-                                  static_cast<int>(baseX) + 32, static_cast<int>(slotTopY));
-                    }
+            }
+
+            // Wall pairs mt[2..microLen-1], each pair one 32px slot higher.
+            for (int b = 1; b < nRows; ++b) {
+                const int slot = slotTop(ct, b);
+                for (int side = 0; side < 2; ++side) {
+                    const LevelCelBlock blk = m->blocks[2 * b + side];
+                    if (!blockDrawable(blk, cel))
+                        continue;
+                    int fh = 0;
+                    decodeReencodedFrame(cel, blk.frame() - 1, pal, frame, fh);
+                    blitFrame(frame.data(), 32, 32, res.rgba.data(), res.width,
+                              res.height, pitch, x + side * 32, slot);
                 }
             }
         }

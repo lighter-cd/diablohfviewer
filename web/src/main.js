@@ -12,9 +12,9 @@
 // Player CL2 frames are stored direction-major: 8 directions x N frames, so
 // frameIndex = dir * framesPerDir + frameInDir (framesPerDir = total/8).
 
-import { McpClient } from "./client.js?v=20261108d";
-import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js?v=20261108d";
-import { drawFrame, drawComposite, drawScene } from "./viewer.js?v=20261108d";
+import { McpClient } from "./client.js?v=20261109a";
+import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js?v=20261109a";
+import { drawFrame, drawComposite, drawScene } from "./viewer.js?v=20261109a";
 
 const $ = (id) => document.getElementById(id);
 
@@ -175,6 +175,13 @@ function extOf(p) {
 function isCharMode() {
   const r = document.querySelector('input[name="mode"]:checked');
   return !!r && r.value === "character";
+}
+
+// Scene mode owns the view instead of the shared canvas: two stacked PNG
+// layers (base + SOL overlay) inside a pannable/zoomable viewport.
+function isSceneMode() {
+  const r = document.querySelector('input[name="mode"]:checked');
+  return !!r && r.value === "scene";
 }
 
 async function loadCatalog() {
@@ -770,7 +777,7 @@ function setDirections(dirs) {
 // Composites any enabled effect-overlay layers on top (alpha), aligning each
 // overlay's own (dir, fin) so multi-direction sprites stay in sync.
 function showFrame(dir, fin) {
-  if (isCombatMode()) return;   // combat mode owns the canvas via drawScene
+  if (isCombatMode() || isSceneMode()) return;   // those modes own the view
   if (!currentFrames) return;
   const idx = dir * framesPerDir + fin;
   const f = currentFrames[idx];
@@ -815,6 +822,7 @@ function updateMeta(idx, dir, fin) {
 }
 
 function startPlay() {
+  if (isSceneMode()) return;
   if (isCombatMode()) return startCombatPlay();
   if (!currentFrames || framesPerDir <= 1) return;
   isPlaying = true;
@@ -1323,6 +1331,163 @@ function stepCombatStage(delta) {
   renderCombatStage((combatStage + delta + n) % n, 0);
 }
 
+// ---- Scene viewer (5th browse mode) -----------------------------------------
+//
+// The backend scene.build returns two pixel-identical PNGs (a bounded preview
+// and a transparent SOL overlay) as base64. We stack them as <img> layers and
+// apply ONE transform to the shared container, so zoom/pan never desync them.
+
+const sceneState = {
+  zoom: 2,
+  panX: 0,
+  panY: 0,
+  w: 0,             // preview natural width
+  h: 0,             // preview natural height
+  loaded: false,
+  dragging: false,
+  dragX: 0,
+  dragY: 0,
+};
+let sceneCatalog = [];
+
+function applySceneTransform() {
+  if (!sceneState.loaded) return;
+  const z = sceneState.zoom;
+  const layers = $("sceneLayers");
+  layers.style.width = `${sceneState.w * z}px`;
+  layers.style.height = `${sceneState.h * z}px`;
+  layers.style.left = `${sceneState.panX}px`;
+  layers.style.top = `${sceneState.panY}px`;
+  // Both images share the layer box; only the container is scaled/positioned.
+  for (const id of ["sceneBase", "sceneOverlay"]) {
+    const el = $(id);
+    el.style.width = `${sceneState.w * z}px`;
+    el.style.height = `${sceneState.h * z}px`;
+  }
+  $("sceneZoomNo").textContent = `${z}×`;
+}
+
+function sceneFit() {
+  const vp = $("sceneViewport");
+  if (!sceneState.loaded) return;
+  // Fit the whole preview into the viewport at zoom 1, centred.
+  const z = 1;
+  sceneState.zoom = z;
+  $("sceneZoom").value = String(z);
+  sceneState.panX = Math.max(0, (vp.clientWidth - sceneState.w * z) / 2);
+  sceneState.panY = Math.max(0, (vp.clientHeight - sceneState.h * z) / 2);
+  applySceneTransform();
+}
+
+async function loadSceneCatalog() {
+  try {
+    const res = await client.callTool("scene.list", {});
+    sceneCatalog = (res && res.scenes) || [];
+    const sel = $("sceneSel");
+    sel.innerHTML = "";
+    for (const s of sceneCatalog) {
+      const o = document.createElement("option");
+      o.value = s.id;
+      o.textContent = `${s.title}  (${s.grid_width}×${s.grid_height})`;
+      sel.appendChild(o);
+    }
+    if (sceneCatalog.length) sel.value = "tristram";
+  } catch (e) {
+    showError("scene.list 失败: " + (e.message || e));
+  }
+}
+
+async function loadScene() {
+  const id = $("sceneSel").value;
+  if (!id) { showError("请先选择一个场景"); return; }
+  hideError();
+  setMeta(`加载场景 ${id} …`);
+  $("sceneLoadBtn").disabled = true;
+  try {
+    const args = { id };
+    // Prefer an explicit path; otherwise the catalog's primary archive. The
+    // full archive stack is always passed so town/L1 assets resolve even when
+    // split across MPQs.
+    const override = ($("sceneArchive").value || "").trim();
+    const primary = override || ((allArchives && allArchives.length) ? allArchives[0] : null);
+    if (primary) args.archive = primary;
+    if (allArchives && allArchives.length) args.archives = allArchives.slice();
+    if (!args.archive) {
+      showError("未连接或未发现 MPQ 档案：请在上方填入 MPQ 路径");
+      return;
+    }
+    args.preview_max_width = 1000;
+    const res = await client.callTool("scene.build", args);
+    if (!res || !res.image_base64) throw new Error("scene.build 未返回图像");
+    const base = `data:image/png;base64,${res.image_base64}`;
+    $("sceneBase").src = base;
+    $("sceneOverlay").src = res.overlay_base64
+      ? `data:image/png;base64,${res.overlay_base64}` : "";
+    $("sceneOverlay").hidden = !$("sceneOverlayToggle").checked;
+    sceneState.w = res.preview_width || 0;
+    sceneState.h = res.preview_height || 0;
+    sceneState.loaded = true;
+    sceneFit();
+    setMeta(`${res.title}  原始 ${res.width}×${res.height}  预览 ${res.preview_width}×${res.preview_height}  ` +
+            `网格 ${res.grid_width}×${res.grid_height}  缩放 1/${res.scale}  ` +
+            `透明像素 ${res.transparent_pixel_count}  Solid ${res.solid_count}`);
+  } catch (e) {
+    showError("scene.build 失败: " + (e.message || e));
+    setMeta("场景加载失败", true);
+  } finally {
+    $("sceneLoadBtn").disabled = false;
+  }
+}
+
+function showSceneView() {
+  $("sceneBase").hidden = false;
+  if (!sceneCatalog.length) loadSceneCatalog();
+  if (sceneState.loaded) sceneFit();
+}
+
+function wireSceneControls() {
+  $("sceneLoadBtn").addEventListener("click", () => loadScene());
+  $("sceneSel").addEventListener("change", () => { /* explicit load button */ });
+  $("sceneZoom").addEventListener("input", (e) => {
+    sceneState.zoom = Math.max(1, Math.min(8, parseInt(e.target.value, 10) || 1));
+    applySceneTransform();
+  });
+  $("sceneOverlayToggle").addEventListener("change", (e) => {
+    $("sceneOverlay").hidden = !e.target.checked;
+  });
+  $("sceneBrightToggle").addEventListener("change", (e) => {
+    $("sceneLayers").classList.toggle("bright", e.target.checked);
+  });
+  $("sceneFitBtn").addEventListener("click", () => sceneFit());
+
+  const vp = $("sceneViewport");
+  vp.addEventListener("wheel", (e) => {
+    if (!isSceneMode()) return;
+    e.preventDefault();
+    const step = e.deltaY < 0 ? 1 : -1;
+    sceneState.zoom = Math.max(1, Math.min(8, sceneState.zoom + step));
+    $("sceneZoom").value = String(sceneState.zoom);
+    applySceneTransform();
+  }, { passive: false });
+  vp.addEventListener("mousedown", (e) => {
+    if (!isSceneMode()) return;
+    sceneState.dragging = true;
+    sceneState.dragX = e.clientX - sceneState.panX;
+    sceneState.dragY = e.clientY - sceneState.panY;
+    vp.classList.add("dragging");
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!sceneState.dragging) return;
+    sceneState.panX = e.clientX - sceneState.dragX;
+    sceneState.panY = e.clientY - sceneState.dragY;
+    applySceneTransform();
+  });
+  window.addEventListener("mouseup", () => {
+    sceneState.dragging = false;
+    vp.classList.remove("dragging");
+  });
+}
+
 function wireControls() {
   $("connectBtn").addEventListener("click", async () => {
     try {
@@ -1340,16 +1505,22 @@ function wireControls() {
       const character = e.target.value === "character";
       const monster = e.target.value === "monster";
       const combat = e.target.value === "combat";
+      const scene = e.target.value === "scene";
       stopPlay();
-      $("catalogPane").hidden = character || monster || combat;
+      $("catalogPane").hidden = character || monster || combat || scene;
       $("charPane").hidden = !character;
       $("monsterPane").hidden = !monster;
       $("combatPane").hidden = !combat;
       $("combatDetailPane").hidden = !combat;
+      $("scenePane").hidden = !scene;
+      // Scene mode swaps the shared canvas for the pannable PNG viewport.
+      $("canvasWrap").hidden = scene;
+      $("sceneView").hidden = !scene;
+      $("overlaysPanel").hidden = scene;
       // Combat uses a fixed 8-way scene direction; other modes use the sprite's
       // own direction count when the next sprite is decoded.
       if (combat) syncCombatDirControl();
-      else {
+      else if (!scene) {
         $("directions").disabled = false;
         $("dir").max = String(Math.max(0, currentDirections - 1));
       }
@@ -1358,6 +1529,7 @@ function wireControls() {
       if (character) showCharacterSprite();
       if (monster) showMonsterView();
       if (combat) showCombatView();
+      if (scene) showSceneView();
     });
   });
 
@@ -1374,6 +1546,7 @@ function wireControls() {
 
   // Frame slider (frame within the current direction / combat stage).
   $("frame").addEventListener("input", (e) => {
+    if (isSceneMode()) return;
     stopPlay();
     const v = Number(e.target.value);
     if (isCombatMode()) renderCombatStage(combatStage, v);
@@ -1383,6 +1556,7 @@ function wireControls() {
   // caster: both actors are re-placed and re-oriented, but playback never
   // changes the direction (the loop only advances frames within one stage).
   $("dir").addEventListener("input", (e) => {
+    if (isSceneMode()) return;
     if (isCombatMode()) {
       combatDir = Math.max(0, Math.min(7, Number(e.target.value) || 0));
       renderCombatStage(combatStage, Math.min(combatFrame, stageFrameCount(combatStage) - 1));
@@ -1393,7 +1567,7 @@ function wireControls() {
   });
   // Directions selector (re-splits the flat frame list).
   $("directions").addEventListener("change", (e) => {
-    if (isCombatMode()) return;
+    if (isCombatMode() || isSceneMode()) return;
     stopPlay();
     setDirections(Number(e.target.value));
     currentFin = Math.min(currentFin, framesPerDir - 1);
@@ -1407,6 +1581,7 @@ function wireControls() {
   // drawComposite/drawScene: canvas pixels = native × zoom, context scaled with
   // nearest-neighbour), so sprite size AND scene spacing both grow with zoom.
   $("zoom").addEventListener("input", (e) => {
+    if (isSceneMode()) return;
     zoom = Math.max(1, Math.min(8, parseInt(e.target.value, 10) || 1));
     $("zoomNo").textContent = zoom + "×";
     if (isCombatMode()) renderCombatStage(combatStage, combatFrame);
@@ -1415,17 +1590,19 @@ function wireControls() {
 
   // Re-decode the current sprite when the user changes the palette.
   $("palette").addEventListener("change", () => {
+    if (isSceneMode()) return;
     if (isCombatMode()) { combatCache.clear(); buildCombatScene(); return; }
     if (lastSprite) onSelectSprite(lastSprite);
   });
 
   // TRN toggle / preset: re-decode so the colour change takes effect.
   $("applyTrn").addEventListener("change", () => {
+    if (isSceneMode()) return;
     if (isCombatMode()) { combatCache.clear(); buildCombatScene(); return; }
     if (lastSprite) onSelectSprite(lastSprite);
   });
   $("trnPreset").addEventListener("change", () => {
-    if (isCombatMode()) return;
+    if (isCombatMode() || isSceneMode()) return;
     if ($("applyTrn").checked && lastSprite) onSelectSprite(lastSprite);
   });
 
@@ -1499,6 +1676,8 @@ function wireControls() {
   $("combatLoop").addEventListener("change", () => {
     if (isPlaying) { stopPlay(); startCombatPlay(); }
   });
+
+  wireSceneControls();
 }
 
 wireControls();

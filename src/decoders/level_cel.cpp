@@ -365,16 +365,19 @@ ReencodedLevelCel reencodeLevelCel(const std::vector<uint8_t>& rawCel,
     return out;
 }
 
-// Decode one re-encoded frame into a 32 x H RGBA buffer. Returns the height used.
-int decodeReencodedFrame(const ReencodedLevelCel& cel, uint32_t frameIndex,
-                         const uint8_t* pal, std::vector<uint8_t>& rgba, int& outH)
+// Decode one re-encoded frame into a 32 x H RGBA buffer using the given shape.
+// Shared by decodeReencodedFrame (per-frame type) and decodeReencodedFrameAs
+// (forced type, used for floor triangles).
+static int decodeAs(const ReencodedLevelCel& cel, uint32_t frameIndex,
+                    TileType shape, const uint8_t* pal,
+                    std::vector<uint8_t>& rgba, int& outH)
 {
     rgba.assign(static_cast<size_t>(kTileWidth) * kTileHeight * 4, 0);
     outH = kTileHeight;
     if (frameIndex >= cel.numFrames)
         return 0;
     const uint8_t* src = cel.buffer.data() + cel.frameOffsetsRel(frameIndex);
-    switch (cel.frameTypes[frameIndex]) {
+    switch (shape) {
     case TileType::Square: DecodeSquare(src, rgba.data(), pal); break;
     case TileType::TransparentSquare:
         {
@@ -388,6 +391,21 @@ int decodeReencodedFrame(const ReencodedLevelCel& cel, uint32_t frameIndex,
     case TileType::RightTrapezoid: DecodeRightTrapezoid(src, rgba, pal); break;
     }
     return kTileWidth;
+}
+
+int decodeReencodedFrame(const ReencodedLevelCel& cel, uint32_t frameIndex,
+                         const uint8_t* pal, std::vector<uint8_t>& rgba, int& outH)
+{
+    if (frameIndex >= cel.numFrames)
+        return decodeAs(cel, frameIndex, TileType::Square, pal, rgba, outH);
+    return decodeAs(cel, frameIndex, cel.frameTypes[frameIndex], pal, rgba, outH);
+}
+
+int decodeReencodedFrameAs(const ReencodedLevelCel& cel, uint32_t frameIndex,
+                           TileType forced, const uint8_t* pal,
+                           std::vector<uint8_t>& rgba, int& outH)
+{
+    return decodeAs(cel, frameIndex, forced, pal, rgba, outH);
 }
 
 } // namespace decoders

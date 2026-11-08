@@ -17,10 +17,12 @@
 //       out/integration_tests.cpp \
 //       src/engine/archive.cpp src/tools/registry.cpp \
 //       src/tools/mpq_tools.cpp src/tools/sprite_tools.cpp \
+//       src/tools/scene_tools.cpp \
 //       src/decoders/palette.cpp src/decoders/clx.cpp src/decoders/cel.cpp \
 //       src/decoders/cl2.cpp src/decoders/pcx.cpp src/decoders/sprite_width.cpp \
+//       src/decoders/png.cpp \
 //       src/decoders/level_decode.cpp src/decoders/level_cel.cpp \
-//       src/decoders/level_render.cpp \
+//       src/decoders/level_render.cpp src/decoders/level_scene.cpp \
 //       src/mcp/jsonrpc.cpp \
 //       3rdparty/StormLib/build/libStormLib.a \
 //       -lws2_32 -lwininet -static-libgcc -static-libstdc++ \
@@ -33,6 +35,7 @@
 #include "tools/registry.h"
 #include "tools/mpq_tools.h"
 #include "tools/sprite_tools.h"
+#include "tools/scene_tools.h"
 #include "tools/base64.h"
 #include "mcp/jsonrpc.h"
 #include "decoders/level.h"
@@ -1120,23 +1123,117 @@ static void testLevelMap(const std::string& mpq) {
     CHECK(re.numFrames > 0, "level.map CEL reencoded");
 
     std::vector<uint8_t> palRgba = decoders::paletteToRGBA(palRgb);
+    decoders::MapRenderOptions opts;
+    opts.prefillMicro = 0;
     auto map = decoders::renderMap(re, micros, grid, gw, gh, solFlags,
-                                  d.transparency, d.tileLayer, d.width, d.height,
-                                  palRgba.data(), 10);
+                                  d.transparency, palRgba.data(), 10, opts);
     CHECK(map.width > 0 && map.height > 0, "level.map rendered with positive size");
     CHECK(map.rgba.size() == (size_t)map.width * map.height * 4,
           "level.map rgba sized width*height*4");
-    size_t nonT = 0;
-    for (size_t i = 0; i < map.rgba.size() / 4; ++i)
+    size_t nonT = 0, transparent = 0;
+    for (size_t i = 0; i < map.rgba.size() / 4; ++i) {
         if (map.rgba[i * 4 + 3] != 0) nonT++;
+        else transparent++;
+    }
     CHECK(nonT > 0, "level.map produced visible (opaque) pixels");
+    CHECK(transparent == 0, "level.map opaque background: 0 transparent pixels");
     CHECK(map.solid.size() == (size_t)gw * gh, "level.map solid grid sized gw*gh");
     printf("level.map (%s via %s): %s\n", dun.c_str(),
            usedMpq.c_str(), allOk ? "PASS" : "FAIL");
 }
 
+// ---------------------------------------------------------------------------
+// scene.* tools: complete-scene assembly against a real MPQ (Tristram town).
+// ---------------------------------------------------------------------------
+static void testSceneTools(const std::string& mpq) {
+    // Town assets live in DIABDAT.MPQ beside the default devilutionx.mpq.
+    std::vector<std::string> archives = { mpq };
+    {
+        size_t i = mpq.find_last_of("/\\");
+        std::string dir = (i != std::string::npos) ? mpq.substr(0, i + 1) : "";
+        std::string base = dir + "DIABDAT.MPQ";
+        if (base != mpq) archives.push_back(base);
+    }
+    // Verify the town assets exist before attempting a costly render.
+    bool haveTown = false;
+    for (auto& arch : archives) {
+        engine::Archive a;
+        if (!a.open(arch)) continue;
+        if (a.verify("levels/towndata/town.cel") &&
+            a.verify("levels/towndata/town.til") &&
+            a.verify("levels/towndata/town.min") &&
+            a.verify("levels/towndata/town.pal") &&
+            a.verify("levels/towndata/sector1s.dun")) {
+            haveTown = true;
+            break;
+        }
+    }
+    if (!haveTown) {
+        printf("  (skipped scene.*; town assets not found in any fixture)\n");
+        printf("scene.*: %s\n", allOk ? "PASS" : "FAIL");
+        return;
+    }
+
+    ToolRegistry reg;
+    tools::registerSceneTools(reg);
+    CHECK(reg.has("scene.list") && reg.has("scene.build"),
+          "scene.list / scene.build registered");
+
+    ToolResult lr = reg.dispatch("scene.list", json::object());
+    CHECK(lr.ok, "scene.list dispatch ok");
+    json scenes = lr.value.value("scenes", json::array());
+    bool hasTristram = false;
+    for (auto& s : scenes)
+        if (s.value("id", "") == "tristram") hasTristram = true;
+    CHECK(hasTristram, "scene.list contains tristram");
+
+    json args = json{{"id", "tristram"}, {"archive", archives[0]},
+                     {"preview_max_width", 400}};
+    json stack = json::array();
+    for (auto& a : archives) stack.push_back(a);
+    args["archives"] = stack;
+    ToolResult br = reg.dispatch("scene.build", args);
+    CHECK(br.ok, "scene.build dispatch ok");
+    if (!br.ok) {
+        printf("    scene.build error: %s\n", br.value.dump().c_str());
+        printf("scene.*: %s\n", allOk ? "PASS" : "FAIL");
+        return;
+    }
+    const json& v = br.value;
+    CHECK(v.value("width", 0) > 0 && v.value("height", 0) > 0,
+          "scene.build positive native dims");
+    CHECK(v.value("grid_width", 0) == 96 && v.value("grid_height", 0) == 96,
+          "scene.build tristram grid 96x96");
+    CHECK(v.value("transparent_pixel_count", 1) == 0,
+          "scene.build 0 transparent pixels (no black blocks)");
+    CHECK(v.value("frame_count", 0) > 0, "scene.build reencoded CEL frames");
+    // Preview + overlay PNGs are valid base64 PNGs of IDENTICAL dims.
+    const std::string img = v.value("image_base64", std::string());
+    const std::string ovl = v.value("overlay_base64", std::string());
+    CHECK(img.size() > 100 && ovl.size() > 100,
+          "scene.build returns both base64 PNGs");
+    CHECK(v.value("preview_width", 0) > 0 && v.value("preview_height", 0) > 0,
+          "scene.build preview dims positive");
+    const int pw = v.value("preview_width", 0), ph = v.value("preview_height", 0);
+    CHECK(pw * ph * 4 > 0, "scene.build preview has pixels");
+    // Flag arrays sized gw*gh.
+    CHECK(v["meta"]["solid"].size() == (size_t)(96 * 96),
+          "scene.build solid array sized gw*gh");
+    CHECK(v["meta"]["transparent"].size() == (size_t)(96 * 96),
+          "scene.build transparent array sized gw*gh");
+    // Decode the base64 and confirm the PNG signature.
+    auto pngSigOk = [](const std::string& b64) {
+        auto bytes = base64::decode(b64);
+        return bytes.size() > 8 && bytes[0] == 137 && bytes[1] == 80 &&
+               bytes[2] == 78 && bytes[3] == 71;
+    };
+    CHECK(pngSigOk(img), "scene.build image_base64 is a PNG");
+    CHECK(pngSigOk(ovl), "scene.build overlay_base64 is a PNG");
+    printf("scene.* (tristram): %s\n", allOk ? "PASS" : "FAIL");
+}
+
 int main() {
-    printf("=== DiabloHFConverter integration tests (engine + mpq_tools + sprite_tools) ===\n");
+    printf("=== DiabloHFConverter integration tests (engine + mpq_tools + sprite_tools + scene) ===\n");
     testNormalize();
     testSpriteList();
     testSpriteListSynthesis();
@@ -1167,6 +1264,7 @@ int main() {
     testSpriteDecodeCow();
     testSpellListSynthesis();
     testLevelMap(mpq);
+    testSceneTools(mpq);
     printf("=== %s ===\n", allOk ? "ALL PASS" : "FAILURES PRESENT");
     return allOk ? 0 : 1;
 }

@@ -38,6 +38,14 @@ public:
     // where MSYS argv translation does not apply.
     static std::string normalizePath(const std::string& in);
 
+    // Normalize an IN-ARCHIVE name for StormLib: MPQ internal paths are
+    // backslash-separated ("levels\\l1data\\l1.cel"), but callers often pass
+    // forward slashes ("levels/l1data/l1.cel"). SFileOpenFileEx only resolves
+    // the backslash form, so fold '/' -> '\\' before every lookup. Applied
+    // inside extract/verify/querySize/extractToFile; names already using '\\'
+    // pass through unchanged.
+    static std::string normalizeArchiveName(const std::string& in);
+
     // Non-copyable (owns an HANDLE); movable.
     Archive(const Archive&)            = delete;
     Archive& operator=(const Archive&) = delete;

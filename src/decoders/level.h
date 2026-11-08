@@ -78,6 +78,32 @@ struct TileFlags {
 
 constexpr int MAXTILES = 1379;
 
+// Sentinel for a micro cell that lies OUTSIDE the scene (no tile at all).
+// DevilutionX uses 0 as a perfectly valid micro index (DPieceMicros[0]), so 0
+// cannot double as "empty": we need an explicit out-of-band value.
+constexpr uint16_t kNoMicro = 0xFFFF;
+
+// Options for the composite map render. Defaults produce a fully opaque,
+// faithfully-composited scene (DevilutionX two-pass: floors, then walls).
+struct MapRenderOptions {
+    // Background RGBA. DevilutionX clears the view to black; filling every pixel
+    // (rather than leaving alpha=0) is what removes the "black blocks" that a
+    // viewer shows for transparent gaps.
+    uint8_t background[4] = { 0, 0, 0, 255 };
+    // A cell whose micro index is kNoMicro is drawn with this micro instead of
+    // being skipped. DevilutionX prefills every dPiece cell with a floor micro,
+    // so a real scene has no empty cells. Set to kNoMicro to leave holes.
+    uint16_t prefillMicro = kNoMicro;
+};
+
+// Isometric bounding box of a (gw x gh) micro grid with `microLen` blocks per
+// micro. Shared by the renderer and the scene overlay so both place cells with
+// exactly the same projection.
+struct SceneProjection {
+    long minX = 0, minY = 0, width = 0, height = 0;
+};
+SceneProjection sceneProjection(int gw, int gh, int microLen);
+
 // ---- Parsers ----------------------------------------------------------------
 
 // Parse a .til buffer (each entry = 4 little-endian uint16). Returns one
@@ -107,17 +133,26 @@ struct DunFile {
 };
 DunFile loadDun(const std::vector<uint8_t>& data);
 
-// Parse a .sol buffer -> MAXTILES flags. Returns an empty vector if the buffer
-// does not contain MAXTILES bytes; otherwise exactly MAXTILES bytes.
+// Parse a .sol buffer -> MAXTILES flags, indexed by MICRO piece id (verified
+// against DevilutionX `SOLData[dPiece[x][y]]`, dun_tile_data.hpp:219-221).
+// The on-disk file is only `pieceCount` bytes (l1.sol=453, town.sol=1258), so
+// it is copied into a MAXTILES-sized, zero-filled table; missing entries stay 0.
+// Returns an empty vector only for an empty input.
 std::vector<uint8_t> loadSol(const std::vector<uint8_t>& data);
 
 // Assemble the micro-tile grid (the `dPiece` grid) from the DUN megatile layer
 // and the megatile table (TIL). The grid is (2*width) x (2*height); each cell
-// holds the TIL megatile -> micro index, which is 1-based into `micros`
-// (0 = empty), matching DevilutionX's 1-based CEL/MIN convention. renderMap
-// reads `micros[mi - 1]` and treats mi == 0 as an empty cell. `gw`/`gh` are set
-// to 2*width / 2*height. Megatile index i in the DUN is 1-based into
-// `megatiles`.
+// holds the TIL megatile -> micro index.
+//
+// INDEXING (verified against DevilutionX `gendung.cpp:607-610`, `town.cpp:52-55`,
+// `scrollrt.cpp:551-553`): the micro index is copied VERBATIM from TIL and used
+// 0-based into `micros` (`micros[mi]`). `0` is a perfectly valid micro index
+// (DPieceMicros[0]) — it is NOT "empty". The only "empty" marker is the
+// out-of-band sentinel `kNoMicro`. This is a DIFFERENT convention from
+// `LevelCelBlock.frame()`, which is 1-based into CEL frames; the two must not
+// be conflated. Verified with real data: l1.til micros 0..452 <-> l1.min 453
+// pieces (0..452); town.til micros 0..1257 <-> town.min 1258 pieces.
+// Megatile ids in the DUN layer are 1-based into `megatiles` (0 = empty).
 void buildMicroGrid(const DunFile& dun,
                     const std::vector<MegaTile>& megatiles,
                     std::vector<uint16_t>& microGrid,
@@ -161,6 +196,14 @@ ReencodedLevelCel reencodeLevelCel(const std::vector<uint8_t>& rawCel,
 int decodeReencodedFrame(const ReencodedLevelCel& cel, uint32_t frameIndex,
                          const uint8_t* pal, std::vector<uint8_t>& rgba, int& outH);
 
+// Decode a frame forcing a specific TileType (DevilutionX DrawFloorTile always
+// renders mt[0]/mt[1] as Left/RightTriangle regardless of the block's own type
+// bits). Same layout as decodeReencodedFrame, but the shape decoder is chosen
+// by `forced` instead of cel.frameTypes[frameIndex].
+int decodeReencodedFrameAs(const ReencodedLevelCel& cel, uint32_t frameIndex,
+                           TileType forced, const uint8_t* pal,
+                           std::vector<uint8_t>& rgba, int& outH);
+
 // Build the per-frame TileType table needed by reencodeLevelCel, from every
 // CEL block referenced by every micro-tile (DevilutionX's "frame type is a
 // property of the CEL frame"). Frames not referenced default to Square.
@@ -194,17 +237,24 @@ void renderMicroTile(const ReencodedLevelCel& cel, const MicroTileRef& micro,
                      std::vector<uint8_t>& rgba, int& outW, int& outH);
 
 // Render a whole level map from the micro grid. `microGrid` is the (gw x gh)
-// 1-based micro-index grid (0 = empty) from buildMicroGrid. `tileLayer`/
-// `tileW`/`tileH` map each micro cell back to its megatile (1-based) so SOL flags
-// can be attached; `solFlags` is the optional per-megatile SOL table (MAXTILES);
-// `transparency` is the optional DUN micro-scale transparency layer. `pal` is a
-// 256-entry RGBA table (1024 bytes) from paletteToRGBA, used to color the frames.
+// 0-based micro-index grid (kNoMicro = truly outside the scene) from
+// buildMicroGrid / buildTownScene. `solFlags` is the optional per-MICRO SOL
+// table (MAXTILES bytes, indexed by the resolved micro piece id, as in
+// DevilutionX `SOLData[dPiece[x][y]]`); when empty, no SOL metadata is
+// produced. `transparency` is the optional DUN micro-scale transparency layer.
+// `pal` is a 256-entry RGBA table (1024 bytes) from paletteToRGBA.
+//
+// Faithful to DevilutionX DrawGame: Pass 1 draws every cell's floor as two
+// triangles (mt[0]=LeftTriangle, mt[1]=RightTriangle) forming a 64x32 diamond;
+// Pass 2 draws walls (mt[2..microLen-1]) back-to-front, each pair 32px higher.
+// Blocks with !hasValue() are skipped. Every pixel is filled with
+// opts.background first, so the result has no transparent gaps.
 MapRenderResult renderMap(const ReencodedLevelCel& cel,
                           const std::vector<MicroTileRef>& micros,
                           const std::vector<uint16_t>& microGrid, int gw, int gh,
                           const std::vector<uint8_t>& solFlags,
                           const std::vector<int8_t>& transparency,
-                          const std::vector<uint16_t>& tileLayer, int tileW, int tileH,
-                          const uint8_t* pal, int microLen);
+                          const uint8_t* pal, int microLen,
+                          const MapRenderOptions& opts = {});
 
 } // namespace decoders

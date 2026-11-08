@@ -96,10 +96,11 @@ std::vector<uint8_t> zlibStored(const std::vector<uint8_t>& raw) {
 
 } // namespace
 
-bool writePNG(const std::string& path, uint16_t width, uint16_t height,
-              const std::vector<uint8_t>& rgba) {
-    if (width == 0 || height == 0) return false;
-    if (rgba.size() != static_cast<size_t>(width) * height * 4) return false;
+std::vector<uint8_t> encodePNG(uint16_t width, uint16_t height,
+                               const std::vector<uint8_t>& rgba) {
+    std::vector<uint8_t> out;
+    if (width == 0 || height == 0) return out;
+    if (rgba.size() != static_cast<size_t>(width) * height * 4) return out;
 
     // Raw image data: each scanline prefixed with a filter byte (0 = none).
     std::vector<uint8_t> raw;
@@ -111,7 +112,6 @@ bool writePNG(const std::string& path, uint16_t width, uint16_t height,
         raw.insert(raw.end(), row, row + stride);
     }
 
-    std::vector<uint8_t> out;
     // 8-byte PNG signature.
     const uint8_t sig[8] = {137, 80, 78, 71, 13, 10, 26, 10};
     out.insert(out.end(), sig, sig + 8);
@@ -134,7 +134,13 @@ bool writePNG(const std::string& path, uint16_t width, uint16_t height,
     // IEND.
     std::vector<uint8_t> iend;
     appendChunk(out, "IEND", iend);
+    return out;
+}
 
+bool writePNG(const std::string& path, uint16_t width, uint16_t height,
+              const std::vector<uint8_t>& rgba) {
+    const std::vector<uint8_t> out = encodePNG(width, height, rgba);
+    if (out.empty()) return false;
     std::ofstream f(path, std::ios::binary);
     if (!f) return false;
     f.write(reinterpret_cast<const char*>(out.data()),

@@ -1,12 +1,14 @@
 # Sprite Viewer（web 前端骨架）
 
-浏览器里的 Diablo 1 / Hellfire 精灵查看器。本前端**不读 MPQ、不碰文件系统**，
-只通过 WebSocket 调用本地 `mcp-server` 暴露的 `sprite.*` / `palette.*` 工具，
-拿到 RGBA 帧后用 Canvas 绘制。
+浏览器里的 Diablo 1 / Hellfire 查看器。本前端**不读 MPQ、不碰文件系统**，
+只通过 WebSocket 调用本地 `mcp-server` 暴露的 `sprite.*` / `palette.*` / `scene.*` 工具，
+拿到 RGBA 帧（Canvas）或 PNG 预览（`<img>`）后绘制。
 
-> 阶段 2/3 的浏览器查看器：支持「选精灵 → 看单帧 / 8 方向播放」，并提供「角色查看器」
-> （职业 × 动作 × 盔甲/武器）与「怪物 / NPC 查看器」（怪物按动画字母枚举 + NPC 单方向精灵）
-> 三种浏览模式。技能特效（`lm`/`fm`/`qm`）作为可浏览动画纳入；TRN 上色已实装为开关。
+> 阶段 2/3/5 的浏览器查看器，共 **5 种浏览模式**：目录浏览、角色查看器、
+> 怪物 / NPC 查看器、技能 / 战斗查看器、**场景查看器**。
+> 技能特效（`lm`/`fm`/`qm`）作为可浏览动画纳入；TRN 上色已实装为开关。
+> 场景查看器调用 `scene.list` / `scene.build` 复原**完整关卡场景**（初始场景为
+> Tristram 城镇），支持缩放 / 平移 / 叠加层，见下方独立章节。
 
 ## 运行
 
@@ -22,13 +24,15 @@ python -m http.server 8000        # 或： npx serve .
 # 3) 浏览器打开 http://localhost:8000/
 ```
 
-打开后点 **Connect**（默认 `ws://localhost:18765`），顶部「浏览模式」可在两种视图间切换：
+打开后点 **Connect**（默认 `ws://localhost:18765`），顶部「浏览模式」可在 5 种视图间切换：
 
 - **目录浏览**（默认）：左侧目录树由 `sprite.list` 构建；点任一精灵即调用 `sprite.decode`
   并绘制，用下方「方向 / 帧」滑块翻看，或点「▶ 播放」循环播放当前方向的动画。
 - **角色查看器**：见下方独立章节。
 - **怪物 / NPC 查看器**：见下方独立章节。怪物/NPC 没有 MPQ listfile，目录由后端按
   DevilutionX 数据表（`monstdat.tsv` / `towners.tsv`）**合成**（`sprite.list(family:"monsters"/"towners")`）。
+- **技能 / 战斗查看器**：四阶段时间线（施法 → 投射 → 命中 → debuff）。
+- **场景查看器**：见下方独立章节，复原完整关卡地图。
 
 目录树支持两种分组方式，可在左侧顶部「分组」处切换：
 
@@ -202,3 +206,28 @@ web/
   `stone.trn`（灰染）可经预设显式施加看效果。每精灵 TRN `<spritePath>.trn` 在 MPQ 内命中为 0，无实际效果。
 - 8 方向切分按 `总帧数 / 方向数` 整除近似；若某精灵并非严格方向优先（如部分非玩家精灵），
   可手动把「方向数」调为 1 退回逐帧浏览。
+
+## 场景查看器（第 5 种浏览模式）
+
+切换到「场景查看器」后，共享 Canvas 被隐藏，改为一个可平移 / 缩放的视口，里面是两张
+绝对定位、像素级对齐的 `<img>`：场景底图 + SOL 叠加层。
+
+- **加载**：进入该模式会自动调用 `scene.list` 填充「场景」下拉；点「加载场景」调用
+  `scene.build {id, archive, archives, preview_max_width:1000}`。默认使用目录
+  `sprite.list` 收集到的 MPQ 档案栈（`allArchives`），也可在「MPQ 路径」输入框里
+  手动覆盖主档案。
+- **数据契约**：后端返回 `image_base64` / `overlay_base64`（均为 PNG 字节的 base64），
+  前端拼 `data:image/png;base64,` 直接赋给 `img.src`。两张图由同一
+  `SceneProjection` 生成、按同一整数 `scale` 降采样，尺寸完全一致。
+- **缩放 / 平移**：滑块（1–8×）或滚轮缩放，视口内按下拖拽平移；「复位视图」回到
+  全图适配。`applySceneTransform()` 对两张图施加同一组 `width/height/left/top`，
+  因此叠加层永远与底图对齐。`image-rendering:pixelated` 保证放大后仍是清晰像素。
+- **叠加层**：半透明等距网格线 + 每格 SOL 标志着色（红=Solid、蓝=透明、
+  黄=BlockLight），由后端按网格数组生成；开关控制显隐。
+- **提亮**：Tristram 是夜景、调色板偏暗，勾选「提亮」给两张图加 CSS
+  `brightness(1.7)`，不改变后端输出。
+
+场景由后端 `scene.build` 用 DevilutionX 两遍绘制（地板菱形 + 墙体）复原，输出
+**不透明背景、无透明空洞**（`transparent_pixel_count == 0`）。初始场景为 Tristram
+城镇（4 个 sector DUN + 预填微瓦片），另含两个 L1 大教堂预设。原理与资产路径见
+`docs/ARCHITECTURE.md` §9.3 与 `docs/PROJECT.md`。

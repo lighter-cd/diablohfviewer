@@ -162,8 +162,8 @@ canvas { background: transparent; image-rendering: pixelated; }
 .zoom input[type="range"] { width: 90px; }
 .zoom #zoomNo { color: #ffd479; min-width: 24px; text-align: right; }
 
-/* Character viewer pane */
-.char-pane, .monster-pane, .combat-pane {
+/* Character / monster / combat / scene viewer panes */
+.char-pane, .monster-pane, .combat-pane, .scene-pane {
   width: 320px;
   flex: 0 0 320px;
   display: flex;
@@ -172,7 +172,7 @@ canvas { background: transparent; image-rendering: pixelated; }
   border-right: 1px solid #3a3a42;
   padding: 10px 12px;
 }
-.char-pane[hidden], .monster-pane[hidden], .combat-pane[hidden] { display: none; }
+.char-pane[hidden], .monster-pane[hidden], .combat-pane[hidden], .scene-pane[hidden] { display: none; }
 .char-bar {
   padding: 8px 10px; margin: -10px -12px 10px;
   background: #2a2a32; border-bottom: 1px solid #3a3a42;
@@ -204,6 +204,7 @@ canvas { background: transparent; image-rendering: pixelated; }
   margin-top: 8px; border: 1px solid #2c2c34; border-radius: 6px;
   background: #191920; padding: 6px 8px; font-size: 13px;
 }
+.overlays[hidden] { display: none; }
 .overlays-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .overlays-head span { color: #d6d6dd; font-weight: 600; }
 .overlays-head button {
@@ -247,3 +248,36 @@ canvas { background: transparent; image-rendering: pixelated; }
 }
 #stagePrev:hover, #stageNext:hover { background: #3a3a44; }
 .combat-hint-err { color: #f0a0a0; }
+
+/* ---- Scene viewer (5th browse mode) ----
+   The canvas is hidden in this mode; instead a scrollable viewport holds two
+   absolutely-stacked <img> layers (base scene + aligned SOL overlay). Both are
+   transformed identically by applySceneTransform(), so zoom/pan stay in sync. */
+.canvas-wrap[hidden], .scene-view[hidden] { display: none; }
+.scene-view {
+  flex: 1; display: flex; flex-direction: column; min-height: 0;
+  margin-top: 12px; border-radius: 6px; overflow: hidden;
+}
+.scene-viewport {
+  flex: 1; position: relative; overflow: hidden; background: #0a0a0c;
+  cursor: grab;
+}
+.scene-viewport.dragging { cursor: grabbing; }
+.scene-layers { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.scene-layers img {
+  position: absolute; left: 0; top: 0;
+  image-rendering: pixelated;   /* crisp nearest-neighbour at any zoom */
+  -webkit-user-drag: none; user-select: none; pointer-events: none;
+}
+#sceneOverlay { pointer-events: none; }
+#sceneOverlay[hidden] { display: none; }
+.scene-check { flex-direction: row !important; align-items: center; gap: 6px !important; }
+.scene-check input { width: auto; }
+#sceneZoomNo { color: #ffd479; font-size: 12px; }
+#sceneArchive { background: #15151a; color: #e6e6e6; border: 1px solid #3a3a42; border-radius: 4px; padding: 4px 6px; font-size: 12px; }
+#sceneLoadBtn, #sceneFitBtn {
+  background: #2c2c34; color: #e6e6e6; border: 1px solid #3a3a42;
+  border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 13px;
+}
+#sceneLoadBtn:hover, #sceneFitBtn:hover { background: #3a3a44; }
+.scene-layers.bright img { filter: brightness(1.7) saturate(1.1); }

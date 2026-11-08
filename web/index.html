@@ -13,12 +13,16 @@
 
   (A plain file:// open will not load ES modules; use a static server.)
 
-  Two browse modes share the same canvas / palette / direction / playback
-  controls:
+  Browse modes:
     - 目录浏览 (Catalog): pick any sprite from the recovered-name tree.
     - 角色查看器 (Character): assemble a player sprite by Class → Action →
       Armor/Weapon via the plrgfx filename formula, then decode + play it
       with 8-direction animation.
+    - 怪物 / NPC 查看器 (Monster): synthesized monster / towner catalogs.
+    - 技能 / 战斗查看器 (Combat): staged spell / monster-attack timeline.
+    - 场景查看器 (Scene): render a COMPLETE Diablo 1 / Hellfire level scene
+      (Tristram town, L1 presets) via scene.list / scene.build, with zoom,
+      pan and a per-cell SOL overlay layer.
 -->
 <html lang="zh">
 <head>
@@ -26,8 +30,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta http-equiv="Pragma" content="no-cache" />
-  <title>DiabloHFConverter · Sprite & Character Viewer</title>
-  <link rel="stylesheet" href="styles.css?v=20261108d" />
+  <title>DiabloHFConverter · Sprite & Scene Viewer</title>
+  <link rel="stylesheet" href="styles.css?v=20261109a" />
 </head>
 <body>
   <header>
@@ -43,6 +47,7 @@
       <label><input type="radio" name="mode" value="character"> 角色查看器</label>
       <label><input type="radio" name="mode" value="monster"> 怪物 / NPC 查看器</label>
       <label><input type="radio" name="mode" value="combat"> 技能 / 战斗查看器</label>
+      <label><input type="radio" name="mode" value="scene"> 场景查看器</label>
     </div>
   </header>
 
@@ -143,6 +148,27 @@
       <div class="char-hint">「方向」滑块以施放者为中心旋转整场：目标落在施放者朝向的方位并回身面向施放者，两者位置与朝向同步重算。四个阶段都在当前方向内播完，播放不切换方向。「▶ 播放」连走 施法 → 投射 → 命中 → debuff，阶段按钮可单独查看；debuff 用 TRN 对目标做近似着色。</div>
     </aside>
 
+    <aside class="scene-pane" id="scenePane" hidden>
+      <div class="char-bar">场景查看器（scene.list / scene.build · 完整等距关卡）</div>
+      <div class="char-controls">
+        <label>场景
+          <select id="sceneSel"></select>
+        </label>
+        <label>MPQ 路径（可选，覆盖目录里的主档案）
+          <input id="sceneArchive" type="text" placeholder="留空则用目录中的档案栈" />
+        </label>
+        <button id="sceneLoadBtn" type="button">加载场景</button>
+        <label>缩放
+          <input id="sceneZoom" type="range" min="1" max="8" step="1" value="2" />
+          <span id="sceneZoomNo">2×</span>
+        </label>
+        <label class="scene-check"><input type="checkbox" id="sceneOverlayToggle" checked /> 显示叠加层（网格 / SOL 标志）</label>
+        <label class="scene-check"><input type="checkbox" id="sceneBrightToggle" /> 提亮（夜景）</label>
+        <button id="sceneFitBtn" type="button">复位视图</button>
+      </div>
+      <div class="char-hint">选场景 → 加载：后端用 DevilutionX 两遍绘制（地板菱形 + 墙体）复原完整场景，返回 PNG 预览 + 对齐的叠加层。拖拽平移、滑块/滚轮缩放。红色=Solid，蓝色=透明，黄色=BlockLight。初始场景为 Tristram 城镇。</div>
+    </aside>
+
     <section class="stage">
       <div class="current">
         <span class="current-label">当前资源：</span>
@@ -189,7 +215,7 @@
         </label>
         <span id="meta" class="meta"></span>
       </div>
-      <div class="overlays">
+      <div class="overlays" id="overlaysPanel">
         <div class="overlays-head">
           <span>特效叠加层 (alpha 合成)</span>
           <button id="overlayToggle" type="button" aria-expanded="false">展开</button>
@@ -203,8 +229,16 @@
           <div class="overlay-list" id="overlayList"></div>
         </div>
       </div>
-      <div class="canvas-wrap">
+      <div class="canvas-wrap" id="canvasWrap">
         <canvas id="canvas" width="1280" height="720"></canvas>
+      </div>
+      <div class="scene-view" id="sceneView" hidden>
+        <div id="sceneViewport" class="scene-viewport">
+          <div id="sceneLayers" class="scene-layers">
+            <img id="sceneBase" alt="scene" />
+            <img id="sceneOverlay" alt="scene overlay" />
+          </div>
+        </div>
       </div>
     </section>
 
@@ -214,6 +248,6 @@
     </aside>
   </main>
 
-  <script type="module" src="src/main.js?v=20261108d"></script>
+  <script type="module" src="src/main.js?v=20261109a"></script>
 </body>
 </html>

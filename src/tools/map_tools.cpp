@@ -138,7 +138,7 @@ mcp::ToolResult toolMapBuild(const mcp::json& params) {
     if (dun.width == 0 || dun.height == 0)
         throw std::runtime_error("DUN parse failed");
 
-    // Build the micro grid (1-based micro indices, 0 = empty) + keep tileLayer.
+    // Build the micro grid (0-based micro indices, kNoMicro = empty).
     int gw = 0, gh = 0;
     std::vector<uint16_t> microGrid;
     decoders::buildMicroGrid(dun, megatiles, microGrid, gw, gh);
@@ -150,10 +150,13 @@ mcp::ToolResult toolMapBuild(const mcp::json& params) {
     if (reencoded.numFrames == 0)
         throw std::runtime_error("level CEL parse failed");
 
+    // Fill empty cells with a real floor micro so the map has no transparent
+    // holes (the "black blocks"). micro 0 is a valid floor in L1/town MIN data.
+    decoders::MapRenderOptions opts;
+    opts.prefillMicro = 0;
     decoders::MapRenderResult map = decoders::renderMap(
         reencoded, micros, microGrid, gw, gh, solFlags,
-        dun.transparency, dun.tileLayer, static_cast<int>(dun.width),
-        static_cast<int>(dun.height), palRgba.data(), microLen);
+        dun.transparency, palRgba.data(), microLen, opts);
 
     if (map.width == 0 || map.height == 0)
         throw std::runtime_error("map render produced empty output");

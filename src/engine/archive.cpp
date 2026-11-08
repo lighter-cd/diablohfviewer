@@ -31,6 +31,13 @@ std::string Archive::normalizePath(const std::string& in) {
     return in;
 }
 
+std::string Archive::normalizeArchiveName(const std::string& in) {
+    std::string out = in;
+    for (char& c : out)
+        if (c == '/') c = '\\';
+    return out;
+}
+
 Archive::~Archive() {
     if (h_ != nullptr) {
         SFileCloseArchive((HANDLE)h_);
@@ -85,7 +92,8 @@ bool Archive::extract(const std::string& name, std::vector<uint8_t>& out) const 
         return false;
 
     HANDLE hf = nullptr;
-    if (!SFileOpenFileEx((HANDLE)h_, name.c_str(), 0, &hf))
+    std::string norm = normalizeArchiveName(name);
+    if (!SFileOpenFileEx((HANDLE)h_, norm.c_str(), 0, &hf))
         return false;
 
     DWORD sizeHi = 0;
@@ -110,14 +118,16 @@ bool Archive::extractToFile(const std::string& name, const std::string& outPath)
     if (h_ == nullptr)
         return false;
     // SFileExtractFile decrypts + decompresses and writes the raw bytes.
-    return SFileExtractFile((HANDLE)h_, name.c_str(), outPath.c_str(), 0) != 0;
+    std::string norm = normalizeArchiveName(name);
+    return SFileExtractFile((HANDLE)h_, norm.c_str(), outPath.c_str(), 0) != 0;
 }
 
 bool Archive::verify(const std::string& name) const {
     if (h_ == nullptr)
         return false;
     HANDLE hf = nullptr;
-    bool ok = SFileOpenFileEx((HANDLE)h_, name.c_str(), 0, &hf) != 0;
+    std::string norm = normalizeArchiveName(name);
+    bool ok = SFileOpenFileEx((HANDLE)h_, norm.c_str(), 0, &hf) != 0;
     if (ok)
         SFileCloseFile(hf);
     return ok;
@@ -128,7 +138,8 @@ bool Archive::querySize(const std::string& name, uint64_t& sizeOut) const {
     if (h_ == nullptr)
         return false;
     HANDLE hf = nullptr;
-    if (!SFileOpenFileEx((HANDLE)h_, name.c_str(), 0, &hf))
+    std::string norm = normalizeArchiveName(name);
+    if (!SFileOpenFileEx((HANDLE)h_, norm.c_str(), 0, &hf))
         return false;
     DWORD sizeHi = 0;
     DWORD sizeLo = SFileGetFileSize(hf, &sizeHi);
