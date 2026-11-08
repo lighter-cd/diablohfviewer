@@ -293,6 +293,55 @@ inline const std::set<std::string>& rangedAiSet()
     return k;
 }
 
+// Attacks that never go through GetMissileType(): their AI function calls
+// AddMissile / StartRangedAttack itself, so the missile depends on the monster's
+// intelligence (Counselor) or on the exact monster id (Familiar, Gloom), not on
+// the AI. Transcribed from DevilutionX Source/monster.cpp:
+//   CounselorAi(2728)  intel 0..3 -> Firebolt / ChargedBolt / LightningControl /
+//                      Fireball; plus FlashBottom+FlashTop at close range.
+//   BatAi(2436)        MT_FAMILIAR -> Lightning; MT_GLOOM -> Rhino charge.
+//   MegaAi(2822)       InfernoControl (near-range breath).
+// HorkDemonAi exists but no monstdat row uses ai=HorkDemon (MT_HORKDMN is
+// SkeletonMelee), so HorkSpawn is unreachable and intentionally omitted.
+// Each form becomes its own catalog entry so every missile keeps its own
+// projectile stage; 'condition' records why/when the game picks it.
+struct AttackForm {
+    std::string ai;
+    std::string variant;                    // "" when the AI has a single form
+    std::string missiles;                   // comma separated MissileIDs
+    std::string condition;                  // Chinese trigger note
+    int min_intelligence = -1;              // -1 = ignore
+    int max_intelligence = -1;
+    std::vector<std::string> only_monsters;  // monster ids (_monster_id); empty = any
+};
+
+inline const std::vector<AttackForm>& monsterAttackForms()
+{
+    static const std::vector<AttackForm> k = {
+        {"Counselor", "Firebolt", "Firebolt", "智力 0 的顾问（Counselor）远程弹", 0, 0, {}},
+        {"Counselor", "ChargedBolt", "ChargedBolt", "智力 1 的顾问（Magistrate）远程弹", 1, 1, {}},
+        {"Counselor", "Lightning", "LightningControl", "智力 2 的顾问（Cabalist）远程弹", 2, 2, {}},
+        {"Counselor", "Fireball", "Fireball", "智力 3 的顾问（Advocate / Arch-Litch Malignus）远程弹", 3, 3, {}},
+        {"Counselor", "Flash", "FlashBottom,FlashTop", "近身（距离<2）时施放，双层闪光", -1, -1, {}},
+        {"Bat", "Lightning", "Lightning", "仅 Familiar（MT_FAMILIAR）在撤退时放电", -1, -1, {"MT_FAMILIAR"}},
+        {"Bat", "Charge", "Rhino", "仅 Gloom（MT_GLOOM）远距离冲撞（物理，非法术）", -1, -1, {"MT_GLOOM"}},
+        {"Mega", "Inferno", "InfernoControl", "Slayer/Guardian/Vortex Lord/Balrog 近身喷吐", -1, -1, {}},
+    };
+    return k;
+}
+
+// True when this monster (id + intelligence) uses the given attack form.
+inline bool attackFormMatches(const AttackForm& f, const std::string& monsterId, int intelligence)
+{
+    if (f.min_intelligence >= 0 && intelligence < f.min_intelligence) return false;
+    if (f.max_intelligence >= 0 && intelligence > f.max_intelligence) return false;
+    if (!f.only_monsters.empty() &&
+        std::find(f.only_monsters.begin(), f.only_monsters.end(), monsterId) ==
+            f.only_monsters.end())
+        return false;
+    return true;
+}
+
 inline bool isImpactGraphic(const std::string& id)
 {
     static const char* kws[] = {"Explosion", "Boom", "Splat", "Shatter", "Hit", "Puddle", "Beam"};
@@ -358,6 +407,8 @@ struct Entry {
     std::string element;
     std::string cast_action;
     std::string monster_ai;
+    std::string variant;          // monster: attack form of a multi-form AI (e.g. "Fireball" / "Flash")
+    std::string condition;        // monster: when that form is used (Chinese note)
     std::vector<std::string> missiles;
     std::string mana_cost;
     std::string min_intelligence;
@@ -433,8 +484,20 @@ inline std::string synthDescription(const Entry& e)
         }
     }
     if (e.source == "monster") {
-        return e.monster_ai + " 远程攻击：发射 " +
-               (e.missiles.empty() ? "?" : e.missiles[0]) + " 导弹。";
+        std::string d = e.monster_ai;
+        if (!e.variant.empty()) d += " / " + e.variant;
+        d += " 远程攻击：发射 ";
+        if (e.missiles.empty()) {
+            d += "?";
+        } else {
+            for (size_t i = 0; i < e.missiles.size(); ++i) {
+                if (i > 0) d += "、";
+                d += e.missiles[i];
+            }
+        }
+        d += " 导弹。";
+        if (!e.condition.empty()) d += e.condition + "。";
+        return d;
     }
     std::string d = elementZh(e.element) + "系法术。";
     if (!e.mana_cost.empty()) d += "法力消耗 " + e.mana_cost + "，";
@@ -455,10 +518,14 @@ inline Entry deriveEntry(const Row& spell,
                          const std::map<std::string, Row>& misById,
                          const std::map<std::string, SpriteInfo>& sprById,
                          const std::string& source,
-                         const std::map<std::string, std::string>* zhNames = nullptr)
+                         const std::map<std::string, std::string>* zhNames = nullptr,
+                         const std::string& variant = "",
+                         const std::string& condition = "")
 {
     Entry e;
     e.source = source;
+    e.variant = variant;
+    e.condition = condition;
     e.id = trim(val(spell, "id"));
     e.name = trim(val(spell, "name"));
     if (e.id.empty()) e.id = e.name;
@@ -567,6 +634,11 @@ inline Entry deriveEntry(const Row& spell,
 
     e.visual_by_level = spell_visual::computeVisualByLevel(e.name, source, e.level, e.missiles);
 
+    // deriveEntry is also called with synthetic rows for monster AIs, where the
+    // row name IS the AI id; keep monster_ai filled so the description can lead
+    // with it (buildCatalog overwrites it for GetMissileType entries anyway).
+    if (source == "monster" && e.monster_ai.empty()) e.monster_ai = e.name;
+
     e.description = synthDescription(e);
     return e;
 }
@@ -635,6 +707,39 @@ inline Catalog buildCatalog(const std::filesystem::path& devRoot)
         e.monster_ai = kv.first;
         e.monsters = kv.second;
         e.default_ai = def;
+        c.monster_attacks.push_back(std::move(e));
+    }
+
+    // Attacks cast directly inside their AI function (Counselor / Bat / Mega /
+    // HorkDemon), which bypass GetMissileType(). One entry per attack form; the
+    // monster list is narrowed by intelligence or monster id exactly as the AI
+    // code picks the missile.
+    for (const auto& f : monsterAttackForms()) {
+        std::vector<std::string> names;
+        for (const auto& r : mon) {
+            if (trim(val(r, "ai")) != f.ai) continue;
+            if (!attackFormMatches(f, trim(val(r, "_monster_id")),
+                                   std::atoi(val(r, "intelligence").c_str())))
+                continue;
+            auto nm = trim(val(r, "name"));
+            if (nm.empty()) continue;
+            if (std::find(names.begin(), names.end(), nm) == names.end())
+                names.push_back(nm);
+        }
+        if (names.empty()) continue; // AI absent from the loaded tables
+
+        Row pseudo;
+        pseudo["id"] = f.variant.empty() ? f.ai : (f.ai + "." + f.variant);
+        pseudo["name"] = f.ai;
+        pseudo["missiles"] = f.missiles;
+        auto first = splitComma(f.missiles);
+        auto mi = first.empty() ? misById.end() : misById.find(trim(first[0]));
+        pseudo["flags"] = (mi == misById.end()) ? "" : val(mi->second, "flags");
+
+        Entry e = deriveEntry(pseudo, misById, sprById, "monster", &zh, f.variant, f.condition);
+        e.monster_ai = f.ai;
+        e.monsters = names;
+        e.default_ai = false;
         c.monster_attacks.push_back(std::move(e));
     }
 

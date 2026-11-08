@@ -884,6 +884,61 @@ static void testSpellListSynthesis() {
         if (a.value("default_ai", false)) hasDefault = true;
     CHECK(hasDefault, "spell.list marks default AI attacks");
 
+    // Multi-form monster attacks: AIs that pick the missile inside their AI
+    // function (bypassing GetMissileType) are split into one entry per form.
+    auto findAttack = [&](const std::string& id) -> json {
+        for (auto& a : attacks)
+            if (a.value("id", std::string()) == id) return a;
+        return json::object();
+    };
+    json adv = findAttack("Counselor.Fireball");
+    CHECK(!adv.empty(), "spell.list includes Counselor.Fireball");
+    if (!adv.empty()) {
+        CHECK(adv.value("monster_ai", std::string()) == "Counselor",
+              "Counselor.Fireball monster_ai == Counselor");
+        CHECK(adv.value("variant", std::string()) == "Fireball",
+              "Counselor.Fireball variant == Fireball");
+        json ms = adv.value("missiles", json::array());
+        CHECK(ms.size() == 1 && ms[0] == "Fireball",
+              "Counselor.Fireball -> Fireball missile");
+        bool advMon = false, counselorMon = false;
+        for (auto& m : adv.value("monsters", json::array())) {
+            if (m == "Advocate") advMon = true;
+            if (m == "Counselor") counselorMon = true;
+        }
+        CHECK(advMon && !counselorMon,
+              "Counselor.Fireball only lists intelligence-3 monsters");
+        CHECK(adv.value("cast_action", std::string()) == "fm",
+              "Counselor.Fireball cast_action == fm");
+        CHECK(!adv.value("condition", std::string()).empty(),
+              "Counselor.Fireball carries a condition note");
+        CHECK(stageOf(adv, "projectile").value("layers", json::array()).size() == 1,
+              "Counselor.Fireball has 1 projectile layer");
+    }
+    json cflash = findAttack("Counselor.Flash");
+    CHECK(!cflash.empty(), "spell.list includes Counselor.Flash");
+    if (!cflash.empty())
+        CHECK(stageOf(cflash, "projectile").value("layers", json::array()).size() == 2,
+              "Counselor.Flash has FlashBottom+FlashTop layers");
+    json batl = findAttack("Bat.Lightning");
+    CHECK(!batl.empty(), "spell.list includes Bat.Lightning");
+    if (!batl.empty()) {
+        json bm = batl.value("monsters", json::array());
+        CHECK(bm.size() == 1 && bm[0] == "Familiar",
+              "Bat.Lightning only lists MT_FAMILIAR (Familiar)");
+    }
+    json mega = findAttack("Mega.Inferno");
+    CHECK(!mega.empty(), "spell.list includes Mega.Inferno");
+    if (!mega.empty()) {
+        json mm = mega.value("missiles", json::array());
+        CHECK(!mm.empty() && mm[0] == "InfernoControl",
+              "Mega.Inferno -> InfernoControl");
+    }
+    CHECK(findAttack("HorkDemon.HorkSpawn").empty(),
+          "unreachable HorkSpawn (ai unused in monstdat) is omitted");
+    CHECK(res.value("monster_attack_count", 0) >= 21,
+          "spell.list monster_attack_count includes the extra attack forms");
+
     // source / id filters.
     json one = resultOf("spell.list", json{{"source", "player"}, {"id", "Fireball"}});
     CHECK(one.value("count", 0) == 1, "spell.list id/source filter works");

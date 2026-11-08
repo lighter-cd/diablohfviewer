@@ -859,8 +859,10 @@ function combatList() {
 // 显示名：优先中文名 name_zh，仅在中文名与英文名不同（即确有翻译）时附英文名；
 // 怪物远程攻击通常无翻译，回落到英文名。description 用作悬浮提示。
 function combatLabel(e) {
-  const zh = e && e.name_zh && e.name_zh !== e.name ? e.name_zh : "";
-  return zh ? `${zh} (${e.name})` : (e ? e.name : "");
+  if (!e) return "";
+  const zh = e.name_zh && e.name_zh !== e.name ? e.name_zh : "";
+  const base = zh ? `${zh} (${e.name})` : e.name;
+  return e.variant ? `${base} · ${e.variant}` : base;
 }
 
 // 在信息区展示原英文名与合成中文描述（用 textContent 防注入）。
@@ -884,6 +886,8 @@ function renderCombatInfo() {
     addRow("中文名", combatEntry.name_zh);
   if (combatEntry.level)
     addRow("法术等级", combatEntry.level);
+  if (combatEntry.variant) addRow("攻击形态", combatEntry.variant);
+  if (combatEntry.condition) addRow("触发条件", combatEntry.condition);
   if (Array.isArray(combatEntry.mana_by_level) && combatEntry.mana_by_level.length) {
     const txt = combatEntry.mana_by_level
       .map((o) => `${o.level}级=${o.mana}`)
@@ -951,7 +955,7 @@ function populateCombatSpells() {
   for (const e of combatList()) {
     const o = document.createElement("option");
     o.value = e.id;
-    o.textContent = combatLabel(e) + (e.monster_ai ? `  (${e.monster_ai})` : "");
+    o.textContent = combatLabel(e) + (e.monster_ai && !e.variant ? `  (${e.monster_ai})` : "");
     o.title = e.description || e.name;
     sel.appendChild(o);
   }

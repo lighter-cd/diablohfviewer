@@ -241,3 +241,8 @@
 ## 2026-11-08 17:39:47
 - 把默认放大倍数从 4 调整为 2：main.js 的 zoom 初值、index.html 滑块 value/显示、viewer.js validZoom 兜底默认值；版本串升至 ?v=20261108d。
 - 涉及: web/src/main.js, web/index.html, web/src/viewer.js, docs/ARCHITECTURE.md
+
+## 2026-11-08 18:05:41
+- 补齐 spell.list 怪物侧缺失法术入口：spell_tables.h 新增 monsterAttackForms()，转录 AI 函数内直接 AddMissile 的形态——Counselor 按智力 0..3 → Firebolt/ChargedBolt/LightningControl/Fireball，外加近身 FlashBottom+FlashTop；Familiar → Lightning；Gloom → Rhino 冲撞；Mega → InfernoControl。每形态独立成条（id 为 AI 或 AI.variant）并带 variant/condition，monsters 按智力或怪物 id 精确收窄，怪物攻击 14 → 22；HorkSpawn 因 monstdat 无 ai=HorkDemon 行（MT_HORKDMN 实为 SkeletonMelee）不可达，明确不输出。同步前端显示「攻击形态/触发条件」、工具描述与 README/ARCHITECTURE/PROJECT/SPELLS/web README 文档，单元与集成测试各加断言。
+- 涉及: src/tools/spell_tables.h, src/tools/sprite_tools.cpp, web/src/main.js, out/unit_tests.cpp, out/integration_tests.cpp, README.md, docs/ARCHITECTURE.md, docs/PROJECT.md, docs/SPELLS.md, web/README.md
+

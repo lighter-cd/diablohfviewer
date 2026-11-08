@@ -858,6 +858,8 @@ mcp::ToolResult toolSpellList(const mcp::json& params)
             j["monster_ai"] = e.monster_ai;
             j["monsters"] = e.monsters;
             j["default_ai"] = e.default_ai;
+            if (!e.variant.empty()) j["variant"] = e.variant;
+            if (!e.condition.empty()) j["condition"] = e.condition;
         }
         return j;
     };
@@ -1001,6 +1003,12 @@ void registerSpriteTools(ToolRegistry& reg)
         "because each spell hardcodes its own formula. A _note key marks values that depend "
         "on caster character level or dungeon level (approximated at refChar=50, refDungeon=0). "
         "Spells with no level-scaled visual params emit an empty visual_by_level. "
+        "Monster attacks also cover AIs that pick the missile inside their AI function "
+        "instead of GetMissileType() (Counselor -> Firebolt/ChargedBolt/LightningControl/" 
+        "Fireball by intelligence plus a Flash form; Familiar -> Lightning; Gloom -> Rhino " 
+        "charge; Mega -> Inferno). Those entries repeat the same " 
+        "monster_ai once per form and add variant (the form name) and condition (a Chinese " 
+        "note saying when the game uses it). Ids are 'AI' or 'AI.variant'. " 
         "impact_catalog lists all boom/splat effects (confidence='catalog') for manual "
         "selection. Filter with source='player'|'monster' and/or id.",
         json{ { "type", "object" },

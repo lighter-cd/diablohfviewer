@@ -489,6 +489,12 @@ DiabloHFConverter/
 - [x] 玩家技能列表：`spelldat.tsv` 36 个基础技能 + Hellfire 15 个 = 51 个，`missiles` 列给出 MissileID。
 - [x] 怪物远程攻击列表：`monstdat.ai` + `Source/monster.cpp::GetMissileType(ai)` 真实 switch 转录，
       共 14 类 AI 攻击（含 default→Arrow）。
+- [x] 怪物远程攻击补齐“AI 内直接 AddMissile”的缺失入口（`spell_tables.h::monsterAttackForms()`）：
+      Counselor 按智力 0..3 分别发 Firebolt/ChargedBolt/LightningControl/Fireball，近身另发
+      FlashBottom+FlashTop；Familiar 撤退时发 Lightning；Gloom 远距离 Rhino 冲撞；Mega 近身
+      InfernoControl。每个形态单独成条（id 为 `AI` 或 `AI.variant`），带 `variant`/`condition`，
+      `monsters` 按智力或怪物 id 收窄，怪物攻击条数 14 → 22。`HorkSpawn` 因 monstdat 无
+      `ai=HorkDemon` 行（`MT_HORKDMN` 实为 SkeletonMelee）不可达，明确不输出。
 - [x] 后端 `spell.list`：四表 join（`spelldat` / `misdat` / `missile_sprites` / `monstdat`），
       输出 `{count,spell_count,monster_attack_count,cast_action_map,impact_catalog[],spells[],monster_attacks[]}`；
       每条目四阶段 `stages[]`，`sprite` 层带编号 `missiles\{name}{N}.cl2` 清单 + 显式 `width`，

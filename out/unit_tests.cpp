@@ -616,6 +616,59 @@ static void testSpellTables()
     if (aiToMissile("SkeletonRanged", def) != "Arrow" || !def) bad("SkeletonRanged -> default Arrow");
     if (!rangedAiSet().count("SkeletonRanged")) bad("rangedAiSet contains SkeletonRanged");
 
+    // (d2) attack forms that bypass GetMissileType() (AI picks the missile itself)
+    {
+        int counselor = 0, bat = 0, mega = 0, hork = 0;
+        bool hasFlash = false, hasFireballForm = false;
+        for (const auto& f : monsterAttackForms()) {
+            if (f.ai == "Counselor") {
+                ++counselor;
+                if (f.variant == "Flash") {
+                    hasFlash = true;
+                    if (f.missiles != "FlashBottom,FlashTop") bad("Counselor Flash missiles");
+                }
+                if (f.variant == "Fireball") {
+                    hasFireballForm = true;
+                    if (f.missiles != "Fireball") bad("Counselor Fireball missile");
+                }
+            } else if (f.ai == "Bat") ++bat;
+            else if (f.ai == "Mega") ++mega;
+            else if (f.ai == "HorkDemon") ++hork;
+        }
+        if (counselor != 5) bad("Counselor has 5 attack forms (4 missiles + Flash)");
+        if (!hasFlash || !hasFireballForm) bad("Counselor Flash/Fireball forms present");
+        if (bat != 2) bad("Bat has 2 attack forms (Lightning + Gloom charge)");
+        if (mega != 1) bad("Mega has 1 attack form (Inferno)");
+        if (hork != 0) bad("HorkDemon has no attack form (ai unused in monstdat)");
+
+        // intelligence / monster-id narrowing mirrors the AI code
+        const AttackForm* fireball = nullptr;
+        const AttackForm* charged = nullptr;
+        const AttackForm* batLightning = nullptr;
+        const AttackForm* gloomCharge = nullptr;
+        for (const auto& f : monsterAttackForms()) {
+            if (f.ai == "Counselor" && f.variant == "Fireball") fireball = &f;
+            if (f.ai == "Counselor" && f.variant == "ChargedBolt") charged = &f;
+            if (f.ai == "Bat" && f.variant == "Lightning") batLightning = &f;
+            if (f.ai == "Bat" && f.variant == "Charge") gloomCharge = &f;
+        }
+        if (!fireball || !charged || !batLightning || !gloomCharge) bad("attack forms located");
+        else {
+            if (!attackFormMatches(*fireball, "MT_ADVOCATE", 3))
+                bad("Counselor/Fireball matches Advocate (intel 3)");
+            if (attackFormMatches(*fireball, "MT_COUNSLR", 0))
+                bad("Counselor/Fireball rejects Counselor (intel 0)");
+            if (!attackFormMatches(*charged, "MT_MAGISTR", 1))
+                bad("Counselor/ChargedBolt matches Magistrate (intel 1)");
+            if (!attackFormMatches(*batLightning, "MT_FAMILIAR", 3))
+                bad("Bat/Lightning matches Familiar");
+            if (attackFormMatches(*batLightning, "MT_GLOOM", 2))
+                bad("Bat/Lightning rejects Gloom");
+            if (!attackFormMatches(*gloomCharge, "MT_GLOOM", 2))
+                bad("Bat/Charge matches Gloom");
+        }
+    }
+
     // (e) impact / status classification
     if (impactOverride("Fireball") != "MagmaBallExplosion") bad("Fireball impact override");
     if (!isImpactGraphic("MagmaBallExplosion")) bad("isImpactGraphic");
@@ -805,6 +858,22 @@ static void testSpellTables()
     mon["id"] = "Acid"; mon["name"] = "Acid"; mon["flags"] = ""; mon["missiles"] = "Acid";
     Entry em = deriveEntry(mon, misById, sprById, "monster");
     if (!em.mana_by_level.empty()) bad("monster entry has no mana_by_level");
+
+    // Multi-form monster attacks: variant / condition land in the entry and the
+    // synthesized description, while the missile chain stays per form.
+    Row form;
+    form["id"] = "Counselor.Fireball"; form["name"] = "Counselor";
+    form["flags"] = "Fire"; form["missiles"] = "Fireball";
+    Entry efm = deriveEntry(form, misById, sprById, "monster", nullptr, "Fireball",
+                            "智力 3 的顾问远程弹");
+    if (efm.variant != "Fireball") bad("attack form variant stored");
+    if (efm.condition.empty()) bad("attack form condition stored");
+    if (efm.description.find("Counselor / Fireball") == std::string::npos)
+        bad("attack form description names the form");
+    if (efm.description.find("智力 3") == std::string::npos)
+        bad("attack form description carries the condition");
+    if (efm.stages[1].layers.empty()) bad("attack form has a projectile layer");
+    if (efm.cast_action != "fm") bad("attack form cast action follows the missile element");
 
     printf("spell_tables (pure joins): %s\n", allOk ? "PASS" : "FAIL");
 }
