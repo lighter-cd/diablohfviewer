@@ -890,6 +890,50 @@ function renderCombatInfo() {
       .join("，");
     addRow("各级法力", txt);
   }
+  // 各级视觉参数（持续时间 / 范围 / 弹射物数量 / 弹速 / 法术特有字段）
+  if (Array.isArray(combatEntry.visual_by_level) && combatEntry.visual_by_level.length) {
+    const wrap = document.createElement("div");
+    wrap.className = "ci-visual";
+    const title = document.createElement("div");
+    title.className = "ci-key"; title.textContent = "各级视觉参数：";
+    wrap.appendChild(title);
+
+    const keys = [];
+    let note = "";
+    for (const o of combatEntry.visual_by_level) {
+      for (const k of Object.keys(o.params || {})) {
+        if (k === "_note") { note = o.params[k]; continue; }
+        if (!keys.includes(k)) keys.push(k);
+      }
+    }
+    const table = document.createElement("table");
+    table.className = "ci-vtable";
+    const thead = document.createElement("tr");
+    const th0 = document.createElement("th"); th0.textContent = "级别"; thead.appendChild(th0);
+    for (const k of keys) {
+      const th = document.createElement("th"); th.textContent = k; thead.appendChild(th);
+    }
+    table.appendChild(thead);
+    for (const o of combatEntry.visual_by_level) {
+      const tr = document.createElement("tr");
+      const td0 = document.createElement("td"); td0.textContent = o.level; tr.appendChild(td0);
+      for (const k of keys) {
+        const td = document.createElement("td");
+        td.textContent = (o.params && o.params[k] != null) ? o.params[k] : "—";
+        tr.appendChild(td);
+      }
+      table.appendChild(tr);
+    }
+    wrap.appendChild(table);
+    if (note) {
+      const n = document.createElement("div");
+      n.className = "ci-note"; n.textContent = "注：" + note;
+      wrap.appendChild(n);
+    }
+    el.appendChild(wrap);
+  } else {
+    addRow("各级视觉参数", "（无级别视觉缩放：单级/实用法术）");
+  }
   if (combatEntry.description) {
     const d = document.createElement("div");
     d.className = "ci-desc";

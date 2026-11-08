@@ -18,6 +18,8 @@
 #include <string>
 #include <vector>
 
+#include "tools/spell_visual_model.h"
+
 namespace spell_tables {
 
 using Row = std::map<std::string, std::string>;
@@ -366,6 +368,7 @@ struct Entry {
     std::string staff_min;        // sStaffMin
     std::string staff_max;        // sStaffMax
     std::vector<std::pair<int,int>> mana_by_level; // (level, base mana cost) for levels 1..bookLevel
+    spell_visual::ByLevel visual_by_level;          // (level, {param_key -> value_string}) for levels 1..max
     std::vector<std::string> monsters;
     bool default_ai = false;
     std::vector<Stage> stages;
@@ -561,6 +564,8 @@ inline Entry deriveEntry(const Row& spell,
             e.mana_by_level.emplace_back(lvl, cost);
         }
     }
+
+    e.visual_by_level = spell_visual::computeVisualByLevel(e.name, source, e.level, e.missiles);
 
     e.description = synthDescription(e);
     return e;

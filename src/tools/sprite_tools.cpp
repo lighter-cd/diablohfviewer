@@ -836,6 +836,13 @@ mcp::ToolResult toolSpellList(const mcp::json& params)
         mcp::json manaCurve = mcp::json::array();
         for (const auto& kv : e.mana_by_level)
             manaCurve.push_back(mcp::json{ { "level", kv.first }, { "mana", kv.second } });
+        mcp::json visualByLevel = mcp::json::array();
+        for (const auto& kv : e.visual_by_level) {
+            mcp::json pj = mcp::json::object();
+            for (const auto& pv : kv.second)
+                pj[pv.first] = pv.second;
+            visualByLevel.push_back(mcp::json{ { "level", kv.first }, { "params", pj } });
+        }
         mcp::json j = { { "id", e.id }, { "name", e.name },
                         { "name_zh", e.name_zh }, { "description", e.description },
                         { "source", e.source },
@@ -845,6 +852,7 @@ mcp::ToolResult toolSpellList(const mcp::json& params)
                         { "min_mana", e.min_mana },
                         { "staff_min", e.staff_min }, { "staff_max", e.staff_max },
                         { "mana_by_level", manaCurve },
+                        { "visual_by_level", visualByLevel },
                         { "missiles", e.missiles }, { "stages", stages } };
         if (!e.monster_ai.empty()) {
             j["monster_ai"] = e.monster_ai;
@@ -984,6 +992,15 @@ void registerSpriteTools(ToolRegistry& reg)
         "staff_min/staff_max, and mana_by_level (an array of {level, mana} for levels "
         "1..bookLevel, computed from spelldat + the GetManaAmount formula; base mana before "
         "the class multiplier). "
+        "visual_by_level is an array of {level, params} for levels 1..bookLevel (player) or "
+        "1..16 (monster, where level = monster level). Each params map holds the spell's "
+        "level-dependent VISUAL parameters transcribed from DevilutionX's handlers: "
+        "duration_ticks / duration_sec (≈, 60 ticks/sec), speed (missile velocity), "
+        "range_tiles / radius_tiles (crawl/search radius), count (projectile count), and "
+        "spell-specific keys (e.g. segments, wall_length_tiles). Keys differ per spell "
+        "because each spell hardcodes its own formula. A _note key marks values that depend "
+        "on caster character level or dungeon level (approximated at refChar=50, refDungeon=0). "
+        "Spells with no level-scaled visual params emit an empty visual_by_level. "
         "impact_catalog lists all boom/splat effects (confidence='catalog') for manual "
         "selection. Filter with source='player'|'monster' and/or id.",
         json{ { "type", "object" },

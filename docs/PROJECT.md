@@ -499,8 +499,12 @@ DiabloHFConverter/
       （按解析出的阶段链 + 玩家法力/智力消耗合成的中文说明）；并抽取**法术级别参数**：`level`
       （`spelldat.bookLevel` 法术阶）、`staff_level`、`mana_cost`、`mana_multiplier`、`min_mana`、
       `staff_min/staff_max`，以及 `mana_by_level`（按 `GetManaAmount` 公式算出的 1..bookLevel
-      各级基础法力 `{level, mana}`，含 `min_mana` 下限、未乘职业系数）。前端信息区同步显示
-      法术等级与各级法力曲线。
+      各级基础法力 `{level, mana}`，含 `min_mana` 下限、未乘职业系数）。另含 `visual_by_level`
+      （玩家 1..bookLevel / 怪物 1..16 各级**视觉参数**：持续时间 `duration_ticks`/`duration_sec`、
+      弹速 `speed`、范围 `range_tiles`/`radius_tiles`、弹射物数 `count` 及法术特有字段如
+      `segments`/`wall_length_tiles`；各法术硬编码公式不同，由 `src/tools/spell_visual_model.h`
+      逐法术从 DevilutionX handler 转录，含角色/地下城层依赖项标 `_note`，无级别缩放为空）。
+      前端信息区同步显示法术等级、各级法力曲线与**各级视觉参数表**。
 - [x] 前端第 4 种浏览模式「技能 / 战斗查看器」：`web/src/viewer.js` 新增 `drawScene`
       （多 actor 绝对定位，抽 `blitRgba` 复用，`drawComposite` 行为不变）；同屏两角色 + 效果；
       自动时间线连播四阶段 + 阶段 stepper；debuff 用 `apply_trn` 对目标层近似着色。

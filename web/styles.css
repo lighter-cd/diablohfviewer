@@ -106,6 +106,14 @@ main { display: flex; height: calc(100vh - 52px); }
 .combat-info .ci-key { color: #b9b9c2; flex: 0 0 auto; }
 .combat-info .ci-val { color: #e6e6ee; word-break: break-all; }
 .combat-info .ci-desc { color: #cfd0ec; margin-top: 4px; }
+.combat-info .ci-visual { margin-top: 6px; }
+.combat-info .ci-vtable { border-collapse: collapse; margin-top: 2px; font-size: 12px; }
+.combat-info .ci-vtable th, .combat-info .ci-vtable td {
+  border: 1px solid #34343f; padding: 2px 7px; text-align: center; color: #e6e6ee; white-space: nowrap;
+}
+.combat-info .ci-vtable th { background: #2c2c36; color: #b9b9c2; font-weight: 600; }
+.combat-info .ci-vtable td:first-child { color: #ffd479; }
+.combat-info .ci-note { color: #9a9aa6; font-size: 11px; margin-top: 3px; }
 
 .error-banner {
   margin: 8px 0; padding: 10px 12px; border-radius: 6px;

@@ -814,6 +814,35 @@ static void testSpellListSynthesis() {
             CHECK(pl[0].value("width", 0) == 128, "Fire Wall width == 128");
     }
 
+    // visual_by_level: Fire Wall L3 duration_ticks == 640 (10*(3+1)*16)
+    if (!fw.empty()) {
+        json vbl = fw.value("visual_by_level", json::array());
+        CHECK(!vbl.empty(), "Fire Wall has visual_by_level");
+        bool ok640 = false;
+        for (auto& e : vbl)
+            if (e.value("level", 0) == 3 &&
+                e.value("params", json::object()).value("duration_ticks", "") == "640")
+                ok640 = true;
+        CHECK(ok640, "Fire Wall L3 duration_ticks == 640");
+    }
+    // Identify (utility, no level scaling) -> empty visual_by_level
+    json idn = findSpell("Identify");
+    CHECK(!idn.empty() && idn.value("visual_by_level", json::array()).empty(),
+          "Identify has empty visual_by_level");
+    // Chain Lightning -> radius_tiles present (crawl radius min(lvl+3,Max))
+    json cl = findSpell("Chain Lightning");
+    if (!cl.empty()) {
+        bool hasR = false;
+        for (auto& e : cl.value("visual_by_level", json::array()))
+            if (!e.value("params", json::object()).value("radius_tiles", "").empty()) hasR = true;
+        CHECK(hasR, "Chain Lightning exposes radius_tiles");
+    }
+    // Torchant (monster attack) -> visual_by_level present (monster-level indexed)
+    json torV = findSpell("Torchant");
+    if (!torV.empty())
+        CHECK(!torV.value("visual_by_level", json::array()).empty(),
+              "Torchant monster attack has visual_by_level");
+
     // Stone Curse: TRN debuff applied to the monster.
     json sc = findSpell("Stone Curse");
     CHECK(!sc.empty(), "spell.list includes Stone Curse");

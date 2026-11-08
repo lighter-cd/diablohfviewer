@@ -724,6 +724,53 @@ static void testSpellTables()
     if (!efw.description.empty() &&
         efw.description.find("法术等级 3") == std::string::npos)
         bad("FireWall description mentions spell level");
+    // 帮助函数：取某级别的视觉参数
+    auto findP = [](const Entry& e, int lvl, const std::string& k) -> std::string {
+        for (const auto& kv : e.visual_by_level)
+            if (kv.first == lvl) {
+                auto it = kv.second.find(k);
+                return it == kv.second.end() ? "" : it->second;
+            }
+        return "";
+    };
+    // visual_by_level: FireWall duration = 10*(lvl+1)*16, no radius/count/speed keys
+    if (efw.visual_by_level.size() != 3) bad("FireWall visual_by_level has 3 levels");
+    if (findP(efw, 3, "duration_ticks") != "640") bad("FireWall L3 duration_ticks == 640");
+    if (findP(efw, 1, "duration_ticks") != "320") bad("FireWall L1 duration_ticks == 320");
+    if (!findP(efw, 1, "radius_tiles").empty()) bad("FireWall has no radius_tiles");
+    if (findP(efw, 1, "_note").empty()) bad("FireWall visual params carry _note");
+    // FlameWave: segments = (lvl/2)+2, wall_length = 2*seg+1
+    Row flw; flw["id"] = "FlameWave"; flw["name"] = "Flame Wave";
+    flw["flags"] = "Fire"; flw["missiles"] = "FlameWaveControl"; flw["bookLevel"] = "9";
+    Entry eflw = deriveEntry(flw, misById, sprById, "player");
+    if (eflw.visual_by_level.size() != 9) bad("FlameWave visual_by_level has 9 levels");
+    if (findP(eflw, 9, "segments") != "6") bad("FlameWave L9 segments == 6");
+    if (findP(eflw, 9, "wall_length_tiles") != "13") bad("FlameWave L9 wall_length == 13");
+    if (findP(eflw, 9, "speed") != "16") bad("FlameWave speed == 16");
+    // ChargedBolt: count = (lvl/2)+3
+    Row cb; cb["id"] = "ChargedBolt"; cb["name"] = "Charged Bolt";
+    cb["flags"] = ""; cb["missiles"] = "ChargedBolt"; cb["bookLevel"] = "1";
+    Entry ecb = deriveEntry(cb, misById, sprById, "player");
+    if (ecb.visual_by_level.empty()) bad("ChargedBolt has visual_by_level");
+    else if (findP(ecb, 1, "count") != "3") bad("ChargedBolt L1 count == 3");
+    // HolyBolt: speed = 16 + min(lvl*2,47)
+    Row hb; hb["id"] = "HolyBolt"; hb["name"] = "Holy Bolt";
+    hb["flags"] = ""; hb["missiles"] = "HolyBolt"; hb["bookLevel"] = "1";
+    Entry ehb = deriveEntry(hb, misById, sprById, "player");
+    if (ehb.visual_by_level.empty()) bad("HolyBolt has visual_by_level");
+    else if (findP(ehb, 1, "speed") != "18") bad("HolyBolt L1 speed == 18");
+    // Guardian: duration depends on refChar (50) -> 9+25=34 clamp30 <<4 =480
+    Row gd; gd["id"] = "Guardian"; gd["name"] = "Guardian";
+    gd["flags"] = ""; gd["missiles"] = "Guardian"; gd["bookLevel"] = "9";
+    Entry egd = deriveEntry(gd, misById, sprById, "player");
+    if (egd.visual_by_level.empty()) bad("Guardian has visual_by_level");
+    else if (findP(egd, 9, "duration_ticks") != "480")
+        bad("Guardian L9 duration_ticks == 480 (refChar=50)");
+    // Identify (utility, bookLevel=-1): no visual_by_level
+    Row idn; idn["id"] = "Identify"; idn["name"] = "Identify";
+    idn["flags"] = ""; idn["missiles"] = ""; idn["bookLevel"] = "-1";
+    Entry eid = deriveEntry(idn, misById, sprById, "player");
+    if (!eid.visual_by_level.empty()) bad("Identify has no visual_by_level");
     // Firebolt halves the per-level mana adjustment (game special-case)
     Row fb2;
     fb2["id"] = "Firebolt"; fb2["name"] = "Firebolt";
