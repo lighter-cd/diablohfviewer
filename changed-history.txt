@@ -229,3 +229,7 @@
 ## 2026-11-08 17:15:01
 - 放大倍数改为烘焙进 Canvas 位图而非 CSS：viewer.js 的 drawComposite/drawScene 将后备存储设为 native×zoom 并对 2D 上下文 scale(zoom)，imageSmoothingEnabled=false 保证最近邻清晰；sprite 间距（场景坐标）同步放大。移除 fitCanvas；缩放滑块改为触发重绘（renderCombatStage / redrawCurrent）。
 - 涉及: web/src/viewer.js, web/src/main.js, docs/ARCHITECTURE.md
+
+## 2026-11-08 17:22:33
+- 排查放大无效：Node mock canvas 验证 viewer.js 逻辑正确（backing=native×zoom、ctx.scale=zoom、无运行时错误），推断为浏览器缓存旧 main.js/viewer.js 导致后续修复不生效。补强：drawFrame/drawComposite/drawScene 末尾 publishSize 把 Canvas CSS 盒显式设为后备存储尺寸；index.html 与 main.js 的 CSS/JS/模块导入加 ?v=20261108b 版本串强制刷新。
+- 涉及: web/index.html, web/src/main.js, web/src/viewer.js, docs/ARCHITECTURE.md

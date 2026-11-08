@@ -35,12 +35,22 @@ export function drawFrame(canvas, rgbaBase64, w, h, zoom) {
   ctx.scale(z, z);
   ctx.drawImage(off, 0, 0);
   ctx.restore();
+  publishSize(canvas);
 }
 
 // Clamp/normalise a zoom factor to a finite integer in 1..8 (default 4).
 export function validZoom(zoom) {
   const z = Math.round(Number(zoom));
   return Number.isFinite(z) && z >= 1 && z <= 8 ? z : 4;
+}
+
+// Force the element's on-screen CSS box to match the (already zoomed) backing
+// store, 1:1. This makes the display size follow the bitmap regardless of any
+// flex / intrinsic-size quirks, so the zoom factor is always visible.
+function publishSize(canvas) {
+  canvas.style.width = canvas.width + "px";
+  canvas.style.height = canvas.height + "px";
+  canvas.style.imageRendering = "pixelated";
 }
 
 // Blit one decoded RGBA frame at absolute scene coordinates (under an already
@@ -96,6 +106,7 @@ export function drawComposite(canvas, baseRgba, baseW, baseH, overlays, zoom) {
     blitRgba(ctx, ov.rgba, ov.w, ov.h, ov.dx || 0, ov.dy || 0);
   }
   ctx.restore();
+  publishSize(canvas);
 }
 
 // Draw a whole scene: several decoded sprites at independent absolute positions,
@@ -120,4 +131,5 @@ export function drawScene(canvas, sceneW, sceneH, actors, zoom) {
   for (const a of sorted)
     blitRgba(ctx, a.rgba, a.w, a.h, a.x || 0, a.y || 0, a.alpha);
   ctx.restore();
+  publishSize(canvas);
 }
