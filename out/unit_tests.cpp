@@ -702,6 +702,42 @@ static void testSpellTables()
     if (en.name_zh != "Nova") bad("Nova falls back to English name_zh");
     if (en.description.empty()) bad("Nova description present on fallback");
 
+    // (h) spell-level parameters from spelldat.tsv (level / mana_by_level)
+    Row fw;
+    fw["id"] = "FireWall"; fw["name"] = "Fire Wall";
+    fw["flags"] = "Fire,Targeted"; fw["missiles"] = "FireWallControl";
+    fw["manaCost"] = "28"; fw["bookLevel"] = "3";
+    fw["manaMultiplier"] = "2"; fw["minMana"] = "16";
+    Entry efw = deriveEntry(fw, misById, sprById, "player");
+    if (efw.level != "3") bad("FireWall level == 3");
+    if (efw.mana_multiplier != "2") bad("FireWall mana_multiplier == 2");
+    if (efw.mana_by_level.size() != 3) bad("FireWall mana_by_level has 3 levels");
+    else {
+        // cost = 28 - (lvl-1)*2, floored at minMana=16
+        if (efw.mana_by_level[0].first != 1 || efw.mana_by_level[0].second != 28)
+            bad("FireWall L1 mana == 28");
+        if (efw.mana_by_level[1].first != 2 || efw.mana_by_level[1].second != 26)
+            bad("FireWall L2 mana == 26");
+        if (efw.mana_by_level[2].first != 3 || efw.mana_by_level[2].second != 24)
+            bad("FireWall L3 mana == 24");
+    }
+    if (!efw.description.empty() &&
+        efw.description.find("法术等级 3") == std::string::npos)
+        bad("FireWall description mentions spell level");
+    // Firebolt halves the per-level mana adjustment (game special-case)
+    Row fb2;
+    fb2["id"] = "Firebolt"; fb2["name"] = "Firebolt";
+    fb2["flags"] = "Fire"; fb2["manaCost"] = "6";
+    fb2["bookLevel"] = "1"; fb2["manaMultiplier"] = "1"; fb2["minMana"] = "3";
+    Entry efb = deriveEntry(fb2, misById, sprById, "player");
+    if (efb.mana_by_level.size() != 1 || efb.mana_by_level[0].second != 6)
+        bad("Firebolt mana_by_level (halved adj) == 6");
+    // Monster entries carry no spell-level params
+    Row mon;
+    mon["id"] = "Acid"; mon["name"] = "Acid"; mon["flags"] = ""; mon["missiles"] = "Acid";
+    Entry em = deriveEntry(mon, misById, sprById, "monster");
+    if (!em.mana_by_level.empty()) bad("monster entry has no mana_by_level");
+
     printf("spell_tables (pure joins): %s\n", allOk ? "PASS" : "FAIL");
 }
 

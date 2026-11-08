@@ -789,6 +789,20 @@ static void testSpellListSynthesis() {
     CHECK(!fbt.empty() && fbt.value("name_zh", std::string()) == "火栓",
           "Firebolt zh name == 火栓 (from Translations)");
 
+    // Spell-level parameters (from spelldat.tsv) + per-level mana curve.
+    CHECK(fb.value("level", std::string()) == "8", "Fireball level (sBookLvl) == 8");
+    CHECK(fb.value("mana_multiplier", std::string()) == "1", "Fireball mana_multiplier == 1");
+    CHECK(fb.value("min_mana", std::string()) == "10", "Fireball min_mana == 10");
+    json mbl = fb.value("mana_by_level", json::array());
+    CHECK(mbl.size() == 8, "Fireball mana_by_level has 8 levels (1..bookLevel)");
+    if (mbl.size() == 8) {
+        // cost = 16 - (lvl-1)*1, floored at minMana=10
+        CHECK(mbl[0].value("level", 0) == 1 && mbl[0].value("mana", 0) == 16,
+              "Fireball L1 mana == 16");
+        CHECK(mbl[7].value("level", 0) == 8 && mbl[7].value("mana", 0) == 10,
+              "Fireball L8 mana floored to min_mana == 10");
+    }
+
     // Fire Wall: 2 numbered files, width 128.
     json fw = findSpell("Fire Wall");
     CHECK(!fw.empty(), "spell.list includes Fire Wall");

@@ -496,7 +496,11 @@ DiabloHFConverter/
       纯 join 逻辑在 `src/tools/spell_tables.h`（header-only，不依赖 json，便于单测）。
       每条目另带 `name_zh`（中文名，解析 `Translations/zh_TW.po`→`zh_CN.po` 的 `msgctxt "spell"；
       `.po` 中零宽/格式字符已清理，含 `{:` 占位符的坏翻译自动跳过回退英文名）与 `description`
-      （按解析出的阶段链 + 玩家法力/智力消耗合成的中文说明）。
+      （按解析出的阶段链 + 玩家法力/智力消耗合成的中文说明）；并抽取**法术级别参数**：`level`
+      （`spelldat.bookLevel` 法术阶）、`staff_level`、`mana_cost`、`mana_multiplier`、`min_mana`、
+      `staff_min/staff_max`，以及 `mana_by_level`（按 `GetManaAmount` 公式算出的 1..bookLevel
+      各级基础法力 `{level, mana}`，含 `min_mana` 下限、未乘职业系数）。前端信息区同步显示
+      法术等级与各级法力曲线。
 - [x] 前端第 4 种浏览模式「技能 / 战斗查看器」：`web/src/viewer.js` 新增 `drawScene`
       （多 actor 绝对定位，抽 `blitRgba` 复用，`drawComposite` 行为不变）；同屏两角色 + 效果；
       自动时间线连播四阶段 + 阶段 stepper；debuff 用 `apply_trn` 对目标层近似着色。

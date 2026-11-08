@@ -833,10 +833,18 @@ mcp::ToolResult toolSpellList(const mcp::json& params)
             stages.push_back(mcp::json{ { "id", s.id }, { "label", s.label },
                                         { "layers", layers } });
         }
+        mcp::json manaCurve = mcp::json::array();
+        for (const auto& kv : e.mana_by_level)
+            manaCurve.push_back(mcp::json{ { "level", kv.first }, { "mana", kv.second } });
         mcp::json j = { { "id", e.id }, { "name", e.name },
                         { "name_zh", e.name_zh }, { "description", e.description },
                         { "source", e.source },
                         { "element", e.element }, { "cast_action", e.cast_action },
+                        { "level", e.level }, { "staff_level", e.staff_level },
+                        { "mana_cost", e.mana_cost }, { "mana_multiplier", e.mana_multiplier },
+                        { "min_mana", e.min_mana },
+                        { "staff_min", e.staff_min }, { "staff_max", e.staff_max },
+                        { "mana_by_level", manaCurve },
                         { "missiles", e.missiles }, { "stages", stages } };
         if (!e.monster_ai.empty()) {
             j["monster_ai"] = e.monster_ai;
@@ -970,7 +978,12 @@ void registerSpriteTools(ToolRegistry& reg)
         "TRN palette remaps (apply_trn on the target) or overlay sprites. "
         "Every entry also carries a Chinese display name (name_zh, resolved from "
         "DevilutionX Translations/zh_TW.po, falling back to the English name) and a "
-        "synthesized Chinese description of the effect chain. "
+        "synthesized Chinese description of the effect chain. Player entries additionally "
+        "carry spell-level parameters from spelldat.tsv: level (sBookLvl, the spell tier), "
+        "staff_level, mana_cost, mana_multiplier (mana saved per trained level), min_mana, "
+        "staff_min/staff_max, and mana_by_level (an array of {level, mana} for levels "
+        "1..bookLevel, computed from spelldat + the GetManaAmount formula; base mana before "
+        "the class multiplier). "
         "impact_catalog lists all boom/splat effects (confidence='catalog') for manual "
         "selection. Filter with source='player'|'monster' and/or id.",
         json{ { "type", "object" },

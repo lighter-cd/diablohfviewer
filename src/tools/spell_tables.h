@@ -359,6 +359,13 @@ struct Entry {
     std::vector<std::string> missiles;
     std::string mana_cost;
     std::string min_intelligence;
+    std::string level;            // sBookLvl: spell tier / "法术级别"（法术书要求的角色等级）
+    std::string staff_level;      // sStaffLvl
+    std::string mana_multiplier;  // sManaAdj: 每升 1 级训练减少的法力
+    std::string min_mana;         // sMinMana: 法力消耗下限
+    std::string staff_min;        // sStaffMin
+    std::string staff_max;        // sStaffMax
+    std::vector<std::pair<int,int>> mana_by_level; // (level, base mana cost) for levels 1..bookLevel
     std::vector<std::string> monsters;
     bool default_ai = false;
     std::vector<Stage> stages;
@@ -429,6 +436,12 @@ inline std::string synthDescription(const Entry& e)
     std::string d = elementZh(e.element) + "系法术。";
     if (!e.mana_cost.empty()) d += "法力消耗 " + e.mana_cost + "，";
     if (!e.min_intelligence.empty()) d += "最低智力 " + e.min_intelligence + "。";
+    if (!e.level.empty()) {
+        d += "法术等级 " + e.level;
+        if (!e.mana_multiplier.empty() && e.mana_multiplier != "0")
+            d += "（每升 1 级法力 -" + e.mana_multiplier + "，最低 " + e.min_mana + "）";
+        d += "。";
+    }
     d += "投射物：" + (proj.empty() ? "无" : proj) +
          "；命中：" + (imp.empty() ? "无" : imp) +
          "；状态：" + (deb.empty() ? "无" : deb) + "。";
@@ -451,6 +464,12 @@ inline Entry deriveEntry(const Row& spell,
     e.cast_action = elementToAction(e.element);
     e.mana_cost = trim(val(spell, "manaCost"));
     e.min_intelligence = trim(val(spell, "minIntelligence"));
+    e.level = trim(val(spell, "bookLevel"));
+    e.staff_level = trim(val(spell, "staffLevel"));
+    e.mana_multiplier = trim(val(spell, "manaMultiplier"));
+    e.min_mana = trim(val(spell, "minMana"));
+    e.staff_min = trim(val(spell, "staffMin"));
+    e.staff_max = trim(val(spell, "staffMax"));
 
     for (const auto& t : splitComma(val(spell, "missiles"))) {
         auto s = trim(t);
@@ -524,6 +543,25 @@ inline Entry deriveEntry(const Row& spell,
         if (it != zhNames->end()) e.name_zh = it->second;
     }
     if (e.name_zh.empty()) e.name_zh = e.name;
+
+    // Per-trained-level mana cost (base, before class multiplier). Mirrors
+    // Source/spells.cpp::GetManaAmount: cost = max(manaCost - (lvl-1)*manaAdj, 0),
+    // floored at minMana. Firebolt halves the adjustment (game special-case).
+    if (source == "player") {
+        const int base = std::atoi(e.mana_cost.c_str());
+        const int adj = std::atoi(e.mana_multiplier.c_str());
+        const int minM = std::atoi(e.min_mana.c_str());
+        int maxLvl = std::atoi(e.level.c_str());
+        if (maxLvl < 1) maxLvl = 1;
+        const int halve = (e.id == "Firebolt" || e.name == "Firebolt") ? 2 : 1;
+        for (int lvl = 1; lvl <= maxLvl; ++lvl) {
+            int cost = base - (lvl - 1) * adj / halve;
+            if (cost < 0) cost = 0;
+            if (minM > 0 && cost < minM) cost = minM;
+            e.mana_by_level.emplace_back(lvl, cost);
+        }
+    }
+
     e.description = synthDescription(e);
     return e;
 }

@@ -200,3 +200,8 @@
 - 技能/战斗查看器信息区补充原英文名与描述：web/index.html 在 currentName 下方新增 combatInfo 信息区（web/styles.css 加 .combat-info 样式）；web/src/main.js 新增 renderCombatInfo()，在画布下方列出英文名（name）、中文名（name_zh，确有翻译时）与合成中文描述（description）；非战斗模式（精灵查看）隐藏该区。满足「显示原英文名及描述信息」需求。同步 web/README.md 第 4 模式说明。
 - 涉及: web/index.html, web/styles.css, web/src/main.js, web/README.md
 - 验证：node --check web/src/main.js 通过；unit/core/integration 三套 C++ 测试全 PASS。
+
+## 2026-11-08 12:36:31
+- 后端 spell.list 抽取法术级别参数：spell_tables.h 的 Entry 新增 level（spelldat.bookLevel 法术阶）、staff_level、mana_cost、mana_multiplier、min_mana、staff_min/staff_max，并在 deriveEntry 按 GetManaAmount 公式（cost = manaCost - (lvl-1)*manaMultiplier，下限 min_mana；Firebolt 减半调整）算出 mana_by_level（1..bookLevel 各级基础法力，不含职业系数），仅 player 源计算；synthDescription 补充「法术等级 / 每级法力变化」；sprite_tools.cpp 的 entryJson 输出这些字段，spell.list 工具描述同步更新。前端 renderCombatInfo 信息区新增「法术等级」「各级法力」两行。单测/集成测各加断言（FireWall 28/26/24、Firebolt 减半、Fireball 8 级 16→10 下限）。
+- 涉及: src/tools/spell_tables.h, src/tools/sprite_tools.cpp, out/unit_tests.cpp, out/integration_tests.cpp, web/src/main.js, README.md, docs/ARCHITECTURE.md, docs/PROJECT.md, web/README.md
+- 验证：unit/core/integration 三套 C++ 测试全 PASS；cmake --build build-mcp --target mcp-server 重编成功；临时 Node 驱动向 mcp-server --stdio 发 spell.list（Fireball）确认 level=8、mana_by_level 8 项（16/15/.../10）、description 含「法术等级 8」。

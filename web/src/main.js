@@ -882,6 +882,14 @@ function renderCombatInfo() {
   addRow("英文名", combatEntry.name);
   if (combatEntry.name_zh && combatEntry.name_zh !== combatEntry.name)
     addRow("中文名", combatEntry.name_zh);
+  if (combatEntry.level)
+    addRow("法术等级", combatEntry.level);
+  if (Array.isArray(combatEntry.mana_by_level) && combatEntry.mana_by_level.length) {
+    const txt = combatEntry.mana_by_level
+      .map((o) => `${o.level}级=${o.mana}`)
+      .join("，");
+    addRow("各级法力", txt);
+  }
   if (combatEntry.description) {
     const d = document.createElement("div");
     d.className = "ci-desc";
