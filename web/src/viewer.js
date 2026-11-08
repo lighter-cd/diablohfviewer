@@ -26,14 +26,16 @@ export function drawFrame(canvas, rgbaBase64, w, h) {
   ctx.putImageData(img, 0, 0);
 }
 
-// Fit a frame into the visible canvas area while keeping pixel aspect (1:1).
-// Diablo sprites are tiny (e.g. 96x96); we scale up with nearest-neighbour.
-export function fitCanvas(canvas, displaySize) {
+// Scale the canvas' on-screen size by an absolute zoom factor (1..8, default 4).
+// The canvas keeps its native pixel resolution; only the CSS display size grows,
+// so nearest-neighbour stays crisp. Applied to single frames AND whole combat
+// scenes, which means sprite-to-sprite spacing scales with the same factor.
+export function fitCanvas(canvas, zoom) {
+  const z = Number.isFinite(zoom) && zoom >= 1 ? zoom : 4;
   const cw = canvas.width || 1;
   const ch = canvas.height || 1;
-  const scale = Math.max(1, Math.floor(displaySize / Math.max(cw, ch)));
-  canvas.style.width = cw * scale + "px";
-  canvas.style.height = ch * scale + "px";
+  canvas.style.width = cw * z + "px";
+  canvas.style.height = ch * z + "px";
   canvas.style.imageRendering = "pixelated";
 }
 

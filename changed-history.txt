@@ -217,3 +217,7 @@
 ## 2026-11-08 16:41:15
 - 修正前端布局：左侧目录树仅在「目录浏览」模式显示（补 .catalog-pane[hidden] 规则，修复 author display:flex 覆盖 UA [hidden] 导致非目录模式仍显示目录树的 bug）；战斗查看器改为三栏，法术详情（英文名/中文名/描述/各级法力/各级视觉参数）移到显示窗口右侧垂直面板 combatDetailPane。
 - 涉及: web/index.html, web/src/main.js, web/styles.css, docs/ARCHITECTURE.md
+
+## 2026-11-08 16:52:25
+- 前端新增全局「放大倍数」控制（滑块 1–8，默认 4）：fitCanvas 改为按 nativeW×zoom 设置 Canvas CSS 尺寸（最近邻清晰），战斗场景含 sprite 间距整体同倍放大；顶部控制条加滑块与数值显示，切换仅重设 CSS 尺寸无需重绘；canvas-wrap 加 overflow:auto 以容纳大倍率。
+- 涉及: web/index.html, web/src/main.js, web/src/viewer.js, web/styles.css, docs/ARCHITECTURE.md

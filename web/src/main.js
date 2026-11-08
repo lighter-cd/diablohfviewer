@@ -117,6 +117,7 @@ let currentDirections = 1;  // number of directions the current sprite is split 
 let framesPerDir = 1;       // frames per direction (total / directions)
 let currentDir = 0;         // currently shown direction
 let currentFin = 0;         // currently shown frame within the direction
+let zoom = 4;               // display magnification (1..8); also scales scene spacing
 let isPlaying = false;
 let playTimer = null;
 
@@ -788,7 +789,7 @@ function showFrame(dir, fin) {
   }
 
   drawComposite($("canvas"), f.rgba_base64, f.width, f.height, ovRender);
-  fitCanvas($("canvas"), 384);
+  fitCanvas($("canvas"), zoom);
   $("dirNo").textContent = String(dir);
   $("frameNo").textContent = `dir ${dir} / ${currentDirections - 1}  · 帧 ${fin} / ${framesPerDir - 1}`;
   updateMeta(idx, dir, fin);
@@ -1253,7 +1254,7 @@ function renderCombatStage(si, fi) {
   }
 
   drawScene($("canvas"), COMBAT_W, COMBAT_H, actors);
-  fitCanvas($("canvas"), 480);
+  fitCanvas($("canvas"), zoom);
   $("dirNo").textContent = String(combatDir);
   $("frameNo").textContent = `dir ${combatDir} · ${st.label} · 帧 ${fi} / ${total - 1}`;
   $("stageNo").textContent = `${si + 1}/${stages.length} ${st.label}`;
@@ -1393,6 +1394,14 @@ function wireControls() {
     showFrame(currentDir, currentFin);
   });
   $("playBtn").addEventListener("click", () => (isPlaying ? stopPlay() : startPlay()));
+
+  // Display zoom (1..8). Scales the canvas' CSS size only, so the native pixels
+  // stay crisp; sprite spacing in the combat scene scales with the same factor.
+  $("zoom").addEventListener("input", (e) => {
+    zoom = Math.max(1, Math.min(8, parseInt(e.target.value, 10) || 1));
+    $("zoomNo").textContent = zoom + "×";
+    fitCanvas($("canvas"), zoom);
+  });
 
   // Re-decode the current sprite when the user changes the palette.
   $("palette").addEventListener("change", () => {

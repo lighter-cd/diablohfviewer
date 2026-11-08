@@ -145,11 +145,16 @@ main { display: flex; height: calc(100vh - 52px); }
 
 .canvas-wrap {
   flex: 1; display: flex; align-items: center; justify-content: center;
+  overflow: auto;
   background:
     repeating-conic-gradient(#2a2a30 0% 25%, #242429 0% 50%) 50% / 24px 24px;
   margin-top: 12px; border-radius: 6px;
 }
 canvas { background: transparent; image-rendering: pixelated; }
+.canvas-wrap > canvas { margin: auto; }
+.zoom { font-size: 12px; color: #c9c9d2; }
+.zoom input[type="range"] { width: 90px; }
+.zoom #zoomNo { color: #ffd479; min-width: 24px; text-align: right; }
 
 /* Character viewer pane */
 .char-pane, .monster-pane, .combat-pane {
