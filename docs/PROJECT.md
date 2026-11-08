@@ -582,6 +582,54 @@ DiabloHFConverter/
 `source_ref`（DevilutionX 源码位置），陷阱还有 `objects`（宿主 `OBJ_*`）；所有条目共用
 `missiles` 与四阶段 `stages[]`（cast → projectile → impact → debuff）视觉链。
 
+
+**字段示例**（`spell.list` 返回的 `spells[]` 单条 = Fireball，节选：`…` 表示省略的重复项）：
+
+```json
+{
+  "id": "Fireball",
+  "name": "Fireball",
+  "name_zh": "火球术",
+  "description": "火系法术。法力消耗 16，最低智力 48。法术等级 8（每升 1 级法力 -1，最低 10）。投射物：Fireball；命中：MagmaBallExplosion；状态：无。",
+  "source": "player",
+  "element": "Fire",
+  "cast_action": "fm",
+  "level": "8",
+  "staff_level": "7",
+  "mana_cost": "16",
+  "mana_multiplier": "1",
+  "min_mana": "10",
+  "staff_min": "40",
+  "staff_max": "80",
+  "mana_by_level": [
+    { "level": 1, "mana": 16 },
+    { "level": 2, "mana": 15 },
+    …（共 8 级；L7/L8 触底为 min_mana = 10）
+  ],
+  "visual_by_level": [
+    { "level": 1, "params": { "duration_ticks": "256", "duration_sec": "4.27", "speed": "16" } },
+    …（各级参数相同，共 8 级）
+  ],
+  "missiles": ["Fireball"],
+  "stages": [
+    { "id": "cast", "label": "施法", "layers": [
+      { "kind": "cast_action", "role": "caster", "anchor": "player", "action": "fm", "element": "Fire", "confidence": "auto" } ] },
+    { "id": "projectile", "label": "投射", "layers": [
+      { "kind": "sprite", "role": "projectile", "anchor": "world", "graphic_id": "Fireball",
+        "files": ["missiles\\fireba1.cl2", "…（共 16 个编号文件，即 16 个方向）"],
+        "width": 96, "frames": 14, "num_files": 16, "element": "Fire", "confidence": "auto" } ] },
+    { "id": "impact", "label": "命中", "layers": [
+      { "kind": "sprite", "role": "impact", "anchor": "monster", "graphic_id": "MagmaBallExplosion",
+        "files": ["missiles\\magblos.cl2"], "width": 128, "frames": 10, "num_files": 1,
+        "element": "Fire", "confidence": "override" } ] },
+    { "id": "debuff", "label": "状态", "layers": [] }
+  ]
+}
+```
+
+其余数组的差异字段：`monster_attacks[]` 多 `monster_ai` / `monsters` / `default_ai` / `variant` / `condition`；
+`abilities[]` 多 `ability` / `monsters` / `trigger` / `source_ref`；`traps[]` 多 `trap` / `objects` / `trigger` / `source_ref`。
+
 ### 阶段 4：地图还原（目标 1）
 - [ ] 解码 TIL / MIN / DUN，移植 `levels/` 的拼接逻辑。
 - [ ] 重建各层完整地图（瓦片、光照、碰撞）。

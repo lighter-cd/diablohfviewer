@@ -261,3 +261,8 @@
 - 把 SPELLS.md 的技能/法术分类落地到 docs/PROJECT.md：新增「技能与法术资源总览（对照 docs/SPELLS.md）」小节（玩家法术 51 / 怪物攻击 25 / 特殊能力 3 / 陷阱 10 的分类表、与 SPELLS.md 的四处差异更正、字段口径说明），并同步阶段 3.5 中过期的计数（14 类怪物攻击 → 25 条、回归数字补 3 特殊能力 / 10 陷阱）。
 - 涉及: docs/PROJECT.md
 
+
+## 2026-11-08 18:34:24
+- 在 docs/PROJECT.md 的技能总览小节补充「字段示例」：按 spell.list 真实返回给出 Fireball 单条 JSON（含 name_zh/description/level/staff_level/mana_cost/mana_by_level/visual_by_level/missiles 与四阶段 stages 的 cast_action、16 方向文件、命中 override 层），并列出 monster_attacks/abilities/traps 各自额外的差异字段。
+- 涉及: docs/PROJECT.md
+
