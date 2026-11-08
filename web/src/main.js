@@ -14,7 +14,7 @@
 
 import { McpClient } from "./client.js";
 import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js";
-import { drawFrame, fitCanvas, drawComposite, drawScene } from "./viewer.js";
+import { drawFrame, drawComposite, drawScene } from "./viewer.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -788,8 +788,7 @@ function showFrame(dir, fin) {
     if (of) ovRender.push({ rgba: of.rgba_base64, w: of.width, h: of.height, dx: ov.dx, dy: ov.dy, enabled: true });
   }
 
-  drawComposite($("canvas"), f.rgba_base64, f.width, f.height, ovRender);
-  fitCanvas($("canvas"), zoom);
+  drawComposite($("canvas"), f.rgba_base64, f.width, f.height, ovRender, zoom);
   $("dirNo").textContent = String(dir);
   $("frameNo").textContent = `dir ${dir} / ${currentDirections - 1}  · 帧 ${fin} / ${framesPerDir - 1}`;
   updateMeta(idx, dir, fin);
@@ -1253,8 +1252,7 @@ function renderCombatStage(si, fi) {
                   z: 2 + cy / 1000 });
   }
 
-  drawScene($("canvas"), COMBAT_W, COMBAT_H, actors);
-  fitCanvas($("canvas"), zoom);
+  drawScene($("canvas"), COMBAT_W, COMBAT_H, actors, zoom);
   $("dirNo").textContent = String(combatDir);
   $("frameNo").textContent = `dir ${combatDir} · ${st.label} · 帧 ${fi} / ${total - 1}`;
   $("stageNo").textContent = `${si + 1}/${stages.length} ${st.label}`;
@@ -1395,12 +1393,14 @@ function wireControls() {
   });
   $("playBtn").addEventListener("click", () => (isPlaying ? stopPlay() : startPlay()));
 
-  // Display zoom (1..8). Scales the canvas' CSS size only, so the native pixels
-  // stay crisp; sprite spacing in the combat scene scales with the same factor.
+  // Display zoom (1..8). Baked into the canvas bitmap at draw time (see viewer.js
+  // drawComposite/drawScene: canvas pixels = native × zoom, context scaled with
+  // nearest-neighbour), so sprite size AND scene spacing both grow with zoom.
   $("zoom").addEventListener("input", (e) => {
     zoom = Math.max(1, Math.min(8, parseInt(e.target.value, 10) || 1));
     $("zoomNo").textContent = zoom + "×";
-    fitCanvas($("canvas"), zoom);
+    if (isCombatMode()) renderCombatStage(combatStage, combatFrame);
+    else redrawCurrent();
   });
 
   // Re-decode the current sprite when the user changes the palette.

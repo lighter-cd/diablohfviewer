@@ -544,9 +544,10 @@ Archive 输入框——点选精灵即可直接解码，无需用户手填路径
      右 `combatDetailPane`（英文名 / 中文名 / 描述 / 各级法力 / 各级视觉参数表），
      法术详情竖直滚动置于显示窗口右侧。
    - **显示放大倍数（✅ 已完成，2026-11-08）**：控制条新增「放大倍数」滑块（1–8，默认 4）。
-     缩放只改 Canvas 的 CSS 显示尺寸（`fitCanvas` 按 `nativeW × zoom` 设置），
-     native 像素不变故保持最近邻清晰；战斗场景（含 sprite 间距）整体按同一倍数放大。
-     切换即重设 CSS 尺寸，无需重绘。
+     放大**烘焙进 Canvas 位图**：`viewer.js` 的 `drawComposite`/`drawScene` 把画布后备存储
+     设为 `native × zoom` 并对 2D 上下文 `scale(zoom)`，配合 `imageSmoothingEnabled=false`
+     保持最近邻清晰；战斗场景的 sprite 位置与尺寸同为 native 坐标，故 sprite 间距也随同一倍数放大。
+     拖动滑块即按新倍数重绘（`renderCombatStage` / `redrawCurrent`）。
 
 > 该顺序让"列清单 → 渲染 → 显示"尽快端到端跑通，且后端每一步都可独立单测，
 > 符合项目"先理解、再使用；CLI / 可验证产出优先"的章程。

@@ -225,3 +225,7 @@
 ## 2026-11-08 17:09:02
 - 修复放大倍数无效：canvas 作为 flex 子项默认 flex-shrink:1 会被父容器压回原宽，导致 zoom 的 CSS 尺寸被忽略；给 .canvas-wrap>canvas 加 flex:0 0 auto（margin:auto 居中且大图可滚动），放大倍数现在真正生效。
 - 涉及: web/styles.css
+
+## 2026-11-08 17:15:01
+- 放大倍数改为烘焙进 Canvas 位图而非 CSS：viewer.js 的 drawComposite/drawScene 将后备存储设为 native×zoom 并对 2D 上下文 scale(zoom)，imageSmoothingEnabled=false 保证最近邻清晰；sprite 间距（场景坐标）同步放大。移除 fitCanvas；缩放滑块改为触发重绘（renderCombatStage / redrawCurrent）。
+- 涉及: web/src/viewer.js, web/src/main.js, docs/ARCHITECTURE.md
