@@ -38,9 +38,10 @@ out/*.sol
 out/*.pal
 out/extracted/
 out/render/
-# map.build / scene.build 生成的地图 PNG / 预览 / 叠加层 / sidecar JSON（运行产物，不入库）
+# map.build / scene.build / ui.build 生成的地图/界面 PNG / 预览 / 叠加层 / sidecar JSON（运行产物，不入库）
 out/maps/
 out/scenes/
+out/ui/
 
 # ---------- MPQ 文件名恢复的生成产出（字典源文件保留） ----------
 # recovered.json / recovered/ 可由 mcp-server 的 mpq.recover 重建。

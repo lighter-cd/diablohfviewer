@@ -38,7 +38,10 @@
 #include "decoders/png.h"
 #include "tools/base64.h"
 #include "tools/spell_tables.h"
+#include "tools/ui_layout.h"   // stage 5: header-only GUI layout catalog
+#include "tools/ui_render.h"   // stage 5: header-only RGBA raster helpers
 
+#include <algorithm>
 #include <cstdlib>
 #include <exception>
 #include <fstream>
@@ -1878,6 +1881,238 @@ static void testDungeonGen()
         allOk = false;
 }
 
+// ---------------------------------------------------------------------------
+// stage 5: ui_layout.h catalog (pure data / pure queries, no MPQ)
+// ---------------------------------------------------------------------------
+static void testUiLayoutCatalog()
+{
+    bool ok = true;
+    const auto& all = ui_layout::screens();
+    if (all.size() < 18) { printf("  screens=%zu (<18)\n", all.size()); ok = false; }
+    // unique ids + full validation
+    for (size_t i = 0; i < all.size(); ++i) {
+        std::string err;
+        if (!ui_layout::validateScreen(all[i], err)) {
+            printf("  validateScreen(%s): %s\n", all[i].id.c_str(), err.c_str());
+            ok = false;
+        }
+        if (all[i].canvas_w != 640 || all[i].canvas_h != 480) {
+            printf("  %s canvas not 640x480\n", all[i].id.c_str()); ok = false;
+        }
+        for (size_t j = 0; j < i; ++j)
+            if (all[j].id == all[i].id) {
+                printf("  duplicate screen id %s\n", all[i].id.c_str()); ok = false;
+            }
+    }
+    // categories
+    auto cats = ui_layout::categories();
+    for (const char* want : {"dialog", "hud", "menu", "panel", "store"})
+        if (std::find(cats.begin(), cats.end(), want) == cats.end()) {
+            printf("  missing category %s\n", want); ok = false;
+        }
+    // palette assignment is per-resource: in-game .cel must NOT use diablo.pal
+    const ui_layout::Screen* cp = ui_layout::findScreen("control_panel");
+    if (!cp) { printf("  control_panel missing\n"); ok = false; }
+    else {
+        for (const auto& e : cp->elements)
+            if (e.has_art && e.art.format == "cel" &&
+                e.art.palette == "ui_art\\diablo.pal") {
+                printf("  in-game CEL wrongly uses menu palette: %s\n", e.id.c_str());
+                ok = false;
+            }
+    }
+    if (ui_layout::findScreen("bogus") != nullptr) { printf("  bogus id found\n"); ok = false; }
+    // needsWidth sets are exactly the CEL/CL2 with width<=0
+    for (const auto& s : all) {
+        auto nw = ui_layout::needsWidthList(s);
+        for (const auto& n : nw) {
+            bool found = false;
+            for (const auto& e : s.elements)
+                if (e.has_art && e.art.name == n && e.art.width <= 0) found = true;
+            if (!found) { printf("  %s bogus needs_width %s\n", s.id.c_str(), n.c_str()); ok = false; }
+        }
+    }
+    printf("ui_layout catalog: %s\n", ok ? "PASS" : "FAIL");
+    if (!ok) allOk = false;
+}
+
+static void testUiLayoutRepresentatives()
+{
+    bool ok = true;
+    // mainmenu: 5 gold menu items + mainmenu.pcx background
+    const auto* mm = ui_layout::findScreen("mainmenu");
+    if (!mm) { ok = false; }
+    else {
+        int texts = 0, goldItems = 0;
+        bool hasBg = false;
+        for (const auto& e : mm->elements) {
+            if (e.type == ui_layout::ElementType::Text) ++texts;
+            if (e.type == ui_layout::ElementType::Text && e.font_size == 42 &&
+                e.color == "goldui" && e.align == "center") ++goldItems;
+            if (e.has_art && e.art.name == "ui_art\\mainmenu.pcx") hasBg = true;
+        }
+        if (goldItems != 5) { printf("  mainmenu gold items=%d (want 5)\n", goldItems); ok = false; }
+        if (texts < 5) { printf("  mainmenu texts=%d\n", texts); ok = false; }
+        if (!hasBg) { printf("  mainmenu bg missing\n"); ok = false; }
+    }
+    // control_panel: MainPanel + 2 Orbs (p8bulbs frame 0/1) + belt grid 8
+    const auto* cp = ui_layout::findScreen("control_panel");
+    if (!cp) { ok = false; }
+    else {
+        bool panel = false; int orbs = 0; bool belt = false;
+        for (const auto& p : cp->panels) if (p.id == "MainPanel" && p.rect.y == 352) panel = true;
+        for (const auto& e : cp->elements) {
+            if (e.type == ui_layout::ElementType::Orb) {
+                ++orbs;
+                if (e.art.name != "ctrlpan\\p8bulbs.cel" || e.art.width != 88) {
+                    printf("  bad orb art %s\n", e.id.c_str()); ok = false;
+                }
+            }
+            if (e.id == "cp.belt" && e.grid_cols == 8) belt = true;
+        }
+        if (!panel) { printf("  MainPanel missing\n"); ok = false; }
+        if (orbs != 2) { printf("  orbs=%d (want 2)\n", orbs); ok = false; }
+        if (!belt) { printf("  belt grid missing\n"); ok = false; }
+    }
+    // dialog_large: lrpopup.pcx @ (127,100,385,280) + OK button @ (264,335,110,28)
+    const auto* dl = ui_layout::findScreen("dialog_large");
+    if (!dl) { ok = false; }
+    else {
+        bool bg = false, btn = false;
+        for (const auto& e : dl->elements) {
+            if (e.has_art && e.art.name == "ui_art\\lrpopup.pcx" &&
+                e.rect.x == 127 && e.rect.y == 100 && e.rect.w == 385 && e.rect.h == 280) bg = true;
+            if (e.id == "dl.ok" && e.rect.x == 264 && e.rect.y == 335 &&
+                e.rect.w == 110 && e.rect.h == 28) btn = true;
+        }
+        if (!bg) { printf("  dialog_large bg rect wrong\n"); ok = false; }
+        if (!btn) { printf("  dialog_large OK button rect wrong\n"); ok = false; }
+    }
+    printf("ui_layout representatives: %s\n", ok ? "PASS" : "FAIL");
+    if (!ok) allOk = false;
+}
+
+static void testUiOverlayBoxes()
+{
+    bool ok = true;
+    const auto* mm = ui_layout::findScreen("mainmenu");
+    auto boxes = ui_layout::overlayBoxes(*mm);
+    if (boxes.size() != mm->panels.size() + mm->elements.size()) {
+        printf("  box count=%zu\n", boxes.size()); ok = false;
+    }
+    int expected = 1;
+    for (const auto& b : boxes) {
+        if (b.is_panel) {
+            if (b.index != 0) { printf("  panel index != 0\n"); ok = false; }
+        } else {
+            if (b.index != expected) { printf("  non-sequential index %d\n", b.index); ok = false; }
+            if (b.rgba != ui_layout::overlayColor(ui_layout::ElementType::Image) &&
+                b.rgba != ui_layout::overlayColor(ui_layout::ElementType::Text) &&
+                b.rgba != ui_layout::overlayColor(ui_layout::ElementType::Button) &&
+                b.rgba != ui_layout::overlayColor(ui_layout::ElementType::Grid) &&
+                b.rgba != ui_layout::overlayColor(ui_layout::ElementType::Orb) &&
+                b.rgba != ui_layout::overlayColor(ui_layout::ElementType::PanelRect) &&
+                b.rgba != ui_layout::overlayColor(ui_layout::ElementType::Slot) &&
+                b.rgba != ui_layout::overlayColor(ui_layout::ElementType::Scrollbar) &&
+                b.rgba != ui_layout::overlayColor(ui_layout::ElementType::Progress)) {
+                printf("  bad box color\n"); ok = false;
+            }
+            ++expected;
+        }
+    }
+    // Text boxes carry the T suffix; stable typeName/overlayColor
+    bool sawTextTag = false;
+    for (const auto& b : boxes) if (b.is_text && !b.tag.empty() && b.tag.back() == 'T') sawTextTag = true;
+    if (!sawTextTag) { printf("  no T text tag\n"); ok = false; }
+    if (std::string(ui_layout::typeName(ui_layout::ElementType::Orb)) != "orb") {
+        printf("  typeName(Orb) wrong\n"); ok = false;
+    }
+    printf("ui_layout overlayBoxes: %s\n", ok ? "PASS" : "FAIL");
+    if (!ok) allOk = false;
+}
+
+static void testUiArtNeedsWidth()
+{
+    bool ok = true;
+    const auto* cp = ui_layout::findScreen("control_panel");
+    auto refs = ui_layout::uniqueArtRefs(*cp);
+    // no duplicates
+    for (size_t i = 0; i < refs.size(); ++i)
+        for (size_t j = 0; j < i; ++j)
+            if (refs[i].name == refs[j].name) { printf("  dup art ref\n"); ok = false; }
+    if (ui_layout::artRefCount(*cp) != static_cast<int>(refs.size())) {
+        printf("  artRefCount mismatch\n"); ok = false;
+    }
+    auto nw = ui_layout::needsWidthList(*cp);
+    bool hasSpelicon = false;
+    for (const auto& n : nw) if (n == "ctrlpan\\spelicon.cel") hasSpelicon = true;
+    if (!hasSpelicon) { printf("  spelicon not in needs_width\n"); ok = false; }
+    printf("ui_layout art/needsWidth: %s\n", ok ? "PASS" : "FAIL");
+    if (!ok) allOk = false;
+}
+
+// ---------------------------------------------------------------------------
+// stage 5: ui_render.h pure pixel helpers
+// ---------------------------------------------------------------------------
+static void testUiRenderBlit()
+{
+    bool ok = true;
+    // 2x2 source: (255,0,0,255) (0,255,0,0) / (0,0,255,128) (255,255,255,255)
+    uint8_t src[2 * 2 * 4] = {
+        255, 0, 0, 255, 0, 255, 0, 0,
+        0, 0, 255, 128, 255, 255, 255, 255};
+    ui_render::Canvas cv(4, 4, 0x000000FFu); // opaque black
+    ui_render::blit(cv, 1, 1, src, 2, 2);
+    auto px = [&](int x, int y) -> const uint8_t* { return &cv.rgba[(y * 4 + x) * 4]; };
+    const uint8_t* p;
+    p = px(1, 1); if (!(p[0] == 255 && p[1] == 0 && p[2] == 0 && p[3] == 255)) { printf("  opaque pixel\n"); ok = false; }
+    p = px(2, 1); if (!(p[0] == 0 && p[1] == 0 && p[2] == 0 && p[3] == 255)) { printf("  transparent skip\n"); ok = false; }
+    p = px(1, 2); if (p[3] != 255) { printf("  src-over alpha\n"); ok = false; } // blue over black -> opaque
+    // clipping: negative and far out-of-bounds blits must not crash / not OOB
+    ui_render::blit(cv, -5, -5, src, 2, 2);
+    ui_render::blit(cv, 3, 3, src, 2, 2);
+    ui_render::blit(cv, 100, 100, src, 2, 2);
+    if (cv.rgba.size() != 4 * 4 * 4) { printf("  canvas size changed\n"); ok = false; }
+    printf("ui_render blit: %s\n", ok ? "PASS" : "FAIL");
+    if (!ok) allOk = false;
+}
+
+static void testUiRenderOverlay()
+{
+    bool ok = true;
+    std::vector<ui_layout::OverlayBox> boxes;
+    ui_layout::OverlayBox b;
+    b.rect = ui_layout::Rect{5, 5, 10, 10};
+    b.rgba = ui_layout::overlayColor(ui_layout::ElementType::Image);
+    b.index = 1; b.tag = "1";
+    boxes.push_back(b);
+    ui_layout::OverlayBox panel;
+    panel.rect = ui_layout::Rect{0, 0, 20, 20}; panel.is_panel = true;
+    panel.rgba = ui_layout::overlayColor(ui_layout::ElementType::PanelRect);
+    boxes.push_back(panel);
+
+    ui_render::Canvas ov = ui_render::rasterizeOverlay(20, 20, boxes, true, true);
+    if (ov.rgba.size() != 20 * 20 * 4) { printf("  overlay size\n"); ok = false; }
+    // transparent background outside boxes (2,2 is interior, off the dashed
+    // full-screen panel border and outside the element box at 5,5).
+    const uint8_t* bg = &ov.rgba[(2 * 20 + 2) * 4];
+    if (bg[3] != 0) { printf("  overlay bg not transparent\n"); ok = false; }
+    // top-left corner of element box has the box colour (alpha>0)
+    const uint8_t* c = &ov.rgba[(5 * 20 + 5) * 4];
+    if (c[3] == 0) { printf("  box corner not drawn\n"); ok = false; }
+    // withNumbers=false -> no tag backing block around (7,7)
+    ui_render::Canvas ov2 = ui_render::rasterizeOverlay(20, 20, boxes, false, true);
+    const uint8_t* t = &ov2.rgba[(7 * 20 + 7) * 4];
+    if (t[3] != 0) { printf("  number tag drawn when disabled\n"); ok = false; }
+    // out-of-bounds box must not crash and stay in bounds
+    ui_layout::OverlayBox ob = b;
+    ob.rect = ui_layout::Rect{-5, -5, 40, 40}; ob.tag = "9";
+    ui_render::Canvas ov3 = ui_render::rasterizeOverlay(20, 20, {ob}, true, true);
+    if (ov3.rgba.size() != 20 * 20 * 4) { printf("  OOB overlay size\n"); ok = false; }
+    printf("ui_render overlay: %s\n", ok ? "PASS" : "FAIL");
+    if (!ok) allOk = false;
+}
+
 int main()
 {
     printf("=== DiabloHFConverter unit tests ===\n");
@@ -1907,6 +2142,12 @@ int main()
     testLevelPath();
     testLevelPngAndForcedDecode();
     testDungeonGen();
+    testUiLayoutCatalog();
+    testUiLayoutRepresentatives();
+    testUiOverlayBoxes();
+    testUiArtNeedsWidth();
+    testUiRenderBlit();
+    testUiRenderOverlay();
     printf("=== %s ===\n", allOk ? "ALL PASS" : "FAILURES PRESENT");
     return allOk ? 0 : 1;
 }

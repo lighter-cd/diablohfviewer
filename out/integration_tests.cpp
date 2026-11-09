@@ -16,7 +16,7 @@
 //   g++ -I 3rdparty/StormLib/src -I 3rdparty -I src -std=c++17 \
 //       out/integration_tests.cpp \
 //       src/engine/archive.cpp src/tools/registry.cpp \
-//       src/tools/mpq_tools.cpp src/tools/sprite_tools.cpp \
+//       src/tools/mpq_tools.cpp src/tools/sprite_tools.cpp src/tools/ui_tools.cpp \
 //       src/tools/scene_tools.cpp \
 //       src/decoders/palette.cpp src/decoders/clx.cpp src/decoders/cel.cpp \
 //       src/decoders/cl2.cpp src/decoders/pcx.cpp src/decoders/sprite_width.cpp \
@@ -37,11 +37,14 @@
 #include "tools/sprite_tools.h"
 #include "tools/scene_tools.h"
 #include "tools/level_tools.h"
+#include "tools/ui_tools.h"
+#include "tools/ui_layout.h"
 #include "tools/base64.h"
 #include "mcp/jsonrpc.h"
 #include "decoders/level.h"
 #include "decoders/palette.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstdio>
@@ -1443,6 +1446,189 @@ static void testLevelInspect(const std::string& mpq) {
     printf("level.inspect (megatile 71): %s\n", allOk ? "PASS" : "FAIL");
 }
 
+// ---------------------------------------------------------------------------
+// stage 5: ui.* tools — layout catalog + real-MPQ art compositing.
+// ---------------------------------------------------------------------------
+static void testUiTools(const std::string& mpq) {
+    // UI art spans DIABDAT.MPQ (original .pcx/.cel + town.pal) and
+    // devilutionx.mpq (ui_art\diablo.pal + .clx). Build the same archive stack
+    // the scene tests use, then verify the two key assets before rendering.
+    std::vector<std::string> archives = { mpq };
+    {
+        size_t i = mpq.find_last_of("/\\");
+        std::string dir = (i != std::string::npos) ? mpq.substr(0, i + 1) : "";
+        for (const char* extra : {"DIABDAT.MPQ", "devilutionx.mpq"}) {
+            std::string p = dir + extra;
+            if (p != mpq && std::find(archives.begin(), archives.end(), p) == archives.end())
+                archives.push_back(p);
+        }
+    }
+    bool haveUi = false;
+    for (auto& arch : archives) {
+        engine::Archive a;
+        if (!a.open(arch)) continue;
+        if (a.verify("ui_art\\mainmenu.pcx") && a.verify("levels\\towndata\\town.pal")) {
+            haveUi = true; break;
+        }
+    }
+    if (!haveUi) {
+        printf("  (skipped ui.*; UI art not found in any fixture)\n");
+        printf("ui.*: %s\n", allOk ? "PASS" : "FAIL");
+        return;
+    }
+    json stack = json::array();
+    for (auto& a : archives) stack.push_back(a);
+
+    ToolRegistry reg;
+    tools::registerUiTools(reg);
+    CHECK(reg.has("ui.list") && reg.has("ui.layout") && reg.has("ui.build"),
+          "ui.list / ui.layout / ui.build registered");
+
+    auto pngSigOk = [](const std::string& b64) {
+        auto bytes = base64::decode(b64);
+        return bytes.size() > 8 && bytes[0] == 137 && bytes[1] == 80 &&
+               bytes[2] == 78 && bytes[3] == 71;
+    };
+
+    // ui.list (no MPQ needed, but exercised through the same registry).
+    ToolResult lr = reg.dispatch("ui.list", json::object());
+    CHECK(lr.ok, "ui.list dispatch ok");
+    if (lr.ok) {
+        CHECK(lr.value.value("count", 0) >= 18, "ui.list count >= 18");
+        CHECK(lr.value["canvas_default"].value("width", 0) == 640 &&
+              lr.value["canvas_default"].value("height", 0) == 480,
+              "ui.list default canvas 640x480");
+        CHECK(lr.value["categories"].is_array() && !lr.value["categories"].empty(),
+              "ui.list categories array");
+    }
+    ToolResult lh = reg.dispatch("ui.list", json{{"category", "hud"}});
+    CHECK(lh.ok, "ui.list{hud} dispatch ok");
+    if (lh.ok) {
+        CHECK(lh.value.value("count", 0) == 1, "ui.list{hud} returns only control_panel");
+        if (lh.value["screens"].size() == 1)
+            CHECK(lh.value["screens"][0].value("id", "") == "control_panel",
+                  "ui.list{hud} id is control_panel");
+    }
+
+    // ui.layout: full structured layout, bounds, art refs, needs_width.
+    ToolResult lay = reg.dispatch("ui.layout", json{{"id", "control_panel"}});
+    CHECK(lay.ok, "ui.layout dispatch ok");
+    if (lay.ok) {
+        const json& v = lay.value;
+        CHECK(v["elements"].is_array() && v["elements"].size() >= 10,
+              "ui.layout control_panel has >=10 elements");
+        CHECK(v["panels"].is_array() && !v["panels"].empty(), "ui.layout panels array");
+        CHECK(v["art_refs"].is_array() && !v["art_refs"].empty(), "ui.layout art_refs array");
+        CHECK(v["needs_width"].is_array(), "ui.layout needs_width array");
+        CHECK(v.value("overlay_box_count", 0) > 0, "ui.layout overlay_box_count > 0");
+        bool allInBounds = true;
+        for (const auto& e : v["elements"]) {
+            const auto r = e["rect"];
+            int x = r[0].get<int>(), y = r[1].get<int>(), w = r[2].get<int>(), h = r[3].get<int>();
+            if (w <= 0 || h <= 0 || x < 0 || y < 0 || x >= 640 || y >= 480) allInBounds = false;
+        }
+        CHECK(allInBounds, "ui.layout every element rect anchored in 640x480");
+    }
+    ToolResult bad = reg.dispatch("ui.layout", json{{"id", "bogus_screen"}});
+    CHECK(!bad.ok, "ui.layout{bogus} returns error (dispatch catches throw)");
+
+    // ui.build(mainmenu): PCX embedded palette, 0 transparent pixels, valid PNG.
+    json bargs = json{{"id", "mainmenu"}, {"archive", archives[0]},
+                      {"archives", stack}, {"out", "out/ui"}};
+    ToolResult br = reg.dispatch("ui.build", bargs);
+    CHECK(br.ok, "ui.build(mainmenu) dispatch ok");
+    if (!br.ok) {
+        printf("    ui.build error: %s\n", br.value.dump().c_str());
+        printf("ui.*: %s\n", allOk ? "PASS" : "FAIL");
+        return;
+    }
+    const json& mm = br.value;
+    CHECK(mm.value("width", 0) == 640 && mm.value("height", 0) == 480,
+          "ui.build(mainmenu) 640x480");
+    CHECK(pngSigOk(mm.value("image_base64", std::string())),
+          "ui.build(mainmenu) image_base64 is a PNG");
+    CHECK(pngSigOk(mm.value("overlay_base64", std::string())),
+          "ui.build(mainmenu) overlay_base64 is a PNG");
+    CHECK(mm.value("transparent_pixel_count", 1) == 0 &&
+          mm.value("background_opaque", false),
+          "ui.build(mainmenu) opaque background / 0 transparent pixels");
+    CHECK(mm.value("overlay_box_count", 0) == mm.value("element_count", -1),
+          "ui.build overlay_box_count == element_count (no panels in mainmenu)");
+    bool mmArtOk = false;
+    for (const auto& a : mm["art"])
+        if (a.value("name", "") == "ui_art\\mainmenu.pcx" &&
+            a.value("status", "") == "ok" && a.value("width", 0) == 640 &&
+            a.value("height", 0) == 480) mmArtOk = true;
+    CHECK(mmArtOk, "ui.build(mainmenu) mainmenu.pcx decoded 640x480");
+    bool statusValid = true;
+    for (const auto& e : mm["elements"]) {
+        const std::string s = e.value("decode_status", "");
+        if (s != "ok" && s != "text" && s != "missing" &&
+            s != "width_unknown" && s != "decode_error") statusValid = false;
+    }
+    CHECK(statusValid, "ui.build every element has a valid decode_status");
+    {
+        std::ifstream f("out/ui/mainmenu.png");
+        CHECK(f.good(), "ui.build writes out/ui/mainmenu.png");
+    }
+    {
+        std::ifstream f("out/ui/mainmenu.json");
+        CHECK(f.good(), "ui.build writes out/ui/mainmenu.json sidecar");
+    }
+
+    // ui.build(control_panel): cross-archive palette (town.pal in DIABDAT,
+    // diablo.pal in devilutionx.mpq) + CEL width from catalog + 2 orb frames.
+    json cargs = json{{"id", "control_panel"}, {"archive", archives[0]},
+                      {"archives", stack}, {"out", "out/ui"}};
+    ToolResult cr = reg.dispatch("ui.build", cargs);
+    CHECK(cr.ok, "ui.build(control_panel) dispatch ok");
+    if (cr.ok) {
+        const json& v = cr.value;
+        CHECK(pngSigOk(v.value("image_base64", std::string())),
+              "ui.build(control_panel) image PNG");
+        CHECK(v.value("transparent_pixel_count", 1) == 0,
+              "ui.build(control_panel) 0 transparent pixels");
+        // palette bank: town.pal must be ok and come from a real archive
+        CHECK(v["palettes"].is_array() && !v["palettes"].empty(),
+              "ui.build(control_panel) palette bank non-empty");
+        bool townOk = false, panel8Ok = false;
+        int bulbsOk = 0;
+        for (const auto& p : v["palettes"])
+            if (p.value("name", "") == "levels\\towndata\\town.pal" &&
+                p.value("status", "") == "ok") townOk = true;
+        for (const auto& a : v["art"]) {
+            if (a.value("name", "") == "ctrlpan\\panel8.cel" &&
+                a.value("status", "") == "ok" && a.value("width", 0) == 640) panel8Ok = true;
+            if (a.value("name", "") == "ctrlpan\\p8bulbs.cel" &&
+                a.value("status", "") == "ok" && a.value("width", 0) == 88 &&
+                a.value("height", 0) == 88) ++bulbsOk;
+        }
+        CHECK(townOk, "ui.build(control_panel) town.pal resolved (cross-archive)");
+        CHECK(panel8Ok, "ui.build(control_panel) panel8.cel width=640 from catalog");
+        CHECK(bulbsOk >= 1, "ui.build(control_panel) p8bulbs.cel decoded 88x88");
+        // needs_width resource is skipped, never faked
+        bool speliconSkipped = false;
+        for (const auto& e : v["elements"])
+            if (e.value("id", "") == "cp.spell_icon" &&
+                e.value("decode_status", "") == "width_unknown") speliconSkipped = true;
+        CHECK(speliconSkipped, "ui.build width_unknown CEL skipped cleanly");
+    }
+
+    // Missing-palette fallback: give only a stack WITHOUT the palette files.
+    // We cannot easily remove diablo.pal, but we CAN pass an explicit wrong
+    // palette name -> all CEL/CLX decode_error, tool still ok (skip_missing).
+    json wargs = json{{"id", "control_panel"}, {"archive", archives[0]},
+                      {"archives", stack}, {"out", "out/ui"},
+                      {"palette", "__no_such_palette__.pal"}};
+    ToolResult wr = reg.dispatch("ui.build", wargs);
+    CHECK(wr.ok, "ui.build with missing palette still ok (skip_missing_art)");
+    if (wr.ok)
+        CHECK(wr.value.value("art_ok_count", 0) == 0,
+              "ui.build missing palette -> no art decoded, no crash");
+
+    printf("ui.*: %s\n", allOk ? "PASS" : "FAIL");
+}
+
 int main() {
     printf("=== DiabloHFConverter integration tests (engine + mpq_tools + sprite_tools + scene) ===\n");
     testNormalize();
@@ -1478,6 +1664,7 @@ int main() {
     testSceneTools(mpq);
     testLevelGenerate(mpq);
     testLevelInspect(mpq);
+    testUiTools(mpq);
     printf("=== %s ===\n", allOk ? "ALL PASS" : "FAILURES PRESENT");
     return allOk ? 0 : 1;
 }

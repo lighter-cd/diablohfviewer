@@ -23,6 +23,11 @@
     - 场景查看器 (Scene): render a COMPLETE Diablo 1 / Hellfire level scene
       (Tristram town, L1 presets) via scene.list / scene.build, with zoom,
       pan and a per-cell SOL overlay layer.
+    - 界面布局查看器 (GUI): reconstruct DiabloUI screens (main menu, control
+      panel with health/mana orbs, character/inventory panels, stores, dialogs)
+      via ui.list / ui.build. Backend composites REAL MPQ art into a 640x480
+      PNG + element-box overlay; the frontend draws the text layer with an
+      approximate system font on top (toggleable). Hover an element for details.
 -->
 <html lang="zh">
 <head>
@@ -31,7 +36,7 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta http-equiv="Pragma" content="no-cache" />
   <title>DiabloHFConverter · Sprite & Scene Viewer</title>
-  <link rel="stylesheet" href="styles.css?v=20261109b" />
+  <link rel="stylesheet" href="styles.css?v=20261109c" />
 </head>
 <body>
   <header>
@@ -49,6 +54,7 @@
       <label><input type="radio" name="mode" value="monster"> 怪物 / NPC 查看器</label>
       <label><input type="radio" name="mode" value="combat"> 技能 / 战斗查看器</label>
       <label><input type="radio" name="mode" value="scene"> 场景查看器</label>
+      <label><input type="radio" name="mode" value="gui"> 界面布局查看器</label>
     </div>
   </header>
 
@@ -171,6 +177,30 @@
       <div class="char-hint">选场景 → 加载：后端用 DevilutionX 两遍绘制（地板菱形 + 墙体）复原完整场景，返回 PNG 预览 + 对齐的叠加层。拖拽平移、滑块/滚轮缩放。红色=Solid，蓝色=透明，黄色=BlockLight。勾选「光照」后按 SOL/ambient + 中心火把应用 DevilutionX LightTables 暗部着色（城镇全亮、地牢变暗）。场景含 Tristram 城镇与 L1–L4 预设。</div>
     </aside>
 
+    <aside class="gui-pane" id="guiPane" hidden>
+      <div class="char-bar">界面布局查看器（ui.list / ui.build · 真实 MPQ 美术合成）</div>
+      <div class="char-controls">
+        <label>界面
+          <select id="guiSel"></select>
+        </label>
+        <label>MPQ 路径（可选，覆盖主档案）
+          <input id="guiArchive" type="text" placeholder="留空则用目录中的档案栈" />
+        </label>
+        <button id="guiLoadBtn" type="button">加载界面</button>
+        <label>缩放
+          <select id="guiZoom">
+            <option value="1">1×</option>
+            <option value="2" selected>2×</option>
+          </select>
+        </label>
+        <label class="scene-check"><input type="checkbox" id="guiOverlayToggle" checked /> 显示元素框叠加层</label>
+        <label class="scene-check"><input type="checkbox" id="guiNumberToggle" checked /> 显示编号角标</label>
+        <label class="scene-check"><input type="checkbox" id="guiTextToggle" checked /> 显示文字（近似字体）</label>
+      </div>
+      <div class="char-hint">后端 ui.build 用真实 MPQ 美术（背景 PCX / 面板 CEL / 血蓝球 / 按钮 CLX）按 DevilutionX 坐标合成 640×480 底图，并生成对齐的元素框叠加层 PNG。文字由前端用系统字体按布局字段近似绘制（非游戏原版位图字体，可关闭核对纯美术底图）。鼠标悬停元素框查看类型 / 矩形 / 引用资源 / 源码位置。</div>
+      <div class="gui-info" id="guiInfo"><em>悬停画面中的元素查看详情…</em></div>
+    </aside>
+
     <section class="stage">
       <div class="current">
         <span class="current-label">当前资源：</span>
@@ -242,6 +272,16 @@
           </div>
         </div>
       </div>
+      <div class="gui-view" id="guiView" hidden>
+        <div id="guiViewport" class="gui-viewport">
+          <div id="guiLayers" class="gui-layers">
+            <canvas id="guiBase" aria-label="gui base"></canvas>
+            <canvas id="guiText" aria-label="gui text"></canvas>
+            <canvas id="guiOverlay" aria-label="gui overlay"></canvas>
+            <div id="guiHoverBox" class="gui-hover-box" hidden></div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <aside class="combat-detail-pane" id="combatDetailPane" hidden>
@@ -250,6 +290,6 @@
     </aside>
   </main>
 
-  <script type="module" src="src/main.js?v=20261109b"></script>
+  <script type="module" src="src/main.js?v=20261109c"></script>
 </body>
 </html>

@@ -14,7 +14,7 @@ Diablo 1 / Hellfire 的 MPQ 研究与精灵查看工具。**后端为纯 C/C++ �
 |------|------|
 | `src/engine/` | StormLib 封装（open / list / extract / verify） |
 | `src/decoders/` | 格式解码器（palette / clx / cel / cl2 / pcx / png / `level_*` 关卡、场景、光照与寻路管线） |
-| `src/tools/` | Tool Registry + `mpq_tools` + `sprite_tools` + `map_tools`（`map.build`）+ `scene_tools`（`scene.list`/`scene.build`/`scene.path`）+ `level_tools`（`level.inspect` 关卡原始 tile 查看） |
+| `src/tools/` | Tool Registry + `mpq_tools` + `sprite_tools` + `map_tools`（`map.build`）+ `scene_tools`（`scene.list`/`scene.build`/`scene.path`）+ `level_tools`（`level.inspect`/`level.generate`）+ **`ui_tools`（`ui.list`/`ui.layout`/`ui.build` 界面布局还原）** |
 | `src/mcp/` | MCP 服务端（jsonrpc / stdio / ws 桥） |
 | `3rdparty/StormLib/` | StormLib 源码（git submodule；构建脚本见仓库根 `build-stormlib.sh`） |
 | `mpq-info/` | MPQ 文件名恢复字典与产出（参考数据，非代码） |
@@ -89,6 +89,9 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
 | `scene.path` | 在已解码场景的 SOL 碰撞网格上做 **8 方向 A\*** 寻路（忠实 `Source/engine/path.cpp`：直行 100 / 斜行 101，斜向不额外限制转角；目标是 Solid 时仍可到达，同引擎 `FindPath` 行为）。必填 `id` + `archive` + `from`/`to`（`{x,y}` 微瓦片坐标），可选 `max_steps`（默认 1024）、`preview_max_width`（与 `scene.build` 对齐）。返回 `found`/`cost`/`steps`/`walkable_count` + `path[]`（每格 `x/y`、原生 `screen_x/screen_y`、预览 `preview_x/preview_y`）（`src/decoders/level_path.cpp`、`src/tools/scene_tools.cpp`） |
 | `level.inspect` | **关卡原始 tile 查看器**：给定 `archive` + `cel`/`til`/`min`/`sol`/`palette` + `blocks`/`micro_len` + `megatile`（1-based）或 `micros[]`，返回该 megatile 的 4 个 micro piece、每个 MIN block 的 `TileType`/`frame`/原始 `data`、所有引用到的 CEL 帧 PNG（base64）以及这些 micro 拼出的等距透明底预览 `assembly`。用于核对 `FillTile(60,70,71)` 这类地图对象（Tristram 水池 = megatile 71 → pieces 257–260 → town.cel frames 594–605）（`src/tools/level_tools.cpp`） |
 | `level.generate` | **原生动态地牢生成（Cathedral L1–L4）**：按 `seed` 调 `DungeonSeeds[level]`，用 DevilutionX `drlg_l1.cpp` 的逐函数移植（同一 Borland LCG、同一 RNG 调用顺序）生成 40×40 megatile 地图；可选放置 Butcher / Skeleton King / Ogden's Sign 任务 set-piece（从 `archive`/`archives` 读取 `rnd6.dun`/`skngdo.dun`/`banner2.dun`）。必填 `archive` + `level` + `seed`，可选 `original_cathedral`（true=Diablo 原版，false=Hellfire）、`quests`（`vanilla`/`none`/`all`）、`out`（默认 `out/gen`）。写出 ExportDun 兼容的 `<level>-<seed>.dun`（可用 `map.build` 的 `dun_path` 渲染），返回 `tiles`（40 行 hex）、`floor_count`、`stairs_up_count`/`stairs_down_count`。已通过 DevilutionX 14 个 Cathedral 测试 fixture 的 0 差异校验（`src/decoders/dungeon_gen*.{h,cpp}`、`src/tools/level_tools.cpp`） |
+| `ui.list` | 列出 **18 个可查看的 Diablo 1 / Hellfire 界面**（主菜单 / 标题 / 制作群 / 英雄·难度选择 / OK·YesNo / 设置 / 底部控制面板含血蓝球 / 角色·物品栏·法术书·任务日志 / 文本·网格商店 / 大·小对话框及其 CLX 变体）。**纯静态目录，无需 MPQ**。返回每屏 id/title/category/canvas/元素数/文字数/资源数/`needs_width`/源码位置；可选 `category` 过滤（`menu`/`hud`/`panel`/`store`/`dialog`）（`src/tools/ui_layout.h`、`src/tools/ui_tools.cpp`） |
+| `ui.layout` | 返回单屏**完整结构化布局**（`ui.list` 的 `id`）：面板分区、每元素绝对 640×480 `rect`、类型、`label`、引用的美术 MPQ 名/格式/width/frame/palette、文字/字号/颜色/对齐/flags、`source_ref`。**文字不在后端烧录**：这些字段驱动前端近似字体文字层。无需 MPQ（`src/tools/ui_layout.h`、`src/tools/ui_tools.cpp`） |
+| `ui.build` | 用**真实 MPQ 美术**按 DevilutionX 坐标离屏合成 640×480 界面 PNG（背景 PCX 内嵌调色板 / 面板 CEL / 血蓝球 / 按钮 CLX），**不透明背景、0 透明像素**，并生成对齐的元素框叠加层 PNG。必填 `id` + `archive`，可选 `archives`（**必传全栈**：`DIABDAT.MPQ` 存原版 `.pcx/.cel` + `town.pal`，`devilutionx.mpq` 存 `ui_art\diablo.pal` + `.clx`）、`out`（默认 `out/ui`）、`palette`（全局覆盖，一般不用）、`overlay`/`label_numbers`/`background`/`skip_missing_art`。返回 `image_base64`/`overlay_base64`（PNG）、每元素 `decode_status`（`ok`/`text`/`missing`/`width_unknown`/`decode_error`）+ `decoded_size`/`placed_rect`、每资源 `art[]` 状态、`palettes[]`（逐资源调色板，因一屏可混用 `town.pal` 与 `diablo.pal`）、`needs_width`、`art_ok/missing/error_count`，并写 `out/ui/<id>.png` + `<id>_overlay.png` + `<id>.json`（`src/tools/ui_layout.h`、`src/tools/ui_render.h`、`src/tools/ui_tools.cpp`）。详见 `docs/UI_LAYOUT.md` |
 
 请求示例（JSON-RPC 2.0，stdio 与 WS 同构）：
 
@@ -98,6 +101,34 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
            "arguments":{"archive":"devilutionx.mpq","name":"data\\health.clx",
                         "palette_name":"ui_art\\diablo.pal"}}}
 ```
+
+`ui.build`（务必传全 MPQ 栈，UI 美术跨档案）：
+
+```json
+{"jsonrpc":"2.0","id":2,"method":"tools/call",
+ "params":{"name":"ui.build",
+           "arguments":{"id":"control_panel",
+                        "archive":"D:/work/xt/diablo/DevilutionX-Hell Fire/DIABDAT.MPQ",
+                        "archives":["D:/work/xt/diablo/DevilutionX-Hell Fire/DIABDAT.MPQ",
+                                    "D:/work/xt/diablo/DevilutionX-Hell Fire/devilutionx.mpq"]}}}
+```
+
+## 界面布局查看器（阶段 5 · 前端第 6 种浏览模式）
+
+后端 `ui.build` 用真实 MPQ 美术合成界面底图 + 元素框叠加层；前端在 `index.html` 顶部
+「浏览模式」切到 **界面布局查看器** 即可查看。连接步骤见上文「运行」。
+
+- 左侧「界面」下拉由 `ui.list` 填充（18 屏），选界面或点「加载界面」触发 `ui.build`。
+- 底图是**真实游戏美术**（主菜单背景、控制面板与血蓝球、角色/物品栏面板、商店、对话框等）。
+- **文字**由前端按 `ui.layout`/`ui.build` 的 `text`/`font_size`/`color`/`align` 字段用系统
+  字体**近似绘制**（游戏位图字体在 MPQ 中仅恢复基本 ASCII、中文缺字，故逐字渲染延后）；
+  「显示文字」开关可一键关闭以核对纯美术底图，占位符 `{PLAYER_NAME}` 等替换为示意值。
+- 「显示元素框叠加层」「显示编号角标」「缩放 1×/2×」可调；鼠标**悬停**画面元素即在左栏
+  `#guiInfo` 显示该元素的类型/矩形/引用资源/解码状态/DevilutionX 源码位置。
+- UI 美术跨 MPQ：`DIABDAT.MPQ` 存原版 `.pcx/.cel` 与 `levels\towndata\town.pal`，
+  `devilutionx.mpq` 存 `ui_art\diablo.pal` 与 `.clx`；前端把 `sprite.list` 收集到的
+  `allArchives` 全栈传给 `ui.build`。逐资源调色板分工与全部 18 屏转录表见
+  `docs/UI_LAYOUT.md`。
 
 ## 测试
 
@@ -144,7 +175,7 @@ g++ -I 3rdparty/StormLib/src -I 3rdparty -I src -std=c++17 \
     out/integration_tests.cpp \
     src/engine/archive.cpp src/tools/registry.cpp \
     src/tools/mpq_tools.cpp src/tools/sprite_tools.cpp src/tools/scene_tools.cpp \
-    src/tools/level_tools.cpp \
+    src/tools/level_tools.cpp src/tools/ui_tools.cpp \
     src/decoders/palette.cpp src/decoders/clx.cpp src/decoders/cel.cpp \
     src/decoders/cl2.cpp src/decoders/pcx.cpp src/decoders/sprite_width.cpp \
     src/decoders/png.cpp src/decoders/deflate.cpp \
@@ -455,4 +486,4 @@ http://localhost:8000/level.html
 ## 开发文档
 
 更详细的架构与阶段计划见 `docs/ARCHITECTURE.md` 与 `docs/PROJECT.md`；动态地牢生成规则见
-`docs/MAP_GENERATION.md`。
+`docs/MAP_GENERATION.md`；DiabloUI 界面布局转录、资源清单与调色板分工见 `docs/UI_LAYOUT.md`。

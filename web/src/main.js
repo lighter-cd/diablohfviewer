@@ -3,18 +3,23 @@
 // Glue: connect to the mcp-server WS bridge, load the sprite catalog via
 // sprite.list, and decode sprites via sprite.decode for Canvas rendering.
 //
-// Two browse modes share the canvas / palette / direction / playback controls:
+// Six browse modes; the Catalog / Character / Monster / Combat modes share the
+// canvas / palette / direction / playback controls, while Scene and GUI each
+// own a dedicated PNG viewport:
 //   - Catalog (目录浏览): pick any sprite from the recovered-name tree.
 //   - Character (角色查看器): assemble a player sprite by Class -> Action ->
 //     Armor/Weapon via the plrgfx filename formula, then decode + play it with
 //     8-direction animation.
+//   - Scene (场景查看器): scene.list / scene.build complete level renders.
+//   - GUI (界面布局查看器, 6th): ui.list / ui.build reconstruct DiabloUI
+//     screens from real MPQ art + an approximate-font text layer.
 //
 // Player CL2 frames are stored direction-major: 8 directions x N frames, so
 // frameIndex = dir * framesPerDir + frameInDir (framesPerDir = total/8).
 
-import { McpClient } from "./client.js?v=20261109b";
-import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js?v=20261109b";
-import { drawFrame, drawComposite, drawScene } from "./viewer.js?v=20261109b";
+import { McpClient } from "./client.js?v=20261109c";
+import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js?v=20261109c";
+import { drawFrame, drawComposite, drawScene } from "./viewer.js?v=20261109c";
 
 const $ = (id) => document.getElementById(id);
 
@@ -182,6 +187,19 @@ function isCharMode() {
 function isSceneMode() {
   const r = document.querySelector('input[name="mode"]:checked');
   return !!r && r.value === "scene";
+}
+
+// GUI layout viewer (6th browse mode) also owns the stage: three stacked
+// canvases (real MPQ art + frontend text + backend element boxes).
+function isGuiMode() {
+  const r = document.querySelector('input[name="mode"]:checked');
+  return !!r && r.value === "gui";
+}
+
+// Modes that replace the shared sprite canvas with their own view; shared
+// playback/direction/palette controls are no-ops in these modes.
+function isViewOwnedMode() {
+  return isSceneMode() || isGuiMode();
 }
 
 async function loadCatalog() {
@@ -777,7 +795,7 @@ function setDirections(dirs) {
 // Composites any enabled effect-overlay layers on top (alpha), aligning each
 // overlay's own (dir, fin) so multi-direction sprites stay in sync.
 function showFrame(dir, fin) {
-  if (isCombatMode() || isSceneMode()) return;   // those modes own the view
+  if (isCombatMode() || isViewOwnedMode()) return;   // those modes own the view
   if (!currentFrames) return;
   const idx = dir * framesPerDir + fin;
   const f = currentFrames[idx];
@@ -822,7 +840,7 @@ function updateMeta(idx, dir, fin) {
 }
 
 function startPlay() {
-  if (isSceneMode()) return;
+  if (isViewOwnedMode()) return;
   if (isCombatMode()) return startCombatPlay();
   if (!currentFrames || framesPerDir <= 1) return;
   isPlaying = true;
@@ -1569,14 +1587,262 @@ function wireSceneControls() {
   });
 }
 
+// ---- GUI layout viewer (6th browse mode) -----------------------------------
+//
+// Backend ui.build returns a 640x480 PNG of REAL MPQ art (background / panel /
+// orbs / buttons) plus an aligned element-box overlay PNG, as base64. We reuse
+// sceneDrawPng() to blit both onto stacked canvases. A THIRD canvas holds the
+// text layer: because the game's bitmap font only has basic-ASCII glyphs in the
+// MPQ, the backend does NOT burn text into the PNG. Instead we draw each Text /
+// Button element's label with an approximate system font using the structured
+// text/font_size/color/align/flags fields from ui.build.elements. This layer is
+// toggleable so the pure "real art" composite can be inspected on its own.
+
+const guiState = {
+  catalog: [],      // ui.list screens
+  elements: [],     // ui.build elements for the current screen
+  zoom: 2,
+  loaded: false,
+  loading: false,
+};
+
+// font_size (DevilutionX GameFontTables) -> approximate CSS px. Game fonts are
+// ~22/24/30/42/46 tall; a slightly smaller CSS size keeps lines inside rects.
+function guiFontSize(fs) {
+  const map = { 12: 11, 22: 15, 24: 18, 30: 23, 42: 32, 46: 36 };
+  return map[fs] || (fs ? Math.round(fs * 0.75) : 12);
+}
+
+// color = fonts\\<name>.trn basename -> representative hex. Approximation only.
+function guiColor(name) {
+  const map = {
+    goldui: "#d0a830", grayui: "#c8c8c8", golduis: "#8a7430", grayuis: "#888888",
+    yellow: "#ffd24a", white: "#f0f0f0", whitegold: "#ffe9b0",
+    red: "#e04848", blue: "#7090e8", orange: "#f09040", black: "#181818",
+    buttonface: "#b0a890", buttonpushed: "#706858",
+    gamedialogwhite: "#f0f0f0", gamedialogyellow: "#ffd24a", gamedialogred: "#e04848",
+  };
+  return map[name] || "#e6e6ee";
+}
+
+// Replace {PLACEHOLDER} tokens with example values so a screen reads like a
+// real game frame. These are static examples, NOT live runtime data.
+function guiExampleText(text) {
+  const ex = {
+    "{PLAYER_NAME}": "Aldric", "{CLASS}": "Warrior", "{VERSION}": "Diablo v1.09",
+    "{HP}": "182", "{HP_MAX}": "182", "{MANA}": "77", "{MANA_MAX}": "77",
+    "{VAL}": "48", "{GOLD}": "5210", "{SPELL}": "Firebolt",
+    "{TITLE}": "Warning", "{BODY}": "Your inventory is full.",
+    "{QUEST_TITLE}": "The Butcher", "{DESCRIPTION}": "Option description",
+    "{CREDITS_LINES}": "Blizzard Entertainment\nDesign & Programming",
+  };
+  let out = String(text == null ? "" : text);
+  for (const [k, v] of Object.entries(ex)) out = out.split(k).join(v);
+  return out;
+}
+
+// Draw the text layer onto a native 640x480 canvas. Elements are drawn in z
+// order; only Text and Button (and any element carrying text) are rendered.
+function drawGuiText(canvas, elements) {
+  const W = 640, H = 480;
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, W, H);
+  if (!$("guiTextToggle").checked) return;   // toggle: pure art + boxes
+  const list = (elements || []).slice().sort((a, b) => (a.z || 0) - (b.z || 0));
+  for (const el of list) {
+    if (!el.text) continue;
+    const r = el.rect || [0, 0, 0, 0];
+    const [x, y, w, h] = r;
+    if (w <= 0 || h <= 0) continue;
+    const fs = guiFontSize(el.font_size);
+    ctx.font = `600 ${fs}px ui-monospace, Menlo, Consolas, monospace`;
+    ctx.fillStyle = guiColor(el.color);
+    ctx.textBaseline = "middle";
+    // alignment from flags / align field
+    const center = (el.flags && el.flags.align_center) || el.align === "center";
+    const right = (el.flags && el.flags.align_right) || el.align === "right";
+    ctx.textAlign = right ? "right" : center ? "center" : "left";
+    const tx = right ? x + w - 3 : center ? x + w / 2 : x + 3;
+    const ty = (el.flags && el.flags.vertical_center) ? y + h / 2 : y + Math.min(h / 2, fs);
+    const lines = guiExampleText(el.text).split("\n");
+    const lh = Math.max(fs + 2, Math.round(fs * 1.15));
+    const startY = ty - ((lines.length - 1) * lh) / 2;
+    for (let i = 0; i < lines.length; i++) {
+      // Clip text to the element's rect so long menu lines never overflow it.
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(Math.max(0, x), Math.max(0, y), Math.min(W - x, w), Math.min(H - y, h));
+      ctx.clip();
+      ctx.fillText(lines[i], tx, startY + i * lh);
+      ctx.restore();
+    }
+  }
+}
+
+// Apply the shared CSS zoom to all three canvases + the layers container.
+function applyGuiTransform() {
+  const z = guiState.zoom;
+  const w = 640 * z, h = 480 * z;
+  $("guiLayers").style.width = `${w}px`;
+  $("guiLayers").style.height = `${h}px`;
+  for (const id of ["guiBase", "guiText", "guiOverlay"]) {
+    const el = $(id);
+    el.style.width = `${w}px`;
+    el.style.height = `${h}px`;
+  }
+}
+
+async function loadGuiCatalog() {
+  try {
+    const res = await client.callTool("ui.list", {});
+    guiState.catalog = (res && res.screens) || [];
+    const sel = $("guiSel");
+    sel.innerHTML = "";
+    for (const s of guiState.catalog) {
+      const o = document.createElement("option");
+      o.value = s.id;
+      o.textContent = `${s.title}  (${s.element_count} 元素)`;
+      sel.appendChild(o);
+    }
+    if (guiState.catalog.length) sel.value = "mainmenu";
+  } catch (e) {
+    showError("ui.list 失败: " + (e.message || e));
+  }
+}
+
+async function loadGuiScreen() {
+  if (guiState.loading) return;
+  const id = $("guiSel").value || "mainmenu";
+  hideError();
+  setMeta(`加载界面 ${id} …`);
+  $("guiLoadBtn").disabled = true;
+  guiState.loading = true;
+  try {
+    const args = { id, overlay: true, label_numbers: !!$("guiNumberToggle").checked,
+                   out: "out/ui" };
+    // Same archive-stack logic as the scene viewer: explicit override or the
+    // catalog's primary archive, plus the full stack so cross-archive art
+    // (DIABDAT .pcx/.cel + devilutionx .pal/.clx) all resolves.
+    const override = ($("guiArchive").value || "").trim();
+    const primary = override || ((allArchives && allArchives.length) ? allArchives[0] : null);
+    if (primary) args.archive = primary;
+    if (allArchives && allArchives.length) args.archives = allArchives.slice();
+    if (!args.archive) {
+      showError("未连接或未发现 MPQ 档案：请在上方填入 MPQ 路径");
+      return;
+    }
+    const res = await client.callTool("ui.build", args);
+    if (!res || !res.image_base64) throw new Error("ui.build 未返回图像");
+    await sceneDrawPng($("guiBase"), res.image_base64);
+    await sceneDrawPng($("guiOverlay"), res.overlay_base64 || "");
+    guiState.elements = res.elements || [];
+    drawGuiText($("guiText"), guiState.elements);
+    $("guiOverlay").hidden = !res.overlay_base64 || !$("guiOverlayToggle").checked;
+    guiState.loaded = true;
+    applyGuiTransform();
+    const pals = (res.palettes || []).map((p) => p.name.split(/[\\/]/).pop()).join(", ") || "embedded";
+    setMeta(`${res.title}  640×480  元素 ${res.element_count}  框 ${res.overlay_box_count}  ` +
+            `美术解码 ok=${res.art_ok_count} 缺=${res.art_missing_count} 错=${res.art_error_count}  ` +
+            `调色板 [${pals}]  透明像素 ${res.transparent_pixel_count}`);
+    $("guiInfo").innerHTML = "<em>悬停画面中的元素查看详情…</em>";
+  } catch (e) {
+    showError("ui.build 失败: " + (e.message || e));
+    setMeta("界面加载失败", true);
+  } finally {
+    guiState.loading = false;
+    $("guiLoadBtn").disabled = false;
+  }
+}
+
+async function showGuiView() {
+  if (!guiState.catalog.length) await loadGuiCatalog();
+  if (guiState.loaded) { applyGuiTransform(); return; }
+  if (allArchives && allArchives.length && !guiState.loading) {
+    await loadGuiScreen();
+  }
+}
+
+// Hover: translate client coords to logical 640x480, find the topmost element
+// whose rect contains the point, then show its details + a highlight box.
+function guiHitTest(lx, ly) {
+  const list = guiState.elements;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const r = list[i].rect;
+    if (r && lx >= r[0] && ly >= r[1] && lx <= r[0] + r[2] && ly <= r[1] + r[3])
+      return list[i];
+  }
+  return null;
+}
+
+function showGuiElementDetail(el) {
+  if (!el) { $("guiHoverBox").hidden = true; return; }
+  const r = el.rect || [0, 0, 0, 0];
+  const z = guiState.zoom;
+  const box = $("guiHoverBox");
+  box.style.left = `${r[0] * z}px`;
+  box.style.top = `${r[1] * z}px`;
+  box.style.width = `${r[2] * z}px`;
+  box.style.height = `${r[3] * z}px`;
+  box.hidden = false;
+  const row = (k, v) => `<div class="gi-row"><span class="gi-key">${k}</span><span class="gi-val">${v}</span></div>`;
+  const a = el.art;
+  let html = `<div class="gi-title">${el.label || el.id}</div>`;
+  html += row("id", el.id) + row("类型", el.type) + row("矩形", `[${r.join(", ")}]`);
+  if (el.panel) html += row("分区", `${el.panel} ${JSON.stringify(el.panel_rect)}`);
+  html += row("z", el.z);
+  if (a) html += row("美术", `${a.name}<br>${a.format} · w=${a.width} · frame ${a.frame}/${a.frames}`) +
+                 row("调色板", a.palette) + row("解码", el.decode_status || "-");
+  if (el.grid) html += row("网格", `${el.grid.cols}×${el.grid.rows} · cell ${el.grid.cell} · step ${el.grid.step}`);
+  if (el.text) html += row("文字", guiExampleText(el.text)) +
+                       row("字号/色", `${el.font_size} / ${el.color || "默认"} / ${el.align || "left"}`);
+  html += row("源码", el.source_ref || "-");
+  if (el.text && /\{/.test(el.text)) html += `<div class="gi-note">占位符已替换为示意值（非运行时数据）；文字为系统字体近似，非游戏原版位图字体。</div>`;
+  else html += `<div class="gi-note">文字为系统字体近似，非游戏原版位图字体。</div>`;
+  $("guiInfo").innerHTML = html;
+}
+
+function wireGuiControls() {
+  $("guiLoadBtn").addEventListener("click", () => loadGuiScreen());
+  $("guiSel").addEventListener("change", () => loadGuiScreen());
+  $("guiZoom").addEventListener("change", (e) => {
+    guiState.zoom = Math.max(1, Math.min(2, parseInt(e.target.value, 10) || 1));
+    applyGuiTransform();
+  });
+  $("guiOverlayToggle").addEventListener("change", (e) => {
+    $("guiOverlay").hidden = !e.target.checked;
+  });
+  $("guiNumberToggle").addEventListener("change", () => {
+    // number tags are baked into the backend overlay PNG -> rebuild.
+    if (guiState.loaded) loadGuiScreen();
+  });
+  $("guiTextToggle").addEventListener("change", () => {
+    // text layer is drawn client-side; just redraw, no backend call.
+    drawGuiText($("guiText"), guiState.elements);
+  });
+  // Hover hit-testing on the base canvas (in logical 640x480 coords).
+  $("guiBase").addEventListener("mousemove", (e) => {
+    if (!isGuiMode()) return;
+    const rect = $("guiBase").getBoundingClientRect();
+    const lx = (e.clientX - rect.left) / guiState.zoom;
+    const ly = (e.clientY - rect.top) / guiState.zoom;
+    showGuiElementDetail(guiHitTest(lx, ly));
+  });
+  $("guiBase").addEventListener("mouseleave", () => {
+    $("guiHoverBox").hidden = true;
+  });
+}
+
 function wireControls() {
   $("connectBtn").addEventListener("click", async () => {
     try {
       await client.connect($("wsUrl").value.trim());
       await loadCatalog();
-      // If the user switched to the scene view before connecting, nothing could
-      // load then; now that archives are known, draw the scene onto the canvas.
+      // If the user switched to the scene/GUI view before connecting, nothing
+      // could load then; now that archives are known, draw it.
       if (isSceneMode() && !sceneState.loaded) await showSceneView();
+      if (isGuiMode() && !guiState.loaded) await showGuiView();
     } catch (e) {
       setMeta("connect failed: " + (e.message || e), true);
     }
@@ -1590,21 +1856,25 @@ function wireControls() {
       const monster = e.target.value === "monster";
       const combat = e.target.value === "combat";
       const scene = e.target.value === "scene";
+      const gui = e.target.value === "gui";
+      const viewOwned = scene || gui;
       stopPlay();
-      $("catalogPane").hidden = character || monster || combat || scene;
+      $("catalogPane").hidden = character || monster || combat || viewOwned;
       $("charPane").hidden = !character;
       $("monsterPane").hidden = !monster;
       $("combatPane").hidden = !combat;
       $("combatDetailPane").hidden = !combat;
       $("scenePane").hidden = !scene;
-      // Scene mode swaps the shared canvas for the pannable PNG viewport.
-      $("canvasWrap").hidden = scene;
+      $("guiPane").hidden = !gui;
+      // Scene / GUI mode swaps the shared canvas for its own PNG viewport.
+      $("canvasWrap").hidden = viewOwned;
       $("sceneView").hidden = !scene;
-      $("overlaysPanel").hidden = scene;
+      $("guiView").hidden = !gui;
+      $("overlaysPanel").hidden = viewOwned;
       // Combat uses a fixed 8-way scene direction; other modes use the sprite's
       // own direction count when the next sprite is decoded.
       if (combat) syncCombatDirControl();
-      else if (!scene) {
+      else if (!viewOwned) {
         $("directions").disabled = false;
         $("dir").max = String(Math.max(0, currentDirections - 1));
       }
@@ -1614,6 +1884,7 @@ function wireControls() {
       if (monster) showMonsterView();
       if (combat) showCombatView();
       if (scene) showSceneView();
+      if (gui) showGuiView();
     });
   });
 
@@ -1630,7 +1901,7 @@ function wireControls() {
 
   // Frame slider (frame within the current direction / combat stage).
   $("frame").addEventListener("input", (e) => {
-    if (isSceneMode()) return;
+    if (isViewOwnedMode()) return;
     stopPlay();
     const v = Number(e.target.value);
     if (isCombatMode()) renderCombatStage(combatStage, v);
@@ -1640,7 +1911,7 @@ function wireControls() {
   // caster: both actors are re-placed and re-oriented, but playback never
   // changes the direction (the loop only advances frames within one stage).
   $("dir").addEventListener("input", (e) => {
-    if (isSceneMode()) return;
+    if (isViewOwnedMode()) return;
     if (isCombatMode()) {
       combatDir = Math.max(0, Math.min(7, Number(e.target.value) || 0));
       renderCombatStage(combatStage, Math.min(combatFrame, stageFrameCount(combatStage) - 1));
@@ -1651,7 +1922,7 @@ function wireControls() {
   });
   // Directions selector (re-splits the flat frame list).
   $("directions").addEventListener("change", (e) => {
-    if (isCombatMode() || isSceneMode()) return;
+    if (isCombatMode() || isViewOwnedMode()) return;
     stopPlay();
     setDirections(Number(e.target.value));
     currentFin = Math.min(currentFin, framesPerDir - 1);
@@ -1665,7 +1936,7 @@ function wireControls() {
   // drawComposite/drawScene: canvas pixels = native × zoom, context scaled with
   // nearest-neighbour), so sprite size AND scene spacing both grow with zoom.
   $("zoom").addEventListener("input", (e) => {
-    if (isSceneMode()) return;
+    if (isViewOwnedMode()) return;
     zoom = Math.max(1, Math.min(8, parseInt(e.target.value, 10) || 1));
     $("zoomNo").textContent = zoom + "×";
     if (isCombatMode()) renderCombatStage(combatStage, combatFrame);
@@ -1674,19 +1945,19 @@ function wireControls() {
 
   // Re-decode the current sprite when the user changes the palette.
   $("palette").addEventListener("change", () => {
-    if (isSceneMode()) return;
+    if (isViewOwnedMode()) return;
     if (isCombatMode()) { combatCache.clear(); buildCombatScene(); return; }
     if (lastSprite) onSelectSprite(lastSprite);
   });
 
   // TRN toggle / preset: re-decode so the colour change takes effect.
   $("applyTrn").addEventListener("change", () => {
-    if (isSceneMode()) return;
+    if (isViewOwnedMode()) return;
     if (isCombatMode()) { combatCache.clear(); buildCombatScene(); return; }
     if (lastSprite) onSelectSprite(lastSprite);
   });
   $("trnPreset").addEventListener("change", () => {
-    if (isCombatMode() || isSceneMode()) return;
+    if (isCombatMode() || isViewOwnedMode()) return;
     if ($("applyTrn").checked && lastSprite) onSelectSprite(lastSprite);
   });
 
@@ -1762,6 +2033,7 @@ function wireControls() {
   });
 
   wireSceneControls();
+  wireGuiControls();
 }
 
 wireControls();

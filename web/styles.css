@@ -162,8 +162,8 @@ canvas { background: transparent; image-rendering: pixelated; }
 .zoom input[type="range"] { width: 90px; }
 .zoom #zoomNo { color: #ffd479; min-width: 24px; text-align: right; }
 
-/* Character / monster / combat / scene viewer panes */
-.char-pane, .monster-pane, .combat-pane, .scene-pane {
+/* Character / monster / combat / scene / gui viewer panes */
+.char-pane, .monster-pane, .combat-pane, .scene-pane, .gui-pane {
   width: 320px;
   flex: 0 0 320px;
   display: flex;
@@ -171,8 +171,9 @@ canvas { background: transparent; image-rendering: pixelated; }
   background: #202027;
   border-right: 1px solid #3a3a42;
   padding: 10px 12px;
+  overflow: auto;
 }
-.char-pane[hidden], .monster-pane[hidden], .combat-pane[hidden], .scene-pane[hidden] { display: none; }
+.char-pane[hidden], .monster-pane[hidden], .combat-pane[hidden], .scene-pane[hidden], .gui-pane[hidden] { display: none; }
 .char-bar {
   padding: 8px 10px; margin: -10px -12px 10px;
   background: #2a2a32; border-bottom: 1px solid #3a3a42;
@@ -254,7 +255,7 @@ canvas { background: transparent; image-rendering: pixelated; }
    two absolutely-stacked <canvas> layers (base scene + aligned SOL overlay),
    each drawn from a decoded PNG bitmap. Both are transformed identically by
    applySceneTransform(), so zoom/pan stay in sync. */
-.canvas-wrap[hidden], .scene-view[hidden] { display: none; }
+.canvas-wrap[hidden], .scene-view[hidden], .gui-view[hidden] { display: none; }
 .scene-view {
   flex: 1; display: flex; flex-direction: column; min-height: 0;
   margin-top: 12px; border-radius: 6px; overflow: hidden;
@@ -285,3 +286,51 @@ canvas { background: transparent; image-rendering: pixelated; }
    contrast reduction lifts shadow detail while keeping the diamond background
    near-black; brightness restores overall level. Toggle defaults to ON. */
 .scene-layers.bright canvas { filter: brightness(1.7) contrast(0.85) saturate(1.1); }
+
+/* ---- GUI layout viewer (6th browse mode) ----
+   Three stacked <canvas> layers at native 640x480, all scaled together via CSS
+   width/height (same approach as the scene viewer, minus pan/drag): base = real
+   MPQ art composite, text = approximate system-font text drawn by the frontend,
+   overlay = element boxes + number tags produced by the backend. */
+.gui-view {
+  flex: 1; display: flex; flex-direction: column; min-height: 0;
+  margin-top: 12px; border-radius: 6px; overflow: hidden;
+}
+.gui-viewport {
+  flex: 1; position: relative; overflow: auto; background: #0a0a0c;
+}
+.gui-layers {
+  position: relative; width: 640px; height: 480px;
+  transform-origin: 0 0; margin: 0 auto;
+}
+.gui-layers canvas {
+  position: absolute; left: 0; top: 0;
+  image-rendering: pixelated;
+  user-select: none;
+}
+/* guiBase receives hover events; text + overlay layers are transparent to the
+   pointer so the base canvas underneath always gets the mouse. */
+#guiText, #guiOverlay { pointer-events: none; }
+#guiText[hidden], #guiOverlay[hidden] { display: none; }
+.gui-hover-box {
+  position: absolute; border: 2px solid #ffe27a;
+  background: rgba(255, 226, 122, 0.12);
+  pointer-events: none; box-sizing: border-box;
+}
+.gui-hover-box[hidden] { display: none; }
+#guiZoom { background: #15151a; color: #e6e6e6; border: 1px solid #3a3a42; border-radius: 4px; padding: 4px 6px; font-size: 13px; }
+#guiArchive { background: #15151a; color: #e6e6e6; border: 1px solid #3a3a42; border-radius: 4px; padding: 4px 6px; font-size: 12px; }
+#guiLoadBtn {
+  background: #2c2c34; color: #e6e6e6; border: 1px solid #3a3a42;
+  border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 13px;
+}
+#guiLoadBtn:hover { background: #3a3a44; }
+.gui-info {
+  margin-top: 12px; padding: 8px 10px; border-radius: 6px;
+  background: #23232b; border: 1px solid #33333d; font-size: 12px; line-height: 1.55;
+}
+.gui-info .gi-row { display: flex; gap: 8px; }
+.gui-info .gi-key { color: #b9b9c2; flex: 0 0 84px; }
+.gui-info .gi-val { color: #e6e6ee; word-break: break-all; flex: 1; }
+.gui-info .gi-title { color: #ffd479; font-weight: 600; margin-bottom: 4px; }
+.gui-info .gi-note { color: #9a9aa6; font-size: 11px; margin-top: 4px; }

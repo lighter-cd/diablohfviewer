@@ -870,8 +870,40 @@ SOL 碰撞网格 A* 寻路（`scene.path`）、L2/L3/L4 预设场景。`scene.bu
       `scene.build` 复原完整关卡场景（初始场景 Tristram 城镇），支持缩放（1–8×）/ 平移 /
       SOL 叠加层（网格 + Solid/透明/BlockLight 着色）/ 夜景提亮 / 复位。详见 `web/README.md`
       与 `docs/ARCHITECTURE.md` §10.5。
-- [ ] 还原 `DiabloUI/` 的全部界面布局与元素（主菜单 / 角色面板 / 血蓝球 / 商店 / 对话框等）。
-- [ ] 输出界面布局数据与可视化。
+- [x] **还原 `DiabloUI/` 的全部界面布局与元素（2026-11-09）**：新增
+      `src/tools/ui_layout.h`（header-only 纯数据目录）转录 DevilutionX 的 **18 个界面**
+      （主菜单 / 标题 / 制作群 / 英雄与难度选择 / OK·YesNo 对话框 / 设置 · 底部控制面板含
+      血蓝球 / 角色属性面板 / 物品栏装备槽 / 法术书 / 任务日志 · 文本与网格商店 · 大/小
+      对话框及其 CLX 变体）的元素矩形（绝对 640×480 + panel 相对坐标）、类型、文字、
+      字号/颜色/对齐 flags、引用的 MPQ 美术名与 `source_ref`。详见 `docs/UI_LAYOUT.md`。
+- [x] **输出界面布局数据与可视化（2026-11-09）**：三个 MCP 工具 `ui.list`（目录，不碰 MPQ）/
+      `ui.layout`（单屏完整布局 JSON）/`ui.build`（用**真实 MPQ 美术**离屏合成 640×480
+      PNG + 对齐的元素框叠加层 + base64 + sidecar）。`src/tools/ui_render.h` 提供纯 RGBA
+      像素原语。前端 `web/` 新增**第 6 种浏览模式「界面布局查看器」**：底图为真实美术、
+      文字由前端按布局字段用系统字体近似绘制（可一键关闭核对纯美术底图）、hover 元素看
+      详情。三套测试（unit / core / integration）全绿，18 屏全可构建、0 透明像素。
+
+  **关键实测结论（调色板分工）**：`ui_art\diablo.pal`（devilutionx.mpq）是**菜单/CLX 转换
+  调色板**（低索引为纯原色，用于 `dvl_*.clx` 对话框资源）；原版游戏内 `.cel`（`ctrlpan\*`、
+  `data\*`）与游戏内面板 `.clx`（`charbg`/`stash`）必须用**关卡调色板**
+  `levels\towndata\town.pal`（`LoadRndLvlPal(DTYPE_TOWN)`），否则出彩虹噪点。故 `ArtRef.palette`
+  为**逐资源**权威字段，`ui.build` 按名分别加载调色板（palette bank），一屏可混用多种调色板。
+
+  **阶段 5 验收**：
+
+  | 验收项 | 状态 |
+  |--------|------|
+  | 18 屏界面布局结构化数据（矩形/类型/文字/颜色/资源引用/源码位置） | ✅ `ui_layout.h` |
+  | `ui.list` / `ui.layout` / `ui.build` 三工具 + stdio/WS 双传输 | ✅ `ui_tools.cpp` |
+  | 真实 MPQ 美术离屏合成（PCX 内嵌 / CEL / CLX + 逐资源调色板） | ✅ 18 屏全可构建 |
+  | 元素框叠加层 + 编号角标 + 0 透明像素不透明背景 | ✅ `ui_render.h` |
+  | 前端第 6 种浏览模式 + 近似字体文字层 + hover 详情 | ✅ `web/` |
+  | 单元 / 集成 / core 三套测试 + `mcp-server.exe` 构建 | ✅ 全绿 |
+
+  **明确延后**：游戏位图字体逐字渲染（`fonts\{size}-{row}.clx` 在 MPQ 仅恢复基本 ASCII 行、
+  中文缺字，故文字由前端系统字体近似）、动态文字运行时绑定、动画 logo/按钮 hover 帧、
+  宽屏 1280×480 CLX 布局、联机 `selconn`/`selgame` 菜单、未恢复资源名与缺 width 的 CEL
+  （进 `needs_width`、跳过绘制不伪造）。
 
 > 每个阶段都以“确认该类资源被正确解码”为完成标准，优先产出可验证的
 > 数据/图像，再决定是否做图形界面。

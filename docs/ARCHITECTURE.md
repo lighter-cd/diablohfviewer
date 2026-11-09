@@ -97,7 +97,10 @@ src/
 │   ├── sprite_tools.*   #   sprite.decode / palette.load
 │   ├── map_tools.*      #   map.build（阶段 4，已落地）
 │   ├── scene_tools.*    #   scene.list / scene.build / scene.path（完整场景 + 光照 + 寻路）
-│   └── level_tools.*    #   level.inspect（tile 查看器）+ level.generate（Cathedral L1–L4 原生生成）
+│   ├── level_tools.*    #   level.inspect（tile 查看器）+ level.generate（Cathedral L1–L4 原生生成）
+│   ├── ui_layout.h      #   （header-only 纯数据）18 屏 DiabloUI 布局目录 + 校验/查询
+│   ├── ui_render.h      #   （header-only 纯像素）RGBA 画布 / blit / 元素框叠加层光栅化
+│   └── ui_tools.*       #   ui.list / ui.layout / ui.build（真实 MPQ 美术合成界面）
 │
 ├── mcp/                 # MCP 服务端：传输 + 协议分派
 │   ├── server.h/.cpp    #   初始化 registry、启动传输
@@ -170,6 +173,9 @@ public:
 | `scene.path`   | `{id,archive,archives?,from:{x,y},to:{x,y},max_steps?,preview_max_width?}` | `{found,cost,steps,grid_width,grid_height,micro_len,walkable_count,scale,native_width,native_height,preview_width,preview_height,path:[{x,y,screen_x,screen_y,preview_x,preview_y}]}`；SOL `Solid` 网格 8 方向 A*（直行 100 / 斜行 101），坐标与 `scene.build` 投影对齐 | ✅ |
 | `level.inspect`| `{archive,archives?,cel,til,min,palette,sol?,blocks,micro_len,megatile?/micros[]}` | `{megatile,grid_width,grid_height,micros:[{id,blocks:[{mt,data,has_value,type,type_name,frame}],width,height,png_base64}],frames:[{frame,type,type_name,width,height,png_base64}],assembly:{width,height,native_width,native_height,left,top,png_base64}}`；按 TIL→MIN→level CEL 逐块查看并给出等距组装预览（关卡 tile 查看器后端） | ✅ |
 | `level.generate`| `{archive,archives?,level,seed,original_cathedral?,quests?,out?}` | `{level,seed,quests,original_cathedral,width,height,dun_path,floor_count,dirt_count,stairs_up_count,stairs_down_count,tiles:[40 行 hex],note}`；Cathedral L1–L4 按 seed 原生生成（DevilutionX `drlg_l1` 逐函数移植），写 ExportDun 兼容 `.dun`，可交给 `map.build` 的 `dun_path` 渲染；14 个 DevilutionX fixture 0 差异 | ✅ |
+| `ui.list`       | `{category?}` | `{count,canvas_default,categories,screens:[{id,title,category,canvas,element_count,text_element_count,art_ref_count,panel_count,palette,needs_width,source_ref}]}`；18 屏 DiabloUI 布局静态目录（menu/hud/panel/store/dialog），无需 MPQ | ✅ |
+| `ui.layout`     | `{id}` | 单屏完整布局：`{id,title,category,canvas,palette,panels[],elements[],art_refs[],needs_width,overlay_box_count,source_ref}`；每元素 `{index,id,type,label,rect:[x,y,w,h],panel,panel_rect,z,art?,grid?,text?,font_size,color,align,flags,source_ref}`。文字不烧录，驱动前端近似字体层。无需 MPQ | ✅ |
+| `ui.build`      | `{id,archive,archives?,out?,palette?,overlay?,label_numbers?,background?,skip_missing_art?}` | 真实 MPQ 美术离屏合成 640×480 PNG（不透明背景、0 透明像素）+ 对齐元素框叠加层。`{image_path,overlay_path,meta_path,image_base64,overlay_base64,width,height,element_count,overlay_box_count,elements[](+decode_status/decoded_size/placed_rect),art[](status/width/height/bytes),needs_width,palettes[],palette,art_ok/missing/error_count,transparent_pixel_count,meta}`；写 `out/ui/<id>.png` + `_overlay.png` + `.json`。逐资源 `ArtRef.palette`（菜单/CLX 用 `ui_art\diablo.pal`、游戏内 CEL 用 `levels\towndata\town.pal`），见 §11 | ✅ |
 
 > **PCX 已并入 `sprite.decode`**（按 `.pcx` 扩展名自动路由），不再单独设 `pcx.decode` 工具。
 > `sprite.decode` 的调色板解析优先级：`palette`（base64 或名称）→ 文件内嵌（PCX）→ 同目录
@@ -754,3 +760,60 @@ Archive 输入框——点选精灵即可直接解码，无需用户手填路径
 
 > 场景模型、资产路径、两遍绘制与「黑块」根因见 `docs/PROJECT.md`「游戏场景如何组织」
 > 与本文 §9.2/§9.3；前端使用说明见 `web/README.md`。
+
+---
+
+## 11. 阶段 5：GUI 布局还原（目标 4）
+
+### 11.1 分层（两个 header-only 纯模块 + 一个工具编排层）
+
+仿 `spell_tables.h` 的做法，把纯数据与纯像素逻辑做成 header-only，令
+`out/unit_tests.cpp` 直接 `#include` 即可全量单测（**unit 的 g++ 命令不需要加任何 .cpp**）：
+
+- `src/tools/ui_layout.h`（namespace `ui_layout`）：`Rect/ArtRef/Element/Panel/Screen`
+  结构 + `screens()` 静态目录（18 屏）+ `findScreen/validateScreen/uniqueArtRefs/
+  needsWidthList/overlayBoxes/typeName/overlayColor`。零外部依赖（仅标准库）。
+- `src/tools/ui_render.h`（namespace `ui_render`）：`Canvas/fillAll/putPixel(src-over)/
+  blit/drawRect/drawLabel(内置 5×7 编号字模)/rasterizeOverlay`。零外部依赖。
+- `src/tools/ui_tools.cpp`：唯一触碰 engine/decoders/json 的编排层，`registerUiTools`
+  注册到 `src/main.cpp`，被 GLOB 纳入；只编进 integration 测试命令。
+
+### 11.2 坐标与 palette 分工（关键实测结论）
+
+- 所有 `rect` 是 **640×480 绝对逻辑坐标**（`display.cpp` `UISize{640,480}`）；DevilutionX 里
+  相对分区原点的值另存 `panel` + `panel_rect`。分区：`MainPanel{0,352,640,128}`、
+  `LeftPanel{0,0,320,352}`、`RightPanel{320,0,320,352}`。
+- **两套调色板并存**（真实 MPQ 验证）：`ui_art\diablo.pal`（devilutionx.mpq）低索引是纯
+  原色，是**菜单 / CLX 转换调色板**——正确用于 `dvl_lrpopup.clx`/`dvl_but_sml.clx` 等
+  DevilutionX 转换资源，但套原版游戏内 `.cel` 会出**彩虹噪点**。游戏内 HUD/面板 CEL
+  （`ctrlpan\panel8`, `p8bulbs`, `data\*.cel`）与游戏内面板 CLX（`charbg`/`stash`）必须用
+  **关卡调色板** `levels\towndata\town.pal`（`LoadRndLvlPal(DTYPE_TOWN)`），实测 0% 噪点。
+  菜单 `.pcx` 用**内嵌调色板**。
+- 因此 `ArtRef.palette` 是**逐资源权威字段**；`ui.build` 维护一个 **palette bank**（按名缓存
+  768B RGB 表），`decodeUiArt` 按元素各自的 `ArtRef.palette` 取用。一屏可同时用
+  `town.pal`（游戏内 CEL）与 `diablo.pal`（对话框 CLX），互不串色。`palettes[]` 返回每项状态。
+- CEL/CL2 帧宽不存于文件，取布局目录里写死的 `width`（这些 UI 资源不在 `sprites.tsv`，
+  **不用 `width:"auto"`**）；未恢复的宽度进 `needs_width`，`ui.build` 跳过该元素绘制并标
+  `decode_status:"width_unknown"`，保留框线、不伪造。
+
+### 11.3 `ui.build` 渲染管线
+
+`findScreen` → `archiveStack`（`archive` + `archives` 全栈）→ 预填不透明背景的 640×480
+RGBA 画布 → 按名加载 palette bank → 元素按 `z`（同 z 按 index）升序：PCX `decodePcx`
+（内嵌调色板 / `transparent_index`）、CEL/CL2 `celToClx`/`cl2ToClx`（布局 `width`）再
+`decodeClx`、CLX 直接 `decodeClx`（768B RGB）→ `blit`（src-over、裁剪、透明跳过）→
+`encodePNG` 出底图 + `rasterizeOverlay`（按 type 分色框线 + 编号角标）出对齐叠加层 →
+两张 PNG 落盘 + `base64::encode` 返回 + sidecar JSON。抽不到/解码失败/宽度未知的资源按
+`skip_missing_art` 跳过，工具整体仍成功。
+
+### 11.4 文字策略与前端第 6 模式
+
+后端 PNG **不烧录文字**（游戏位图字体 `fonts\{size}-{row}.clx` 在 MPQ 仅恢复基本 ASCII
+行、中文缺字）：`ui.layout`/`ui.build.elements` 的 `text/font_size/color/align/flags` 是
+前端绘制的唯一数据源。前端 `web/` 加第 6 个 radio/pane（复用 scene 的 PNG→canvas
+`sceneDrawPng` 与 CSS `width/height` 缩放范式），三层 canvas 叠加：`#guiBase`（真实美术）
++ `#guiText`（`drawGuiText` 系统字体近似、占位符替换、可开关）+ `#guiOverlay`（后端框线
+PNG），`guiHitTest` 做悬停命中并把元素详情填进左栏 `#guiInfo`。`isViewOwnedMode()`
+（scene 或 gui）让共享精灵控件在这两种模式下成为 no-op。`?v=20261109c` 统一刷新缓存。
+
+> 18 屏逐界面转录表、资源清单、调色板实测数据与延后项见 `docs/UI_LAYOUT.md`。

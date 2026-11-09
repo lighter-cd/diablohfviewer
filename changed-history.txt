@@ -324,3 +324,7 @@
 
 ## 2026-11-09 12:35:18
 - 淇鍦扮墷璋冭壊鏉匡細鍦扮墷璇敤浜嗚繃鍦鸿皟鑹叉澘 gendata/cut2.pal 瀵艰嚧鏁村浘鍋忔锛涙寜 DevilutionX LoadRndLvlPal 鏀逛负 levels/l1data/l1_1..l1_4.pal锛堟父鎴忓唴杩涘眰闅忔満閫変竴锛夛紝map.build 榛樿 palette 鏀逛负 l1_2.pal锛宻ceneCatalog 鐨?l1_rnd2/l1_skngdo 鏀?l1_2.pal锛宭evel.generate 鏂板 palette_variant(1..4) 骞跺洖浼?tileset/palette锛涢泦鎴愭祴璇?testLevelMap 鏀圭敤 l1_2.pal锛涢噸娓叉煋 5 寮犻殢鏈?Cathedral 鍦板浘涓?4 涓皟鑹叉澘鍙樹綋鍒?out/maps_random銆?- 娑夊強: src/tools/map_tools.cpp, src/tools/level_tools.cpp, src/decoders/level_scene.cpp, out/integration_tests.cpp, README.md, docs/MAP_GENERATION.md, docs/PROJECT.md, changed-history.txt
+
+## 2026-11-09 23:38:54
+- 完成阶段 5（目标 4）DiabloUI 界面布局还原与可视化：新增 header-only 纯数据目录 src/tools/ui_layout.h（转录 DevilutionX 18 屏布局：菜单/底部控制面板含血蓝球/角色·物品栏·法术书·任务日志/商店/对话框）与像素工具 src/tools/ui_render.h，MCP 工具 ui.list/ui.layout/ui.build（src/tools/ui_tools.cpp，用真实 MPQ 美术按坐标离屏合成 640x480 PNG + 元素框叠加层 + 逐资源调色板 bank，实测修正游戏内 CEL 用 levels/towndata/town.pal、菜单 CLX 用 ui_art/diablo.pal 的彩虹噪点问题），main.cpp 注册；前端 web/ 新增第 6 种浏览模式「界面布局查看器」(真实美术底图 + 系统字体近似文字层可开关 + hover 元素详情)；unit/core/integration 三套测试新增 ui.* 用例全绿、端到端 stdio + 无头 Chrome 验证通过；文档同步 PROJECT.md/ARCHITECTURE.md/README.md/web/README.md 并新增 docs/UI_LAYOUT.md。
+- 涉及: src/tools/ui_layout.h, src/tools/ui_render.h, src/tools/ui_tools.h, src/tools/ui_tools.cpp, src/main.cpp, web/index.html, web/src/main.js, web/styles.css, web/README.md, out/unit_tests.cpp, out/integration_tests.cpp, README.md, docs/PROJECT.md, docs/ARCHITECTURE.md, docs/UI_LAYOUT.md, .gitignore, changed-history.txt

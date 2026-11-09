@@ -1,14 +1,16 @@
 # Sprite Viewer（web 前端骨架）
 
 浏览器里的 Diablo 1 / Hellfire 查看器。本前端**不读 MPQ、不碰文件系统**，
-只通过 WebSocket 调用本地 `mcp-server` 暴露的 `sprite.*` / `palette.*` / `scene.*` 工具，
-拿到 RGBA 帧（Canvas）或把场景 PNG 预览绘制到 Canvas。
+只通过 WebSocket 调用本地 `mcp-server` 暴露的 `sprite.*` / `palette.*` / `scene.*` /
+`ui.*` 工具，拿到 RGBA 帧（Canvas）或把场景 / 界面 PNG 预览绘制到 Canvas。
 
-> 阶段 2/3/5 的浏览器查看器，共 **5 种浏览模式**：目录浏览、角色查看器、
-> 怪物 / NPC 查看器、技能 / 战斗查看器、**场景查看器**。
+> 阶段 2/3/4/5 的浏览器查看器，共 **6 种浏览模式**：目录浏览、角色查看器、
+> 怪物 / NPC 查看器、技能 / 战斗查看器、**场景查看器**、**界面布局查看器**。
 > 技能特效（`lm`/`fm`/`qm`）作为可浏览动画纳入；TRN 上色已实装为开关。
 > 场景查看器调用 `scene.list` / `scene.build` 复原**完整关卡场景**（Tristram 城镇 +
 > L1–L4 预设），支持缩放 / 平移 / 叠加层 / dLight 光照，见下方独立章节。
+> 界面布局查看器调用 `ui.list` / `ui.build` 用真实 MPQ 美术复原 **18 个 DiabloUI 界面**，
+> 见下方独立章节。
 
 ## 运行
 
@@ -24,7 +26,7 @@ python -m http.server 8000        # 或： npx serve .
 # 3) 浏览器打开 http://localhost:8000/
 ```
 
-打开后点 **Connect**（默认 `ws://localhost:18765`），顶部「浏览模式」可在 5 种视图间切换：
+打开后点 **Connect**（默认 `ws://localhost:18765`），顶部「浏览模式」可在 6 种视图间切换：
 
 - **目录浏览**（默认）：左侧目录树由 `sprite.list` 构建；点任一精灵即调用 `sprite.decode`
   并绘制，用下方「方向 / 帧」滑块翻看，或点「▶ 播放」循环播放当前方向的动画。
@@ -33,6 +35,7 @@ python -m http.server 8000        # 或： npx serve .
   DevilutionX 数据表（`monstdat.tsv` / `towners.tsv`）**合成**（`sprite.list(family:"monsters"/"towners")`）。
 - **技能 / 战斗查看器**：四阶段时间线（施法 → 投射 → 命中 → debuff）。
 - **场景查看器**：见下方独立章节，复原完整关卡地图。
+- **界面布局查看器**：见下方独立章节，真实 MPQ 美术复原 18 个 DiabloUI 界面。
 
 目录树支持两种分组方式，可在左侧顶部「分组」处切换：
 
@@ -152,6 +155,36 @@ NPC 固定单方向。两者宽度均由后端自动查表（`monstdat.tsv` / `t
   （`manashld` / `shatter1` 等）；
 - 命中 / 爆炸阶段在数据表中无外键，按命名约定自动关联，其余进 `impact_catalog` 候选
   （标 `confidence:"catalog"`）。
+
+### 界面布局查看器（浏览模式，第 6 种）
+
+顶部「浏览模式」切到 **界面布局查看器**。左栏「界面」下拉由 `ui.list` 填充 **18 个
+DiabloUI 界面**（主菜单 / 标题 / 制作群 / 英雄·难度选择 / OK·YesNo / 设置 / 底部控制面板
+含血蓝球 / 角色·物品栏·法术书·任务日志 / 文本·网格商店 / 大·小对话框及 CLX 变体），
+选中或点「加载界面」触发 `ui.build`。
+
+后端 `ui.build` 用**真实 MPQ 美术**按 DevilutionX 转录坐标合成 640×480 底图（背景 PCX、
+面板 CEL、血蓝球、按钮 CLX，不透明背景 0 透明像素）+ 对齐的元素框叠加层 PNG。前端把两张
+PNG 与一层文字 canvas 叠放（复用场景查看器的 `sceneDrawPng` + CSS `width/height` 缩放，
+`guiZoom` 1×/2×）：
+
+- **底图 `#guiBase`**：真实游戏美术，可单独核对每类 UI 资源是否被正确解码。
+- **文字层 `#guiText`**：`drawGuiText` 按 `ui.layout` 的 `text` / `font_size` / `color` /
+  `align` / `flags` 用**系统字体近似**绘制（`guiFontSize` / `guiColor` / `guiExampleText`
+  把 `{PLAYER_NAME}` 等占位符替换为示意值）。游戏位图字体在 MPQ 中仅恢复基本 ASCII 行、
+  中文缺字，故逐字渲染延后；「显示文字」开关可一键关闭以核对纯美术底图，且文字层与
+  底图彼此独立、可验证。
+- **叠加层 `#guiOverlay`**：后端生成的元素框（按类型分色）+ 编号角标，可开关
+  「显示元素框叠加层 / 显示编号角标」。
+- **hover 详情**：`guiHitTest` 把鼠标坐标换算到 640×480 逻辑坐标，命中元素即在左栏
+  `#guiInfo` 显示类型 / 矩形 / 引用资源 / 调色板 / 解码状态 / DevilutionX 源码位置，
+  并在图上画高亮框。
+
+UI 美术跨档案：`DIABDAT.MPQ` 存原版 `.pcx/.cel` 与 `levels\towndata\town.pal`，
+`devilutionx.mpq` 存 `ui_art\diablo.pal` 与 `.clx`；前端把 `sprite.list` 收集到的
+`allArchives` 全栈传给 `ui.build`（也可在「MPQ 路径」输入框覆盖主档案）。`isViewOwnedMode()`
+让共享精灵控件在场景 / 界面两种自有视图模式下不干扰。逐资源调色板分工与 18 屏转录表见
+`docs/UI_LAYOUT.md`。
 
 ## 目录结构（纯静态，无 Node 运行服务）
 
