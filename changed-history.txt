@@ -302,3 +302,7 @@
 ## 2026-11-09 10:40:33
 - 恢复 Tristram FillTile(60,70,71) 水池补丁并重新生成最终 6145x3296 tristram.png；level.inspect 查看器（web/level.html）与 tile 纵向翻转修复完成，三套测试全绿。
 - 涉及: src/decoders/level_scene.cpp, changed-history.txt, out/scenes/tristram.png, out/tristram.png, out/tristram_fixed.png
+
+## 2026-11-09 10:54:16
+- 阶段 4（地图还原，目标 1）正式收工：更新 PROJECT.md 状态为完成并新增阶段 4 验收表（解码/两遍渲染/6 场景/dLight/寻路/level.inspect/dSpecial/FillTile/tile 纵向翻转修复/前端/三套测试），README §6 同步标注完成与仅剩的可选后续项。
+- 涉及: docs/PROJECT.md, README.md, changed-history.txt

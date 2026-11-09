@@ -641,12 +641,13 @@ DiabloHFConverter/
 
 ### 阶段 4：地图还原（目标 1）
 
-> **状态：解码 + 离屏渲染管线完成；`map.build` 工具 + 完整场景复原 `scene.*` 工具 + 前端
-> 场景查看器 + 静态光照（dLight）+ 寻路 + 单元/集成测试全部落地（2026-11-08 初版，
-> 2026-11-09 修正并补齐光照/寻路）。**
+> **状态：完成（2026-11-09 收工）。**
+> 解码 + 离屏渲染管线、`map.build`、完整场景复原 `scene.*`（Tristram + L1–L4）、静态光照
+> （dLight）、A* 寻路、`level.inspect` 关卡 tile 查看器、前端场景/关卡查看器与三套测试
+> 全部落地（2026-11-08 初版，2026-11-09 完成黑块/索引/光照/寻路/tile 纵向翻转修正）。
 > 忠實移植 DevilutionX `Source/levels/` 的 DUN→TIL→MIN→level CEL 拼装与
 > `scrollrt.cpp`/`dun_render.cpp` 的两遍等距合成，后端纯 C/C++（`src/decoders/level_*.cpp` +
-> `src/tools/map_tools.cpp` + `src/tools/scene_tools.cpp`），无 Node 运行时。
+> `src/tools/map_tools.cpp` + `src/tools/scene_tools.cpp` + `src/tools/level_tools.cpp`），无 Node 运行时。
 
 > **2026-11-09 重要修正（黑块根因 + 索引约定）**：初版渲染把背景留成全透明
 > （RGBA alpha=0，任何查看器压到黑就成了「黑块」），对 `mi==0` 的格子直接跳过，
@@ -751,8 +752,24 @@ DiabloHFConverter/
       Hell 光照）；palette 分别为 `l2_2.pal` / `l3pfoul.pal` / `l4_1.pal`（均已实证存在）。
 - [ ] **逐像素光照 / lightmap（可选，后续）**：当前为 DevilutionX 默认的**每格平地光照**
       （`LightTables` + `dLight`），未实现 `perPixelLighting` 的 marching-squares 插值光图；
-      也未应用 `dTransVal` 半透明混合、`dSpecial` 树木拱门、任务态 `FillTile`。这些属于
-      运行时/细节保真项，已从阶段 4 主目标中剥离。
+      地牢 DUN object layer 与 `dTransVal`/`TransList` 透明遮挡尚未接入。这些属于运行时/细节
+      保真项，已从阶段 4 主目标中剥离，不影响「完整地图 + 光照/寻路信息」的交付。
+
+**阶段 4 验收（2026-11-09 收工）**：
+
+| 验收项 | 状态 |
+|---|---|
+| TIL / MIN / DUN / SOL / level CEL 解码与 0-based 索引 | ✅ |
+| 两遍等距绘制（地板菱形 + 墙体）、不透明背景、空格预填、0 透明像素 | ✅ |
+| 完整场景：Tristram + L1/L2/L3/L4（6 个 preset） | ✅ |
+| 场景输出原生 PNG + ≤1000px 预览 + SOL 叠加层 + sidecar JSON | ✅ |
+| 静态 dLight（Normal/Hell/Soft、点光源、前端开关） | ✅ |
+| SOL 碰撞网格 A* 寻路（`scene.path`） | ✅ |
+| `level.inspect` 关卡 tile 查看器（megatile/micro/block/frame/组装） | ✅ |
+| `dSpecial` 城镇树木/拱门覆盖层 + Tristram FillTile（水池/传送入口） | ✅ |
+| tile 纵向翻转修复（triangle/trapezoid 与 square 统一 top-down） | ✅ |
+| 前端场景查看器 + 关卡 tile 查看器（`web/`） | ✅ |
+| 单元 / 集成 / core 三套测试 + mcp-server 构建 | ✅ |
 
 ### 游戏场景如何组织（对照 DevilutionX，2026-11-09 澄清）
 
