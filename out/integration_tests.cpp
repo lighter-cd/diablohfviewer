@@ -36,6 +36,7 @@
 #include "tools/mpq_tools.h"
 #include "tools/sprite_tools.h"
 #include "tools/scene_tools.h"
+#include "tools/level_tools.h"
 #include "tools/base64.h"
 #include "mcp/jsonrpc.h"
 #include "decoders/level.h"
@@ -1302,6 +1303,77 @@ static void testSceneTools(const std::string& mpq) {
            allOk ? "PASS" : "FAIL");
 }
 
+static void testLevelInspect(const std::string& mpq) {
+    std::vector<std::string> archives = { mpq };
+    {
+        size_t i = mpq.find_last_of("/\\");
+        std::string dir = (i != std::string::npos) ? mpq.substr(0, i + 1) : "";
+        std::string base = dir + "DIABDAT.MPQ";
+        if (base != mpq) archives.push_back(base);
+    }
+    bool haveTown = false;
+    for (auto& arch : archives) {
+        engine::Archive a;
+        if (!a.open(arch)) continue;
+        if (a.verify("levels/towndata/town.cel") &&
+            a.verify("levels/towndata/town.til") &&
+            a.verify("levels/towndata/town.min") &&
+            a.verify("levels/towndata/town.pal")) {
+            haveTown = true;
+            break;
+        }
+    }
+    if (!haveTown) {
+        printf("  (skipped level.inspect; town assets not found)\n");
+        return;
+    }
+
+    ToolRegistry reg;
+    tools::registerLevelTools(reg);
+    CHECK(reg.has("level.inspect"), "level.inspect registered");
+
+    json stack = json::array();
+    for (auto& a : archives) stack.push_back(a);
+    json args = json{
+        {"archive", archives[0]}, {"archives", stack},
+        {"cel", "levels/towndata/town.cel"},
+        {"til", "levels/towndata/town.til"},
+        {"min", "levels/towndata/town.min"},
+        {"sol", "levels/towndata/town.sol"},
+        {"palette", "levels/towndata/town.pal"},
+        {"blocks", 16}, {"micro_len", 16}, {"megatile", 71},
+    };
+    ToolResult r = reg.dispatch("level.inspect", args);
+    CHECK(r.ok, "level.inspect dispatch ok");
+    if (!r.ok) {
+        printf("    level.inspect error: %s\n", r.value.dump().c_str());
+        return;
+    }
+    const json& v = r.value;
+    CHECK(v.value("megatile", 0) == 71, "level.inspect megatile 71");
+    CHECK(v["micros"].size() == 4, "level.inspect returns 4 micro pieces");
+    const int expected[4] = { 257, 258, 259, 260 };
+    for (int i = 0; i < 4 && i < static_cast<int>(v["micros"].size()); ++i)
+        CHECK(v["micros"][i].value("id", -1) == expected[i],
+              "level.inspect micro id 257..260 in order");
+    bool hasFrames = true;
+    for (int f = 594; f <= 605; ++f) {
+        bool found = false;
+        for (const auto& fr : v["frames"])
+            if (fr.value("frame", 0) == f) found = true;
+        if (!found) hasFrames = false;
+    }
+    CHECK(hasFrames, "level.inspect decodes town.cel frames 594..605");
+    const std::string asmB64 = v["assembly"].value("png_base64", std::string());
+    auto asmPng = base64::decode(asmB64);
+    CHECK(asmPng.size() > 8 && asmPng[0] == 137 && asmPng[1] == 80 &&
+              asmPng[2] == 78 && asmPng[3] == 71,
+          "level.inspect assembly is a PNG");
+    CHECK(v["assembly"].value("width", 0) > 0 && v["assembly"].value("height", 0) > 0,
+          "level.inspect assembly has visible bounds");
+    printf("level.inspect (megatile 71): %s\n", allOk ? "PASS" : "FAIL");
+}
+
 int main() {
     printf("=== DiabloHFConverter integration tests (engine + mpq_tools + sprite_tools + scene) ===\n");
     testNormalize();
@@ -1335,6 +1407,7 @@ int main() {
     testSpellListSynthesis();
     testLevelMap(mpq);
     testSceneTools(mpq);
+    testLevelInspect(mpq);
     printf("=== %s ===\n", allOk ? "ALL PASS" : "FAILURES PRESENT");
     return allOk ? 0 : 1;
 }

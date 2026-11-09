@@ -294,3 +294,11 @@
 ## 2026-11-09 08:58:52
 - 修正地图 tiles/objects 绘制判断：Pass 1 只绘制 SOL IsFloor 格（墙体/实心格不再被强行画地板三角形），TransparentSquare 地板按真实 RLE 解码（消除截图中橙色噪点），新增 dSpecial 城镇特殊覆盖层（townSpecialFrameId + towns.cel 树木/拱门，meta.special/special_count），并应用 Tristram 非任务态 FillTile（水井/喷泉与传送入口）；同步 README/PROJECT/ARCHITECTURE 与单测/集成测试。
 - 涉及: src/decoders/level.h, src/decoders/level_render.cpp, src/decoders/level_scene.h, src/decoders/level_scene.cpp, src/tools/scene_tools.cpp, out/unit_tests.cpp, out/integration_tests.cpp, README.md, docs/PROJECT.md, docs/ARCHITECTURE.md, changed-history.txt
+
+## 2026-11-09 10:38:51
+- 新增关卡原始 tile 查看器 level.inspect（TIL/MIN/CEL：megatile 的 micro pieces、每 block 的 TileType/frame/data、引用帧 PNG、等距组装预览）与 web/level.html 前端页面（默认 Tristram megatile 71 水池）；同时修复 tile 纵向翻转根因：triangle/trapezoid 解码器输出 top-down 而 Square/TransparentSquare 为 bottom-up，blitFrame 又翻转一次，导致水池 RightTrapezoid 环错位、不闭合；现统一 top-down 并移除二次翻转，水池恢复封闭圆。补齐单元/集成测试与 README/PROJECT/ARCHITECTURE/web 文档。
+- 涉及: src/decoders/level_cel.cpp, src/decoders/level_render.cpp, src/tools/level_tools.h, src/tools/level_tools.cpp, src/main.cpp, web/level.html, web/src/level.js, web/index.html, web/README.md, out/unit_tests.cpp, out/integration_tests.cpp, README.md, docs/PROJECT.md, docs/ARCHITECTURE.md, changed-history.txt
+
+## 2026-11-09 10:40:33
+- 恢复 Tristram FillTile(60,70,71) 水池补丁并重新生成最终 6145x3296 tristram.png；level.inspect 查看器（web/level.html）与 tile 纵向翻转修复完成，三套测试全绿。
+- 涉及: src/decoders/level_scene.cpp, changed-history.txt, out/scenes/tristram.png, out/tristram.png, out/tristram_fixed.png

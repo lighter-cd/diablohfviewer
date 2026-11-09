@@ -36,16 +36,16 @@ namespace decoders {
 namespace {
 
 // Blit a decoded 32x32 frame into `dst` (RGBA, `dstW` x `dstH`, row pitch
-// `dstPitch` bytes) at column offset `dx` and slot top `slotTopY`. CEL row 0 is
-// written at the BOTTOM of the slot (vertical flip), matching the engine.
-// Transparent source pixels (alpha == 0) are skipped. Bounds-checked so a cell
-// near an image edge can never write out of the buffer.
+// `dstPitch` bytes) at column offset `dx` and slot top `slotTopY`. Decoded RGBA
+// frames are top-down for every TileType (triangle/trapezoid decoders already
+// produce top-down rows; square/transparent-square now do too), so no vertical
+// flip is needed here. Transparent source pixels (alpha == 0) are skipped.
 void blitFrame(const uint8_t* frame, int frameW, int frameH,
                uint8_t* dst, int dstW, int dstH, int dstPitch,
                int dx, int slotTopY)
 {
     for (int fr = 0; fr < frameH; ++fr) {
-        const int dr = slotTopY + (frameH - 1 - fr); // vertical flip
+        const int dr = slotTopY + fr;
         if (dr < 0 || dr >= dstH)
             continue;
         const uint8_t* src = frame + static_cast<size_t>(fr) * frameW * 4;
@@ -175,7 +175,7 @@ void renderMicroTile(const ReencodedLevelCel& cel, const MicroTileRef& micro,
             if (!blockDrawable(blk, cel))
                 continue;
             int fh = 0;
-            decodeReencodedFrame(cel, blk.frame() - 1, pal, frame, fh);
+            decodeReencodedFrameAs(cel, blk.frame() - 1, blk.type(), pal, frame, fh);
             blitFrame(frame.data(), 32, 32, rgba.data(), W, H, pitch,
                       side * 32, slotTopY);
         }
@@ -331,7 +331,8 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
                 // RLE bytes as triangle pixels (garbage specks), so decode their
                 // real shape here.
                 if (blk.type() == TileType::TransparentSquare) {
-                    decodeReencodedFrame(cel, blk.frame() - 1, paletteAt(idx), frame, fh);
+                    decodeReencodedFrameAs(cel, blk.frame() - 1, TileType::TransparentSquare,
+                                           paletteAt(idx), frame, fh);
                 } else {
                     decodeReencodedFrameAs(cel, blk.frame() - 1,
                                            side == 0 ? TileType::LeftTriangle
@@ -365,7 +366,7 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
                     if (!blockDrawable(blk, cel))
                         continue;
                     int fh = 0;
-                    decodeReencodedFrame(cel, blk.frame() - 1, paletteAt(idx), frame, fh);
+                    decodeReencodedFrameAs(cel, blk.frame() - 1, blk.type(), paletteAt(idx), frame, fh);
                     blitFrame(frame.data(), 32, 32, res.rgba.data(), res.width,
                               res.height, pitch, x + side * 32, slotTop(ct, 0));
                 }
@@ -379,7 +380,7 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
                     if (!blockDrawable(blk, cel))
                         continue;
                     int fh = 0;
-                    decodeReencodedFrame(cel, blk.frame() - 1, paletteAt(idx), frame, fh);
+                    decodeReencodedFrameAs(cel, blk.frame() - 1, blk.type(), paletteAt(idx), frame, fh);
                     blitFrame(frame.data(), 32, 32, res.rgba.data(), res.width,
                               res.height, pitch, x + side * 32, slot);
                 }

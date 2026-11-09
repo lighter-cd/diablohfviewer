@@ -154,16 +154,21 @@ inline void SkipRun(uint8_t*& dst, unsigned n)
 // Square / Solid: copy 32x32 raw indices.
 void DecodeSquare(const uint8_t* src, uint8_t* rgba, const uint8_t* pal)
 {
+    // Source rows are bottom-to-top (engine renders CELs backwards); the RGBA
+    // output is consistently top-down for every TileType so blitters can be
+    // shared without a second vertical flip.
     for (int y = 0; y < kTileHeight; ++y) {
-        CopyRun(rgba + static_cast<size_t>(y) * kDstPitch, src + static_cast<size_t>(y) * kTileWidth, kTileWidth, pal);
+        CopyRun(rgba + static_cast<size_t>(kTileHeight - 1 - y) * kDstPitch,
+                src + static_cast<size_t>(y) * kTileWidth, kTileWidth, pal);
     }
 }
 
 // TransparentSquare: RLE, Solid mask (transparent runs stay transparent).
+// Source rows are bottom-to-top; write them into top-down RGBA rows.
 void DecodeTransparentSquare(const uint8_t* src, const uint8_t* srcEnd, uint8_t* rgba, const uint8_t* pal)
 {
-    uint8_t* dst = rgba;
     for (int y = 0; y < kTileHeight && src < srcEnd; ++y) {
+        uint8_t* dst = rgba + static_cast<size_t>(kTileHeight - 1 - y) * kDstPitch;
         int drawWidth = kTileWidth;
         while (drawWidth > 0 && src < srcEnd) {
             int8_t v = static_cast<int8_t>(*src++);

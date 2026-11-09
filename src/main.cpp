@@ -17,6 +17,7 @@
 #include "tools/sprite_tools.h"
 #include "tools/map_tools.h"
 #include "tools/scene_tools.h"
+#include "tools/level_tools.h"
 
 #include <string>
 #include <thread>
@@ -69,6 +70,7 @@ int main(int argc, char** argv) {
     mcp::tools::registerSpriteTools(reg);
     mcp::tools::registerMapTools(reg);
     mcp::tools::registerSceneTools(reg);
+    mcp::tools::registerLevelTools(reg);
     fprintf(stderr, "[main] registered %zu tool(s)\n", reg.size());
 
     if (useWs) {

@@ -14,7 +14,7 @@ Diablo 1 / Hellfire 的 MPQ 研究与精灵查看工具。**后端为纯 C/C++ �
 |------|------|
 | `src/engine/` | StormLib 封装（open / list / extract / verify） |
 | `src/decoders/` | 格式解码器（palette / clx / cel / cl2 / pcx / png / `level_*` 关卡、场景、光照与寻路管线） |
-| `src/tools/` | Tool Registry + `mpq_tools` + `sprite_tools` + `map_tools`（`map.build`）+ `scene_tools`（`scene.list`/`scene.build`/`scene.path`） |
+| `src/tools/` | Tool Registry + `mpq_tools` + `sprite_tools` + `map_tools`（`map.build`）+ `scene_tools`（`scene.list`/`scene.build`/`scene.path`）+ `level_tools`（`level.inspect` 关卡原始 tile 查看） |
 | `src/mcp/` | MCP 服务端（jsonrpc / stdio / ws 桥） |
 | `3rdparty/StormLib/` | StormLib 源码（git submodule；构建脚本见仓库根 `build-stormlib.sh`） |
 | `mpq-info/` | MPQ 文件名恢复字典与产出（参考数据，非代码） |
@@ -87,6 +87,7 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
 | `scene.list` | 列出可复原的**完整场景**（Tristram 城镇 + L1/L2/L3/L4 预设），返回 id/title/layout/网格尺寸/默认环境光，无需 MPQ（`src/tools/scene_tools.cpp`） |
 | `scene.build` | 复原完整关卡场景：忠实 DevilutionX 两遍绘制（地板菱形 + 墙体）+ 不透明背景 + 空格预填，**0 透明像素、无黑块**。必填 `id` + `archive`，可选 `archives`（MPQ 搜索栈）、`out`（默认 `out/scenes`）、`preview_max_width`（默认 1000）、**`lighting`**（默认 false = FullyLit；true 时按 `ambient` + `lights` 应用 DevilutionX `LightTables` 暗部着色）、`ambient`（0..15，默认城镇 0 / 地牢 15）、`lights`（`{x,y,radius,offset_x,offset_y}` 微瓦片坐标数组）、`auto_light`（无显式光源时在场景中心加 radius-15 火把，默认 true）。返回 `image_base64`/`overlay_base64`（对齐的 SOL 叠加层）+ `preview_width/height` + `meta`（每格 `solid`/`transparent`/`block_light`/`block_missile`/**`walkable`**/`special`/`special_count` + 可选 `light` + `transparent_pixel_count`）；原生 PNG 落盘。场景：`tristram`、`l1_rnd2`、`l1_skngdo`、`l2_blind`、`l3_anvil`、`l4_diab1`（`src/tools/scene_tools.cpp`、`src/decoders/level_scene.cpp`） |
 | `scene.path` | 在已解码场景的 SOL 碰撞网格上做 **8 方向 A\*** 寻路（忠实 `Source/engine/path.cpp`：直行 100 / 斜行 101，斜向不额外限制转角；目标是 Solid 时仍可到达，同引擎 `FindPath` 行为）。必填 `id` + `archive` + `from`/`to`（`{x,y}` 微瓦片坐标），可选 `max_steps`（默认 1024）、`preview_max_width`（与 `scene.build` 对齐）。返回 `found`/`cost`/`steps`/`walkable_count` + `path[]`（每格 `x/y`、原生 `screen_x/screen_y`、预览 `preview_x/preview_y`）（`src/decoders/level_path.cpp`、`src/tools/scene_tools.cpp`） |
+| `level.inspect` | **关卡原始 tile 查看器**：给定 `archive` + `cel`/`til`/`min`/`sol`/`palette` + `blocks`/`micro_len` + `megatile`（1-based）或 `micros[]`，返回该 megatile 的 4 个 micro piece、每个 MIN block 的 `TileType`/`frame`/原始 `data`、所有引用到的 CEL 帧 PNG（base64）以及这些 micro 拼出的等距透明底预览 `assembly`。用于核对 `FillTile(60,70,71)` 这类地图对象（Tristram 水池 = megatile 71 → pieces 257–260 → town.cel frames 594–605）（`src/tools/level_tools.cpp`） |
 
 请求示例（JSON-RPC 2.0，stdio 与 WS 同构）：
 
@@ -141,6 +142,7 @@ g++ -I 3rdparty/StormLib/src -I 3rdparty -I src -std=c++17 \
     out/integration_tests.cpp \
     src/engine/archive.cpp src/tools/registry.cpp \
     src/tools/mpq_tools.cpp src/tools/sprite_tools.cpp src/tools/scene_tools.cpp \
+    src/tools/level_tools.cpp \
     src/decoders/palette.cpp src/decoders/clx.cpp src/decoders/cel.cpp \
     src/decoders/cl2.cpp src/decoders/pcx.cpp src/decoders/sprite_width.cpp \
     src/decoders/png.cpp src/decoders/deflate.cpp \
@@ -166,7 +168,8 @@ Fire Wall 双文件、Flash 双层、Torchant→Fireball、default→Arrow，以
 Tristram 城镇，断言 96×96 网格、**0 透明像素**、base64 PNG 合法、叠加层/每格标志/`walkable`
 数组长度；`scene.path` 返回起止格与原生/预览坐标；`scene.build(l1_rnd2, lighting:true)` 断言
 环境光 15、中心火把点亮、`meta.light` 尺寸；`scene.build(l4_diab1)` 断言 44×44、microLen 12、
-0 透明像素与 CEL 帧数。
+0 透明像素与 CEL 帧数。`testLevelInspect` 用 `level.inspect` 检查 Tristram megatile 71 →
+micro 257–260 → frames 594–605，并验证组装 PNG。
 源码路径：`src/engine/archive.cpp`、`src/tools/mpq_tools.cpp`、`src/tools/sprite_tools.cpp`、
 `src/tools/spell_tables.h`、`src/decoders/cl2.cpp`、`src/decoders/cel.cpp`、
 `src/decoders/sprite_width.cpp`、`src/decoders/level_*.cpp`；测试脚本 `out/integration_tests.cpp`。
@@ -369,6 +372,24 @@ sidecar JSON 写到 `out/scenes/`。原生大图只落盘，WS 只传降采样�
 空图；CSS 用 `brightness(1.7) contrast(0.85) saturate(1.1)` 抬暗部、菱形背景仍近黑。
 预览 PNG 由 `src/decoders/deflate.cpp` 压缩，`scene.build(tristram)` 约 343 KB base64，
 远低于 Firefox `data:` URL ~2 MB 上限（早期 stored 块 ≈2.2 MB 会显示「无法显示的图片」）。
+
+**关卡原始 tile 查看器（`web/level.html` + `level.inspect`）**：用于核对
+`FillTile`、megatile、micro piece、TileType 与具体 CEL 帧。启动 WS 桥后打开：
+
+```text
+http://localhost:8000/level.html
+```
+
+页面默认填好 Tristram 的 `levels/towndata/town.{cel,til,min,sol,pal}` 与 `megatile=71`
+（水池），点「连接」→「检查」即可看到 4 个 micro piece、每个 block 的
+`TileType/frame/data`、frames 594–605 的独立 PNG，以及这些 micro 拼出的透明底等距预览。
+这是定位 tile 绘制错误（而不是 objects）的关键工具。
+
+> **2026-11-09 修复 tile 纵向翻转**：`DecodeLeft/RightTriangle`、`DecodeLeft/RightTrapezoid`
+> 输出的是 **top-down** RGBA，而 `DecodeSquare/TransparentSquare` 输出的是 **bottom-up**
+> （源 CEL 行 0 为底），`blitFrame` 又统一做了一次纵向翻转，导致三角形/梯形 tile 被上下翻转。
+> 水池的 `RightTrapezoid` 环因此错位、看起来不是封闭圆。现在所有解码器统一输出 top-down，
+> `blitFrame` 不再翻转；`unit_tests` 增加 Square 行序回归断言。
 
 - 源码路径：`src/tools/map_tools.cpp`、`src/tools/scene_tools.cpp`、
   `src/decoders/level.h` / `level_decode.cpp` / `level_cel.cpp` / `level_render.cpp` /

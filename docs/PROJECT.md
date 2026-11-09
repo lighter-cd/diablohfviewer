@@ -721,6 +721,13 @@ DiabloHFConverter/
         `meta.special` / `special_count` 暴露每格 id。
       - **Tristram `FillTile` 补丁**：应用非任务态的水井/喷泉 `(60,70,71)` 与传送入口 `(48,20,320)`、
         `(16,68,332)`、`(16,70,331)`，这些是 `dPiece` 内容而非 automap 层。
+      - **tile 纵向翻转修复（水池不圆的根因）**：`DecodeLeft/RightTriangle`、`DecodeLeft/RightTrapezoid`
+        输出 **top-down** RGBA，而 `DecodeSquare/TransparentSquare` 输出 **bottom-up**（CEL 源行 0 为底），
+        `blitFrame` 又统一做了一次翻转，导致三角/梯形 tile 上下颠倒。水池的 `RightTrapezoid` 环因此错位；
+        现在所有 level CEL 解码器统一输出 top-down，`blitFrame` 不再翻转，水池恢复封闭圆形。
+      - **`level.inspect` + `web/level.html` 查看器**：按 megatile/micro/frame 粒度查看
+        `town.til`→`town.min`→`town.cel` 的 block 类型、帧号、原始 data、每帧 PNG 与等距组装预览；
+        默认预填 Tristram `megatile=71`（水池），可直接核对 pieces 257–260 / frames 594–605。
       - **未处理**：地牢 DUN 的 object layer（箱子/火把等 `objects/*.cel`）与 `dTransVal`/`TransList`
         的透明遮挡，仍属后续项。
 - [x] **静态光照（dLight，2026-11-09）**：`src/decoders/level_light.cpp` 忠实移植

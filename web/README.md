@@ -243,3 +243,16 @@ web/
 `l2_blind`、`l3_anvil`、`l4_diab1`）。`scene.path` 可在同一 SOL 网格上做 A* 寻路并返回
 与预览对齐的路径坐标（供后续前端叠加）。原理与资产路径见
 `docs/ARCHITECTURE.md` §9.3 与 `docs/PROJECT.md`。
+
+## 关卡 Tile 查看器（level.html）
+
+`http://localhost:8000/level.html`（同样需要 `mcp-server --ws 18765`）。页面调用
+`level.inspect`，默认预填 Tristram `levels/towndata/town.{cel,til,min,sol,pal}` 与
+`megatile=71`（水池）。连接后点「检查」可看到：
+
+- 4 个 micro piece（257–260）及每个 `mt` 的 `TileType / frame / data`；
+- 引用的全部 CEL 帧（594–605）独立 PNG，点击切换 1×/4×；
+- 这些 micro 拼出的等距透明底预览 `assembly`（点击切换 1×/4×）。
+
+这是区分 **tiles 错** 还是 **objects 错** 的关键工具。2026-11-09 的 tile 纵向翻转修复
+（triangle/trapezoid 被二次翻转，导致水池不圆）就是用它定位的。

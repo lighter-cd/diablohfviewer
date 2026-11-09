@@ -1114,6 +1114,21 @@ static void testLevelCelSquare()
     int w2 = decoders::decodeReencodedFrame(re, 1, pal.data(), rgba, outH);
     lvlChk(w2 == 32, "decodeReencodedFrame frame1 width 32");
     chkPx(rgba, 32, 5, 5, 20, 20, 20, 255);
+
+    // Orientation regression: CEL source row 0 is the BOTTOM row; decoded RGBA
+    // must be top-down (row 31 = source row 0). This matters for triangles and
+    // trapezoids (the fountain/well ring was vertically flipped before).
+    std::vector<uint8_t> celO(4 + 2 * 4 + 1024, 0);
+    WriteLE32(&celO[0], 1);
+    WriteLE32(&celO[4], 12);
+    WriteLE32(&celO[8], 12 + 1024);
+    std::memset(&celO[12], 10, 1024);          // source row 0 (bottom) = 10
+    std::memset(&celO[12 + 31 * 32], 20, 32);  // source row 31 (top) = 20
+    auto reO = decoders::reencodeLevelCel(celO, { decoders::TileType::Square });
+    int hO = 0;
+    decoders::decodeReencodedFrame(reO, 0, pal.data(), rgba, hO);
+    chkPx(rgba, 32, 0, 0, 20, 20, 20, 255);   // RGBA row 0 = top
+    chkPx(rgba, 32, 0, 31, 10, 10, 10, 255);  // RGBA row 31 = bottom
     printf("level.cel (square): %s\n", allOk ? "PASS" : "FAIL");
 }
 

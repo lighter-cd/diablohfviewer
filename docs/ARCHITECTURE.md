@@ -93,7 +93,8 @@ src/
 │   ├── mpq_tools.*      #   mpq.list / mpq.extract / mpq.verify / mpq.recover / mpq.dump
 │   ├── sprite_tools.*   #   sprite.decode / palette.load
 │   ├── map_tools.*      #   map.build（阶段 4，已落地）
-│   └── scene_tools.*    #   scene.list / scene.build / scene.path（完整场景 + 光照 + 寻路）
+│   ├── scene_tools.*    #   scene.list / scene.build / scene.path（完整场景 + 光照 + 寻路）
+│   └── level_tools.*    #   level.inspect（megatile→micro→MIN block→CEL frame + 组装预览）
 │
 ├── mcp/                 # MCP 服务端：传输 + 协议分派
 │   ├── server.h/.cpp    #   初始化 registry、启动传输
@@ -164,6 +165,7 @@ public:
 | `scene.list`   | `{}` | `{count,scenes:[{id,title,layout,grid_width,grid_height,micro_len,blocks,ambient_light,light_style}]}`；内置完整场景目录（Tristram + L1/L2/L3/L4 共 6 个预设），无需 MPQ | ✅ |
 | `scene.build`  | `{id,archive,archives?,out?,preview_max_width?,lighting?,ambient?,lights?,auto_light?}` | 复原**完整场景**（两遍绘制 + 不透明背景 + 预填，0 透明像素；可选 dLight 光照）。返回 `{image_path,preview_path,overlay_path,meta_path,image_base64,overlay_base64,width,height,preview_width,preview_height,scale,grid_width,grid_height,micro_len,frame_count,solid_count,walkable_count,transparent_count,transparent_pixel_count,lighting,ambient,light_lit_count,meta}`；`meta` 含 `solid`/`transparent`/`block_light`/`block_missile`/`walkable` + 可选 `light`；原生 PNG 落盘到 `out/scenes/`，WS 只传 ≤1000px 预览 + 对齐叠加层 | ✅ |
 | `scene.path`   | `{id,archive,archives?,from:{x,y},to:{x,y},max_steps?,preview_max_width?}` | `{found,cost,steps,grid_width,grid_height,micro_len,walkable_count,scale,native_width,native_height,preview_width,preview_height,path:[{x,y,screen_x,screen_y,preview_x,preview_y}]}`；SOL `Solid` 网格 8 方向 A*（直行 100 / 斜行 101），坐标与 `scene.build` 投影对齐 | ✅ |
+| `level.inspect`| `{archive,archives?,cel,til,min,palette,sol?,blocks,micro_len,megatile?/micros[]}` | `{megatile,grid_width,grid_height,micros:[{id,blocks:[{mt,data,has_value,type,type_name,frame}],width,height,png_base64}],frames:[{frame,type,type_name,width,height,png_base64}],assembly:{width,height,native_width,native_height,left,top,png_base64}}`；按 TIL→MIN→level CEL 逐块查看并给出等距组装预览（关卡 tile 查看器后端） | ✅ |
 
 > **PCX 已并入 `sprite.decode`**（按 `.pcx` 扩展名自动路由），不再单独设 `pcx.decode` 工具。
 > `sprite.decode` 的调色板解析优先级：`palette`（base64 或名称）→ 文件内嵌（PCX）→ 同目录
@@ -498,6 +500,14 @@ scene.path {id,archive,archives?,from:{x,y},to:{x,y},max_steps?=1024,preview_max
   `levels/towndata/towns.cel`（64×224 树冠帧），在 `Meta.special` 暴露并按底部锚定绘制。
   Tristram 另外应用非任务态 `FillTile`（水井/喷泉、传送入口）。地牢 DUN object layer 与
   `dTransVal`/`TransList` 透明遮挡尚未实现。
+- **tile 纵向翻转修复（2026-11-09）**：`DecodeLeft/RightTriangle` 与
+  `DecodeLeft/RightTrapezoid` 输出 top-down RGBA，而 `DecodeSquare/TransparentSquare`
+  输出 bottom-up（源 CEL 行 0 为底）；`blitFrame` 又统一翻转一次，导致三角/梯形 tile
+  上下颠倒（Tristram 水池的 `RightTrapezoid` 环错位、看起来不是封闭圆）。现在所有
+  level CEL 解码器统一输出 top-down，`blitFrame` 不再翻转。
+- **`level.inspect` + `web/level.html`**：按 megatile/micro/frame 粒度查看
+  `.til`→`.min`→`.cel` 的 block 类型、帧号、原始 data、帧 PNG 与等距组装预览；
+  默认预填 Tristram `megatile=71`（水池 pieces 257–260 / frames 594–605）。
 - 前端 `web/` 第 5 种浏览模式（§10.5）把两张 PNG 解码为 bitmap 后绘制到叠放的两个
   `<canvas>`，用同一 transform 做缩放/平移；新增「光照」开关触发 `scene.build(lighting:true)`。
   后端 `src/main.cpp` 调 `registerSceneTools(reg)`，stdio + WS 共用 registry。
