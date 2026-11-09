@@ -83,7 +83,7 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
 | `sprite.decode` | 解码 `.clx` / `.cel` / `.cl2` / `.pcx` 精灵为 RGBA 帧；`.cl2`/`.cel` 传 `width` 整数或 `"auto"` 自动按路径查表。可选 `archives`（额外 MPQ 路径数组）：精灵/调色板可来自与 `archive` 不同的 MPQ，用于跨档案解析调色板。**损坏/截断的 CL2/CEL 或错误 `width` 会返回错误而非崩溃**（`src/tools/sprite_tools.cpp`、`src/decoders/cl2.cpp`、`src/decoders/cel.cpp`） |
 | `sprite.list` | 枚举 `recovered.json` 中真实存在的精灵名（按 family/class/type 分类并带自动帧宽），供前端建目录树（`src/tools/sprite_tools.cpp`） |
 | `spell.list` | 从 DevilutionX 数据表（`spelldat` / `misdat` / `missile_sprites` / `monstdat`）合成**玩家技能与怪物远程攻击的全阶段视觉目录**：每个条目按 施法 → 投射 → 命中 → debuff 四阶段组织；`sprite` 层给出编号 `missiles\{name}{N}.cl2` 文件清单 + 显式 `width`（编号文件**不能**用 `width:"auto"`），`trn` 层给出目标 debuff 的调色板重映射；另附 `impact_catalog` 候选命中特效。每条还带 `name_zh`（中文名，取自 `Translations/zh_TW.po`→`zh_CN.po` 的 `msgctxt "spell"`，无翻译则回退英文名）、`description`（按已解析阶段链 + 玩家法力/智力消耗合成的中文说明），以及**法术级别参数**：`level`（`spelldat.bookLevel`，法术等级/阶）、`staff_level`、`mana_cost`、`mana_multiplier`（每升 1 级训练减少的法力）、`min_mana`、`staff_min/staff_max`，与 `mana_by_level`（按 `GetManaAmount` 公式算出的 1..bookLevel 各级基础法力 `{level, mana}`，含 `min_mana` 下限，未乘职业系数）；另含 `visual_by_level`（玩家 1..bookLevel / 怪物 1..16 各级**视觉参数**，逐法术从 DevilutionX handler 转录：持续时间 `duration_ticks`/`duration_sec`、弹速 `speed`、范围 `range_tiles`/`radius_tiles`、弹射物数 `count` 及法术特有字段如 `segments`/`wall_length_tiles`，含角色/地下城层依赖的项标 `_note`；无级别视觉缩放的法术为空）。**怪物攻击侧**除 `GetMissileType()` 的 14 类远程 AI 外，还覆盖**在 AI 函数里直接 `AddMissile` 的形态**（Counselor 按智力发 Firebolt/ChargedBolt/LightningControl/Fireball + 近身双层 Flash、Familiar 闪电、Gloom 冲撞、Mega 近身地狱火），每个形态单独一条并有 `variant` / `condition` 字段（`id` 为 `AI` 或 `AI.variant`）；`unique_monstdat` 的唯一怪会额外叠加，故 Hork Demon（HorkSpawn）、Zhar / Lazarus（按智力 3 归入 Counselor.Fireball）、Red Vex / Black Jade（LazarusSuccubus）均按真实 AI 归属。另含 **`abilities[]` 引擎级怪物特殊能力**：`Blink` 受重击瞬移、`AcidPuddle` 酸怪死亡留池、`Hidden` 潜行系隐身，每条带 `monsters` / `trigger` / `source_ref`（Diablo 1 没有 D2 式 Thunderstorm / Waller / Vortex / Shielding 词缀）。另含 **`traps[]` 陷阱法术** 10 条：墙上机关陷阱（箭矢 / 火焰弹 / 闪电，按有效层数出现）、带陷阱宝箱（箭矢 / 火焰箭 / 新星，地狱火另有火焰之环 / 偷药水 / 吸法力）、地狱火喷火口与火焰拉杆，每条带 `objects`（宿主 `OBJ_*`）/ `trigger` / `source_ref`。当前为 51 技能 / 25 怪物攻击 / 3 特殊能力 / 10 陷阱。可用 `source` / `id` 过滤（`src/tools/sprite_tools.cpp`、`src/tools/spell_tables.h`、`src/tools/spell_visual_model.h`） |
-| `map.build` | 解码 Diablo 1 / Hellfire 关卡（TIL / MIN / DUN / SOL / level CEL）并渲染完整等距地图 PNG + ≤400px 预览 PNG + 每格碰撞/光照/透明标志 sidecar JSON 到 `out/maps/`，返回摘要与 base64 预览。必填 `archive` + `cel`/`til`/`min`/`sol`/`dun`（档案内名），可选 `palette`（默认 `gendata/cut2.pal`）、`archives`（额外 MPQ 搜索栈）、`micro_len`（10 原版 / 12 地狱火）、`blocks`（10 / 16）、`out`。当前为 FullyLit 渲染（逐像素光照为运行时效果，延后）。L1 示例：`levels/l1data/l1.cel`/`l1.til`/`l1.min`/`l1.sol` + `levels/l1data/rnd2.dun`（`src/tools/map_tools.cpp`、`src/decoders/level_*.cpp`） |
+| `map.build` | 解码 Diablo 1 / Hellfire 关卡（TIL / MIN / DUN / SOL / level CEL）并渲染完整等距地图 PNG + ≤400px 预览 PNG + 每格碰撞/光照/透明标志 sidecar JSON 到 `out/maps/`，返回摘要与 base64 预览。必填 `archive` + `cel`/`til`/`min`/`sol`，以及 `dun`（档案内名）**或 `dun_path`（本地 `.dun`，用于 DevilutionX 调试版导出的动态地牢）**；可选 `palette`（默认 `gendata/cut2.pal`）、`archives`（额外 MPQ 搜索栈）、`micro_len`（10 原版 / 12 地狱火）、`blocks`（10 / 16）、`out`。当前为 FullyLit 渲染（逐像素光照为运行时效果，延后）。L1 示例：`levels/l1data/l1.cel`/`l1.til`/`l1.min`/`l1.sol` + `levels/l1data/rnd2.dun`；动态地图见 `docs/MAP_GENERATION.md`（`src/tools/map_tools.cpp`、`src/decoders/level_*.cpp`） |
 | `scene.list` | 列出可复原的**完整场景**（Tristram 城镇 + L1/L2/L3/L4 预设），返回 id/title/layout/网格尺寸/默认环境光，无需 MPQ（`src/tools/scene_tools.cpp`） |
 | `scene.build` | 复原完整关卡场景：忠实 DevilutionX 两遍绘制（地板菱形 + 墙体）+ 不透明背景 + 空格预填，**0 透明像素、无黑块**。必填 `id` + `archive`，可选 `archives`（MPQ 搜索栈）、`out`（默认 `out/scenes`）、`preview_max_width`（默认 1000）、**`lighting`**（默认 false = FullyLit；true 时按 `ambient` + `lights` 应用 DevilutionX `LightTables` 暗部着色）、`ambient`（0..15，默认城镇 0 / 地牢 15）、`lights`（`{x,y,radius,offset_x,offset_y}` 微瓦片坐标数组）、`auto_light`（无显式光源时在场景中心加 radius-15 火把，默认 true）。返回 `image_base64`/`overlay_base64`（对齐的 SOL 叠加层）+ `preview_width/height` + `meta`（每格 `solid`/`transparent`/`block_light`/`block_missile`/**`walkable`**/`special`/`special_count` + 可选 `light` + `transparent_pixel_count`）；原生 PNG 落盘。场景：`tristram`、`l1_rnd2`、`l1_skngdo`、`l2_blind`、`l3_anvil`、`l4_diab1`（`src/tools/scene_tools.cpp`、`src/decoders/level_scene.cpp`） |
 | `scene.path` | 在已解码场景的 SOL 碰撞网格上做 **8 方向 A\*** 寻路（忠实 `Source/engine/path.cpp`：直行 100 / 斜行 101，斜向不额外限制转角；目标是 Solid 时仍可到达，同引擎 `FindPath` 行为）。必填 `id` + `archive` + `from`/`to`（`{x,y}` 微瓦片坐标），可选 `max_steps`（默认 1024）、`preview_max_width`（与 `scene.build` 对齐）。返回 `found`/`cost`/`steps`/`walkable_count` + `path[]`（每格 `x/y`、原生 `screen_x/screen_y`、预览 `preview_x/preview_y`）（`src/decoders/level_path.cpp`、`src/tools/scene_tools.cpp`） |
@@ -305,6 +305,25 @@ out/render_sprite.exe \
 
 - 地狱火层级把 `micro_len`、`blocks` 改为 `12`、`16`，并指向对应 `nlevels/` 的 cel/til/min/sol。
 
+**动态地牢（非固定地图）**：L1–L4、Hellfire L5/L6 都是按种子运行时生成的，MPQ 里没有整层
+`.dun`。完整规则、种子/LCG 公式、各生成器流程、以及用 DevilutionX 调试版
+`dev.level.exportDun()` 导出整层 `.dun` 的步骤，见 **`docs/MAP_GENERATION.md`**。
+导出后可直接用 `map.build` 的本地文件参数渲染：
+
+```json
+{"jsonrpc":"2.0","id":2,"method":"tools/call",
+ "params":{"name":"map.build",
+           "arguments":{
+             "archive":"D:/work/xt/diablo/DevilutionX-Hell Fire/DIABDAT.MPQ",
+             "cel":"levels/l1data/l1.cel",
+             "til":"levels/l1data/l1.til",
+             "min":"levels/l1data/l1.min",
+             "sol":"levels/l1data/l1.sol",
+             "palette":"gendata/cut2.pal",
+             "dun_path":"out/gen/1-123456789.dun",
+             "micro_len":10, "blocks":10}}}
+```
+
 **使用 `scene.build`（完整场景）**：
 
 ```json
@@ -409,4 +428,5 @@ http://localhost:8000/level.html
 
 ## 开发文档
 
-更详细的架构与阶段计划见 `docs/ARCHITECTURE.md` 与 `docs/PROJECT.md`。
+更详细的架构与阶段计划见 `docs/ARCHITECTURE.md` 与 `docs/PROJECT.md`；动态地牢生成规则见
+`docs/MAP_GENERATION.md`。

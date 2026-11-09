@@ -86,18 +86,30 @@ DunFile loadDun(const std::vector<uint8_t>& data)
     for (size_t i = 0; i < layerCount; ++i)
         out.tileLayer.push_back(LoadLE16(data.data() + 4 + i * 2));
 
-    // Transparency layer (micro-scale): located after the tile layer and three
-    // other (2w*2h) layers. Read only if the file is large enough.
+    // Extra micro-scale layers. Preset DUNs may have none, town sectors have 4
+    // (transparency at index 3), while DevilutionX's debug `level.exportDun()`
+    // writes 3 (monster / object / transparency at index 2). Pick the
+    // transparency layer by how many layers the file actually contains.
     const size_t microW = static_cast<size_t>(out.width) * 2;
     const size_t microH = static_cast<size_t>(out.height) * 2;
-    const size_t transByteOffset = (2 + layerCount + 3 * microW * microH) * 2;
-    const size_t transEnd = transByteOffset + microW * microH * 2;
-    if (data.size() >= transEnd) {
-        out.hasTransparency = true;
-        out.transparency.reserve(microW * microH);
-        for (size_t i = 0; i < microW * microH; ++i) {
-            const uint16_t v = LoadLE16(data.data() + transByteOffset + i * 2);
-            out.transparency.push_back(static_cast<int8_t>(v & 0xFF));
+    const size_t microCount = microW * microH;
+    const size_t remainingWords = data.size() / 2;
+    const size_t afterTile = 2 + layerCount;
+    const size_t layerCountExtra = (remainingWords > afterTile)
+                                       ? (remainingWords - afterTile) / microCount : 0;
+    const size_t transLayer = (layerCountExtra >= 4) ? 3
+                              : (layerCountExtra == 3) ? 2
+                                                       : static_cast<size_t>(-1);
+    if (transLayer != static_cast<size_t>(-1)) {
+        const size_t transByteOffset = (afterTile + transLayer * microCount) * 2;
+        const size_t transEnd = transByteOffset + microCount * 2;
+        if (data.size() >= transEnd) {
+            out.hasTransparency = true;
+            out.transparency.reserve(microCount);
+            for (size_t i = 0; i < microCount; ++i) {
+                const uint16_t v = LoadLE16(data.data() + transByteOffset + i * 2);
+                out.transparency.push_back(static_cast<int8_t>(v & 0xFF));
+            }
         }
     }
     return out;

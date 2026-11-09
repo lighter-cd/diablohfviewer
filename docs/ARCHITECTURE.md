@@ -456,6 +456,10 @@ sidecar JSON（`grid_width/grid_height/micro_len/frame_count` + 四个每格标�
 `x/y`、原生 `screen_x/screen_y`、按 `preview_max_width` 换算的 `preview_x/preview_y`），
 坐标与 `scene.build` 的 `SceneProjection` 完全一致，可直接叠图。
 
+**动态地图**：L1–L4 / L5–L6 是运行时按 `DungeonSeeds[level]` 生成的，MPQ 中没有整层 `.dun`。
+规则、LCG、各生成器流程与 DevilutionX 调试版 `dev.level.exportDun()` 工作流见
+**`docs/MAP_GENERATION.md`**；`map.build` 新增 `dun_path` 可直接渲染导出的 40×40 `.dun`。
+
 **测试**（见 `README.md` §测试 / §6）：
 - `out/unit_tests.cpp`：TIL/MIN/DUN/SOL、`buildMicroGrid` 0-based、Square/Triangle CEL、
   强制三角形、`encodePNG`、`renderMap` 两遍绘制 + 不透明背景 + 0 透明像素 + 空格预填 +

@@ -314,3 +314,7 @@
 ## 2026-11-09 11:55:49
 - Level Tile Viewer 新增「图块集」下拉：Tristram / Cathedral L1 / Catacombs L2 / Caves L3 / Hell L4 / Hellfire Crypt L5 / Hellfire Nest L6，自动填入 cel/til/min/sol/pal、blocks/micro_len 与主 MPQ（L5/L6 用 hellfire.mpq），并保留 megatile 上一个/下一个浏览；已逐个预设用 level.inspect 验证可解码。
 - 涉及: web/level.html, web/src/level.js, README.md, web/README.md, docs/PROJECT.md, changed-history.txt
+
+## 2026-11-09 12:05:05
+- 落地动态地牢生成规则并打通导出/渲染链路：新增 docs/MAP_GENERATION.md（DungeonSeeds/LevelSeeds、Borland LCG、CreateDungeon 分派、L1-L4 与 Hellfire L5/L6 生成流程、主题/任务依赖、DevilutionX dev.level.exportDun 导出步骤与原生移植顺序）；map.build 新增 dun_path 本地 DUN 参数（与 dun 二选一），loadDun 按文件实际 micro 层数自动识别 transparency 层（导出 3 层取 index 2、城镇 sector 4 层取 index 3）。
+- 涉及: docs/MAP_GENERATION.md, src/tools/map_tools.cpp, src/decoders/level_decode.cpp, README.md, docs/PROJECT.md, docs/ARCHITECTURE.md, changed-history.txt

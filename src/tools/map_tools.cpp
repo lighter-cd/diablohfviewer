@@ -101,7 +101,10 @@ mcp::ToolResult toolMapBuild(const mcp::json& params) {
     const std::string tilName = reqStr(params, "til");
     const std::string minName = reqStr(params, "min");
     const std::string solName = reqStr(params, "sol");
-    const std::string dunName = reqStr(params, "dun");
+    const std::string dunName = params.value("dun", std::string());
+    const std::string dunPath = params.value("dun_path", std::string());
+    if (dunName.empty() && dunPath.empty())
+        throw std::invalid_argument("provide `dun` (archive name) or `dun_path` (local .dun)");
     const std::string palName = params.value("palette", std::string("gendata/cut2.pal"));
     const int microLen = params.value("micro_len", 10);
     const int blocks = params.value("blocks", 10);
@@ -117,8 +120,14 @@ mcp::ToolResult toolMapBuild(const mcp::json& params) {
         throw std::runtime_error("extract failed (name not found?): " + minName);
     if (!extractFromArchives(archives, solName, solBuf))
         throw std::runtime_error("extract failed (name not found?): " + solName);
-    if (!extractFromArchives(archives, dunName, dunBuf))
+    if (!dunPath.empty()) {
+        std::ifstream f(dunPath, std::ios::binary);
+        if (!f)
+            throw std::runtime_error("cannot open local DUN: " + dunPath);
+        dunBuf.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+    } else if (!extractFromArchives(archives, dunName, dunBuf)) {
         throw std::runtime_error("extract failed (name not found?): " + dunName);
+    }
     if (!extractFromArchives(archives, palName, palBuf))
         throw std::runtime_error("extract failed (name not found?): " + palName);
 
@@ -165,7 +174,8 @@ mcp::ToolResult toolMapBuild(const mcp::json& params) {
     std::error_code ec;
     std::filesystem::create_directories(outDir, ec);
 
-    const std::string base = sanitize(dunName);
+    const std::string base = sanitize(
+        dunName.empty() ? std::filesystem::path(dunPath).stem().string() : dunName);
     const std::string pngPath = outDir + "/" + base + ".png";
     const std::string previewPath = outDir + "/" + base + "_preview.png";
     const std::string metaPath = outDir + "/" + base + ".json";
@@ -265,13 +275,14 @@ void registerMapTools(ToolRegistry& reg) {
                  {"til",        json{{"type","string"},{"description","TIL in-archive name"}}},
                  {"min",        json{{"type","string"},{"description","MIN in-archive name"}}},
                  {"sol",        json{{"type","string"},{"description","SOL in-archive name"}}},
-                 {"dun",        json{{"type","string"},{"description","DUN in-archive name"}}},
+                 {"dun",        json{{"type","string"},{"description","DUN in-archive name (required unless dun_path)"}}},
+                 {"dun_path",   json{{"type","string"},{"description","local .dun path (e.g. exported by DevilutionX debug dev.level.exportDun)"}}},
                  {"palette",    json{{"type","string"},{"description","palette (default gendata/cut2.pal)"}}},
                  {"micro_len",  json{{"type","integer"},{"description","10 normal, 12 Hell"}}},
                  {"blocks",     json{{"type","integer"},{"description","MIN stride: 10 normal, 16 Hell"}}},
                  {"out",        json{{"type","string"},{"description","output dir (default out/maps)"}}},
              }},
-             {"required", json::array({"cel", "til", "min", "sol", "dun"})}},
+             {"required", json::array({"cel", "til", "min", "sol"})}},
         toolMapBuild});
 }
 

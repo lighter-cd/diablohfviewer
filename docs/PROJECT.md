@@ -751,6 +751,16 @@ DiabloHFConverter/
       **6 个完整场景**：`tristram`、`l1_rnd2`、`l1_skngdo`、`l2_blind`（L2，prefill 12）、
       `l3_anvil`（L3，prefill 8）、`l4_diab1`（L4，`microLen=12`/`blocks=16`、prefill 30、
       Hell 光照）；palette 分别为 `l2_2.pal` / `l3pfoul.pal` / `l4_1.pal`（均已实证存在）。
+- [x] **动态地图规则与导出/渲染桥接（2026-11-09）**：新增 `docs/MAP_GENERATION.md`，记录
+      `DungeonSeeds`/`LevelSeeds`、Borland LCG（`0x015A4E35`+1）、`CreateDungeon` 分派、
+      L1–L4 与 Hellfire L5/L6 生成流程、主题/任务/miniset 依赖，以及用 DevilutionX 调试版
+      Lua `dev.level.reset/warp/exportDun` 导出整层 `.dun` 的步骤。`map.build` 新增
+      `dun_path`：可直接渲染导出的 40×40 动态地牢；`loadDun` 按文件实际层数自动识别
+      transparency（导出 3 层取 index 2，城镇 sector 4 层取 index 3）。原生生成器移植暂缓，
+      文档已给出按 L1→L2/L3/L4→Crypt/Nest 的实施顺序与 oracle 验收方法。
+- [ ] **原生动态生成器移植（后续）**：按 `docs/MAP_GENERATION.md` §6.2 把 DRLG_* 逐层移植进
+      `src/decoders/`，以 DevilutionX `ExportDun` 的 tile 层做 0 差异验收；当前通过
+      `dun_path` 已可查看完整动态地图。
 - [ ] **逐像素光照 / lightmap（可选，后续）**：当前为 DevilutionX 默认的**每格平地光照**
       （`LightTables` + `dLight`），未实现 `perPixelLighting` 的 marching-squares 插值光图；
       地牢 DUN object layer 与 `dTransVal`/`TransList` 透明遮挡尚未接入。这些属于运行时/细节
