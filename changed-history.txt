@@ -310,3 +310,7 @@
 ## 2026-11-09 11:03:24
 - 修复 Level Tile Viewer 不可操作：MPQ 路径改为默认填入真实值、连接后自动检测 level.inspect 是否存在于旧后端并自动执行首次检查、自动附带同目录 MPQ 搜索栈、新增 megatile 上一个/下一个浏览（后端返回 megatile_count/micro_count），并在旧后端缺少工具时给出明确重启提示。
 - 涉及: src/tools/level_tools.cpp, web/level.html, web/src/level.js, README.md, web/README.md, changed-history.txt
+
+## 2026-11-09 11:55:49
+- Level Tile Viewer 新增「图块集」下拉：Tristram / Cathedral L1 / Catacombs L2 / Caves L3 / Hell L4 / Hellfire Crypt L5 / Hellfire Nest L6，自动填入 cel/til/min/sol/pal、blocks/micro_len 与主 MPQ（L5/L6 用 hellfire.mpq），并保留 megatile 上一个/下一个浏览；已逐个预设用 level.inspect 验证可解码。
+- 涉及: web/level.html, web/src/level.js, README.md, web/README.md, docs/PROJECT.md, changed-history.txt

@@ -728,7 +728,8 @@ DiabloHFConverter/
         现在所有 level CEL 解码器统一输出 top-down，`blitFrame` 不再翻转，水池恢复封闭圆形。
       - **`level.inspect` + `web/level.html` 查看器**：按 megatile/micro/frame 粒度查看
         `town.til`→`town.min`→`town.cel` 的 block 类型、帧号、原始 data、每帧 PNG 与等距组装预览；
-        默认预填 Tristram `megatile=71`（水池），可直接核对 pieces 257–260 / frames 594–605。
+        默认预填 Tristram `megatile=71`（水池），并可在「图块集」下拉切换 Tristram / L1–L4 /
+        Hellfire L5–L6（自动填路径、blocks/micro_len 与主 MPQ）；支持 ◀/▶ 逐 megatile 浏览。
       - **未处理**：地牢 DUN 的 object layer（箱子/火把等 `objects/*.cel`）与 `dTransVal`/`TransList`
         的透明遮挡，仍属后续项。
 - [x] **静态光照（dLight，2026-11-09）**：`src/decoders/level_light.cpp` 忠实移植

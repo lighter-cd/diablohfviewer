@@ -386,8 +386,11 @@ http://localhost:8000/level.html
 
 页面默认填好 Tristram 的 `levels/towndata/town.{cel,til,min,sol,pal}` 与 `megatile=71`
 （水池）；`MPQ 路径` 也已预填 `DIABDAT.MPQ`。点「连接」后会自动检查一次，
-并用 `◀ / ▶` 浏览上一个/下一个 megatile。每格显示 4 个 micro piece、每个 block 的
-`TileType/frame/data`、frames 594–605 的独立 PNG，以及这些 micro 拼出的透明底等距预览。
+并用 `◀ / ▶` 浏览上一个/下一个 megatile。**「图块集」下拉可切换**：
+`Tristram 城镇` / `Cathedral L1` / `Catacombs L2` / `Caves L3` / `Hell L4` /
+`Hellfire Crypt L5` / `Hellfire Nest L6`，会自动填入对应的 `.cel/.til/.min/.sol/.pal`、
+`blocks`、`micro_len` 与主 MPQ（L5/L6 用 `hellfire.mpq`）。每格显示 4 个 micro piece、每个 block 的
+`TileType/frame/data`、引用帧 PNG，以及这些 micro 拼出的透明底等距预览。
 如果状态栏提示「后端没有 level.inspect」，说明 18765 端口上还是旧进程：停止后重新构建/
 重启 `mcp-server --ws 18765` 即可。
 

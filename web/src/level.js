@@ -11,6 +11,56 @@ const client = new McpClient();
 let hasLevelTool = false;
 let maxMegatile = 0;
 
+const TILESETS = [
+  { id: "tristram", label: "Tristram 城镇", mpq: "DIABDAT.MPQ",
+    base: "levels/towndata/town", palette: "levels/towndata/town.pal", blocks: 16, micro: 16 },
+  { id: "l1", label: "Cathedral L1", mpq: "DIABDAT.MPQ",
+    base: "levels/l1data/l1", palette: "levels/l1data/l1_2.pal", blocks: 10, micro: 10 },
+  { id: "l2", label: "Catacombs L2", mpq: "DIABDAT.MPQ",
+    base: "levels/l2data/l2", palette: "levels/l2data/l2_2.pal", blocks: 10, micro: 10 },
+  { id: "l3", label: "Caves L3", mpq: "DIABDAT.MPQ",
+    base: "levels/l3data/l3", palette: "levels/l3data/l3pfoul.pal", blocks: 10, micro: 10 },
+  { id: "l4", label: "Hell L4", mpq: "DIABDAT.MPQ",
+    base: "levels/l4data/l4", palette: "levels/l4data/l4_1.pal", blocks: 16, micro: 12 },
+  { id: "l5", label: "Hellfire Crypt L5", mpq: "hellfire.mpq",
+    base: "nlevels/l5data/l5", palette: "nlevels/l5data/l5base.pal", blocks: 10, micro: 10 },
+  { id: "l6", label: "Hellfire Nest L6", mpq: "hellfire.mpq",
+    base: "nlevels/l6data/l6", palette: "nlevels/l6data/l6base1.pal", blocks: 10, micro: 10 },
+];
+
+function mpqDir() {
+  const p = ($("archive").value || "").replace(/\\/g, "/");
+  const slash = p.lastIndexOf("/");
+  return slash >= 0 ? p.slice(0, slash + 1) : "D:/work/xt/diablo/DevilutionX-Hell Fire/";
+}
+
+function applyTileset(id, runInspect) {
+  const t = TILESETS.find((x) => x.id === id) || TILESETS[0];
+  $("archive").value = mpqDir() + t.mpq;
+  $("cel").value = t.base + ".cel";
+  $("til").value = t.base + ".til";
+  $("min").value = t.base + ".min";
+  $("sol").value = t.base + ".sol";
+  $("palette").value = t.palette;
+  $("blocks").value = String(t.blocks);
+  $("microLen").value = String(t.micro);
+  $("megatile").value = "1";
+  maxMegatile = 0;
+  if (runInspect && hasLevelTool && client.ws && client.ws.readyState === WebSocket.OPEN) inspect();
+}
+
+function initTilesets() {
+  const sel = $("preset");
+  for (const t of TILESETS) {
+    const opt = document.createElement("option");
+    opt.value = t.id;
+    opt.textContent = t.label;
+    sel.appendChild(opt);
+  }
+  sel.value = "tristram";
+  sel.addEventListener("change", () => applyTileset(sel.value, true));
+}
+
 function setStatus(text, isError = false) {
   const el = $("status");
   el.textContent = text;
@@ -186,6 +236,8 @@ async function render(res) {
     micros.appendChild(card);
   }
 }
+
+initTilesets();
 
 $("connectBtn").addEventListener("click", async () => {
   $("connectBtn").disabled = true;

@@ -16,6 +16,7 @@
   .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
   label { display: flex; flex-direction: column; gap: 3px; color: #a99b80; font-size: 11px; }
   input { background: #0f0d0a; border: 1px solid #4a3e2c; color: #eee2c8; padding: 4px 6px; font: inherit; }
+  select { background: #0f0d0a; border: 1px solid #4a3e2c; color: #eee2c8; padding: 4px 6px; font: inherit; }
   input.wide { width: 420px; }
   input.mid { width: 180px; }
   input.num { width: 70px; }
@@ -55,6 +56,7 @@
       <button id="inspectBtn" disabled>检查</button>
     </div>
     <div class="row" style="margin-top:8px">
+      <label>图块集 <select id="preset"></select></label>
       <label>CEL <input id="cel" class="mid" value="levels/towndata/town.cel" /></label>
       <label>TIL <input id="til" class="mid" value="levels/towndata/town.til" /></label>
       <label>MIN <input id="min" class="mid" value="levels/towndata/town.min" /></label>
@@ -86,6 +88,6 @@
     <div id="micros"></div>
   </section>
 </main>
-<script type="module" src="src/level.js?v=20261109e"></script>
+<script type="module" src="src/level.js?v=20261109f"></script>
 </body>
 </html>
