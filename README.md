@@ -88,6 +88,7 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
 | `scene.build` | 复原完整关卡场景：忠实 DevilutionX 两遍绘制（地板菱形 + 墙体）+ 不透明背景 + 空格预填，**0 透明像素、无黑块**。必填 `id` + `archive`，可选 `archives`（MPQ 搜索栈）、`out`（默认 `out/scenes`）、`preview_max_width`（默认 1000）、**`lighting`**（默认 false = FullyLit；true 时按 `ambient` + `lights` 应用 DevilutionX `LightTables` 暗部着色）、`ambient`（0..15，默认城镇 0 / 地牢 15）、`lights`（`{x,y,radius,offset_x,offset_y}` 微瓦片坐标数组）、`auto_light`（无显式光源时在场景中心加 radius-15 火把，默认 true）。返回 `image_base64`/`overlay_base64`（对齐的 SOL 叠加层）+ `preview_width/height` + `meta`（每格 `solid`/`transparent`/`block_light`/`block_missile`/**`walkable`**/`special`/`special_count` + 可选 `light` + `transparent_pixel_count`）；原生 PNG 落盘。场景：`tristram`、`l1_rnd2`、`l1_skngdo`、`l2_blind`、`l3_anvil`、`l4_diab1`（`src/tools/scene_tools.cpp`、`src/decoders/level_scene.cpp`） |
 | `scene.path` | 在已解码场景的 SOL 碰撞网格上做 **8 方向 A\*** 寻路（忠实 `Source/engine/path.cpp`：直行 100 / 斜行 101，斜向不额外限制转角；目标是 Solid 时仍可到达，同引擎 `FindPath` 行为）。必填 `id` + `archive` + `from`/`to`（`{x,y}` 微瓦片坐标），可选 `max_steps`（默认 1024）、`preview_max_width`（与 `scene.build` 对齐）。返回 `found`/`cost`/`steps`/`walkable_count` + `path[]`（每格 `x/y`、原生 `screen_x/screen_y`、预览 `preview_x/preview_y`）（`src/decoders/level_path.cpp`、`src/tools/scene_tools.cpp`） |
 | `level.inspect` | **关卡原始 tile 查看器**：给定 `archive` + `cel`/`til`/`min`/`sol`/`palette` + `blocks`/`micro_len` + `megatile`（1-based）或 `micros[]`，返回该 megatile 的 4 个 micro piece、每个 MIN block 的 `TileType`/`frame`/原始 `data`、所有引用到的 CEL 帧 PNG（base64）以及这些 micro 拼出的等距透明底预览 `assembly`。用于核对 `FillTile(60,70,71)` 这类地图对象（Tristram 水池 = megatile 71 → pieces 257–260 → town.cel frames 594–605）（`src/tools/level_tools.cpp`） |
+| `level.generate` | **原生动态地牢生成（Cathedral L1–L4）**：按 `seed` 调 `DungeonSeeds[level]`，用 DevilutionX `drlg_l1.cpp` 的逐函数移植（同一 Borland LCG、同一 RNG 调用顺序）生成 40×40 megatile 地图；可选放置 Butcher / Skeleton King / Ogden's Sign 任务 set-piece（从 `archive`/`archives` 读取 `rnd6.dun`/`skngdo.dun`/`banner2.dun`）。必填 `archive` + `level` + `seed`，可选 `original_cathedral`（true=Diablo 原版，false=Hellfire）、`quests`（`vanilla`/`none`/`all`）、`out`（默认 `out/gen`）。写出 ExportDun 兼容的 `<level>-<seed>.dun`（可用 `map.build` 的 `dun_path` 渲染），返回 `tiles`（40 行 hex）、`floor_count`、`stairs_up_count`/`stairs_down_count`。已通过 DevilutionX 14 个 Cathedral 测试 fixture 的 0 差异校验（`src/decoders/dungeon_gen*.{h,cpp}`、`src/tools/level_tools.cpp`） |
 
 请求示例（JSON-RPC 2.0，stdio 与 WS 同构）：
 
@@ -114,10 +115,11 @@ g++ -I src -std=c++17 out/unit_tests.cpp \
     src/decoders/sprite_width.cpp \
     src/decoders/level_decode.cpp src/decoders/level_cel.cpp src/decoders/level_render.cpp \
     src/decoders/level_scene.cpp src/decoders/level_light.cpp src/decoders/level_path.cpp \
+    src/decoders/dungeon_gen.cpp src/decoders/dungeon_gen_l1.cpp \
     -static-libgcc -static-libstdc++ \
     -o out/unit_tests.exe && out/unit_tests.exe
 ```
-覆盖：CLX 解码、CEL→CLX / CL2→CLX 往返、**CL2/CEL 畸形输入与错误 `width` 拒绝（不崩溃）**、**`spell_tables.h` 纯 join（TSV/CRLF、编号文件生成、AI→导弹、阶段派生）**、PCX 解码、调色板加载、base64 编解码往返、**`testDeflateRoundTrip`（`compressZlib`↔`decompressZlib` 回环 + 5 组代表数据 + length 3–258 × distance 全 30 码边界 15 万+ 组合，覆盖 RFC 1951 额外位）**、**PNG write round-trip（IDAT 用 `decompressZlib` 解压校验）**；以及**关卡/场景解码器**（`loadTil` / `loadMin` / `loadDun` / `loadSol` 解析、`buildMicroGrid` 0-based 微索引/kNoMicro 拼装、Square/Triangle 的 level CEL 重编码与 RGBA 帧解码、强制三角形解码、调色板 4 字节步长回归、`renderMap` 两遍绘制 + 不透明背景 + 0 透明像素 + 空格预填 + frame()==0 守卫、**dLight 光照表（Normal/Hell/Soft、falloff/cone、`buildLightMap` 环境光/点光源/越界光源）与 renderMap 逐格光照着色**、**8 方向 A* 寻路（开放网格/墙体/斜角/Solid 目标/maxSteps/边界）**、`buildTownScene` 4 sector/预填、`buildDungeonScene` Dirt 预填、`sceneProjection`、`encodePNG`）。
+覆盖：CLX 解码、CEL→CLX / CL2→CLX 往返、**CL2/CEL 畸形输入与错误 `width` 拒绝（不崩溃）**、**`spell_tables.h` 纯 join（TSV/CRLF、编号文件生成、AI→导弹、阶段派生）**、PCX 解码、调色板加载、base64 编解码往返、**`testDeflateRoundTrip`（`compressZlib`↔`decompressZlib` 回环 + 5 组代表数据 + length 3–258 × distance 全 30 码边界 15 万+ 组合，覆盖 RFC 1951 额外位）**、**PNG write round-trip（IDAT 用 `decompressZlib` 解压校验）**；以及**关卡/场景解码器**（`loadTil` / `loadMin` / `loadDun` / `loadSol` 解析、`buildMicroGrid` 0-based 微索引/kNoMicro 拼装、Square/Triangle 的 level CEL 重编码与 RGBA 帧解码、强制三角形解码、调色板 4 字节步长回归、`renderMap` 两遍绘制 + 不透明背景 + 0 透明像素 + 空格预填 + frame()==0 守卫、**dLight 光照表（Normal/Hell/Soft、falloff/cone、`buildLightMap` 环境光/点光源/越界光源）与 renderMap 逐格光照着色**、**8 方向 A* 寻路（开放网格/墙体/斜角/Solid 目标/maxSteps/边界）**、`buildTownScene` 4 sector/预填、`buildDungeonScene` Dirt 预填、`sceneProjection`、`encodePNG`）；以及 **`testDungeonGen` 动态地牢生成器**（LCG 逐步算术、`GenerateRnd`/state、DUN tile 层解析、按层任务默认值、同 seed 确定性/不同 seed 差异、楼梯/地板结构、缺失 set-piece 报错，并对 DevilutionX 的 14 个 Cathedral fixture（Diablo + Hellfire）做 40×40 全格 0 差异 oracle 校验；fixture 目录可用 `DHFC_DRLG_FIXTURES` 指定，缺失时 SKIP）。
 源码路径：`src/decoders/*.cpp`、`src/tools/base64.h`、`src/tools/spell_tables.h`；测试脚本 `out/unit_tests.cpp`。
 
 ### 2. Registry + JSON-RPC（纯逻辑，无需 MPQ）
@@ -148,6 +150,7 @@ g++ -I 3rdparty/StormLib/src -I 3rdparty -I src -std=c++17 \
     src/decoders/png.cpp src/decoders/deflate.cpp \
     src/decoders/level_decode.cpp src/decoders/level_cel.cpp src/decoders/level_render.cpp \
     src/decoders/level_scene.cpp src/decoders/level_light.cpp src/decoders/level_path.cpp \
+    src/decoders/dungeon_gen.cpp src/decoders/dungeon_gen_l1.cpp \
     src/mcp/jsonrpc.cpp \
     3rdparty/StormLib/build/libStormLib.a \
     -lws2_32 -lwininet -static-libgcc -static-libstdc++ \
@@ -169,10 +172,14 @@ Tristram 城镇，断言 96×96 网格、**0 透明像素**、base64 PNG 合法�
 数组长度；`scene.path` 返回起止格与原生/预览坐标；`scene.build(l1_rnd2, lighting:true)` 断言
 环境光 15、中心火把点亮、`meta.light` 尺寸；`scene.build(l4_diab1)` 断言 44×44、microLen 12、
 0 透明像素与 CEL 帧数。`testLevelInspect` 用 `level.inspect` 检查 Tristram megatile 71 →
-micro 257–260 → frames 594–605，并验证组装 PNG。
+micro 257–260 → frames 594–605，并验证组装 PNG。**`testLevelGenerate`** 用
+`level.generate` 从 MPQ 原生生成 Cathedral L2（seed 1383137027）：断言 40×40、40 行 hex、
+写出 54404 字节 ExportDun 兼容 `.dun`、`loadDun` 识别 40×40/1600 tile/transparency 层，
+并验证同 seed 确定性；另测 L1 `quests:"none"`。
 源码路径：`src/engine/archive.cpp`、`src/tools/mpq_tools.cpp`、`src/tools/sprite_tools.cpp`、
 `src/tools/spell_tables.h`、`src/decoders/cl2.cpp`、`src/decoders/cel.cpp`、
-`src/decoders/sprite_width.cpp`、`src/decoders/level_*.cpp`；测试脚本 `out/integration_tests.cpp`。
+`src/decoders/sprite_width.cpp`、`src/decoders/level_*.cpp`、`src/decoders/dungeon_gen*.cpp`；
+测试脚本 `out/integration_tests.cpp`。
 
 > 每轮改动后请完整运行以上三个套件，确保全绿。
 
@@ -308,7 +315,26 @@ out/render_sprite.exe \
 **动态地牢（非固定地图）**：L1–L4、Hellfire L5/L6 都是按种子运行时生成的，MPQ 里没有整层
 `.dun`。完整规则、种子/LCG 公式、各生成器流程、以及用 DevilutionX 调试版
 `dev.level.exportDun()` 导出整层 `.dun` 的步骤，见 **`docs/MAP_GENERATION.md`**。
-导出后可直接用 `map.build` 的本地文件参数渲染：
+
+**直接生成 Cathedral（L1–L4）**：`level.generate` 已原生移植 `drlg_l1.cpp`，
+给定 seed 即可得到与 DevilutionX 逐格一致的地图（14 个官方 fixture 0 差异）：
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call",
+ "params":{"name":"level.generate",
+           "arguments":{
+             "archive":"D:/work/xt/diablo/DevilutionX-Hell Fire/DIABDAT.MPQ",
+             "level":2, "seed":271828182,
+             "original_cathedral":true, "quests":"vanilla",
+             "out":"out/gen"}}}
+```
+
+- `quests`：`vanilla`（按层默认任务）/ `none` / `all`；任务 set-piece 会自动从 MPQ 读取。
+- 返回 `dun_path` 与 40×40 hex `tiles`。
+- Cathedral L1–L4 **共用** `levels/l1data/l1.{cel,til,min,sol}` + `gendata/cut2.pal`，
+  `micro_len=10`、`blocks=10`（`l2/l3/l4data` 是 Catacombs/Caves/Hell，别混用）。
+
+导出/生成后都可直接用 `map.build` 的本地文件参数渲染：
 
 ```json
 {"jsonrpc":"2.0","id":2,"method":"tools/call",
@@ -320,7 +346,7 @@ out/render_sprite.exe \
              "min":"levels/l1data/l1.min",
              "sol":"levels/l1data/l1.sol",
              "palette":"gendata/cut2.pal",
-             "dun_path":"out/gen/1-123456789.dun",
+             "dun_path":"out/gen/2-271828182.dun",
              "micro_len":10, "blocks":10}}}
 ```
 

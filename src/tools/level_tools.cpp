@@ -17,10 +17,14 @@
 #include <vector>
 
 #include "decoders/level.h"
+#include "decoders/dungeon_gen.h"
 #include "decoders/palette.h"
 #include "decoders/png.h"
 #include "engine/archive.h"
 #include "tools/base64.h"
+
+#include <filesystem>
+#include <fstream>
 
 namespace {
 
@@ -332,6 +336,158 @@ mcp::ToolResult toolLevelInspect(const mcp::json& params)
 namespace mcp {
 namespace tools {
 
+int reqInt(const mcp::json& p, const char* key)
+{
+    auto it = p.find(key);
+    if (it == p.end() || !it->is_number_integer())
+        throw std::invalid_argument(std::string("missing integer param: ") + key);
+    return it->get<int>();
+}
+
+std::string hexRow(const dhfc::DungeonTileGrid& grid, int y)
+{
+    static const char* digits = "0123456789abcdef";
+    std::string row;
+    row.reserve(grid.Width * 2);
+    for (int x = 0; x < grid.Width; ++x) {
+        const uint8_t v = grid.at(x, y);
+        row.push_back(digits[v >> 4]);
+        row.push_back(digits[v & 0xF]);
+    }
+    return row;
+}
+
+/** Write an ExportDun-compatible file (tile + 4 zeroed micro layers). */
+void writeDunFile(const dhfc::DungeonTileGrid& grid, const std::string& path)
+{
+    static constexpr int MicroW = grid.Width * 2;
+    static constexpr int MicroH = grid.Height * 2;
+
+    std::vector<uint8_t> bytes;
+    bytes.reserve(4 + (grid.Width * grid.Height + 4 * MicroW * MicroH) * 2);
+    const auto put16 = [&bytes](uint16_t v) {
+        bytes.push_back(static_cast<uint8_t>(v & 0xFF));
+        bytes.push_back(static_cast<uint8_t>(v >> 8));
+    };
+
+    put16(static_cast<uint16_t>(grid.Width));
+    put16(static_cast<uint16_t>(grid.Height));
+    for (int y = 0; y < grid.Height; ++y)
+        for (int x = 0; x < grid.Width; ++x)
+            put16(grid.at(x, y));
+
+    // ExportDun order: padding, monsters, objects, transparency. The native
+    // generator currently fills only the megatile layer, so these stay zero.
+    for (int i = 0; i < 4 * MicroW * MicroH; ++i)
+        put16(0);
+
+    std::ofstream f(path, std::ios::binary);
+    if (!f)
+        throw std::runtime_error("cannot write DUN: " + path);
+    f.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+}
+
+mcp::ToolResult toolLevelGenerate(const mcp::json& params)
+{
+    const auto archives = archiveStack(params);
+
+    const int level = reqInt(params, "level");
+    if (level < 1 || level > 4)
+        throw std::invalid_argument("`level` must be 1..4 (Cathedral)");
+
+    auto seedIt = params.find("seed");
+    if (seedIt == params.end() || !seedIt->is_number_integer())
+        throw std::invalid_argument("missing unsigned integer param: seed");
+    const uint32_t seed = static_cast<uint32_t>(seedIt->get<uint64_t>());
+
+    const bool originalCathedral = params.value("original_cathedral", true);
+    const std::string questMode = params.value("quests", std::string("vanilla"));
+    const std::string outDir = params.value("out", std::string("out/gen"));
+
+    dhfc::CathedralOptions options;
+    options.level = level;
+    options.seed = seed;
+    options.originalCathedral = originalCathedral;
+
+    if (questMode == "vanilla") {
+        dhfc::applyVanillaCathedralQuests(options);
+    } else if (questMode == "none") {
+        options.butcherQuest = options.poisonWaterQuest = false;
+        options.skeletonKingQuest = options.bannerQuest = false;
+    } else if (questMode == "all") {
+        options.butcherQuest = options.poisonWaterQuest = true;
+        options.skeletonKingQuest = options.bannerQuest = true;
+    } else {
+        throw std::invalid_argument("`quests` must be one of: vanilla, none, all");
+    }
+
+    // Load set pieces on demand from the same MPQ stack.
+    const auto loadSetPiece = [&archives](const char* name) {
+        std::vector<uint8_t> buf;
+        if (!extractAny(archives, name, buf))
+            throw std::runtime_error(std::string("extract failed (name not found?): ") + name);
+        dhfc::DunTileLayer layer = dhfc::parseDunTileLayer(buf);
+        if (!layer.valid())
+            throw std::runtime_error(std::string("invalid DUN tile layer: ") + name);
+        return layer;
+    };
+
+    dhfc::DunTileLayer butcherLayer, skeletonKingLayer, bannerLayer;
+    if (options.butcherQuest) {
+        butcherLayer = loadSetPiece("levels/l1data/rnd6.dun");
+        options.butcherSetPiece = &butcherLayer;
+    }
+    if (options.skeletonKingQuest) {
+        skeletonKingLayer = loadSetPiece("levels/l1data/skngdo.dun");
+        options.skeletonKingSetPiece = &skeletonKingLayer;
+    }
+    if (options.bannerQuest) {
+        bannerLayer = loadSetPiece("levels/l1data/banner2.dun");
+        options.bannerSetPiece = &bannerLayer;
+    }
+
+    const dhfc::DungeonTileGrid grid = dhfc::generateCathedral(options);
+
+    std::filesystem::create_directories(outDir);
+    const std::string dunPath = (std::filesystem::path(outDir)
+        / (std::to_string(level) + "-" + std::to_string(seed) + ".dun")).string();
+    writeDunFile(grid, dunPath);
+
+    mcp::json rows = mcp::json::array();
+    for (int y = 0; y < grid.Height; ++y)
+        rows.push_back(hexRow(grid, y));
+
+    size_t floorCount = 0, stairsUp = 0, stairsDown = 0, dirtCount = 0;
+    for (uint8_t v : grid.tiles) {
+        if (v == 13)
+            ++floorCount;
+        else if (v == 22)
+            ++dirtCount;
+        if (v == 64)
+            ++stairsUp;
+        if (v == 61 || v == 62 || v == 57 || v == 58 || v == 59 || v == 60)
+            ++stairsDown;
+    }
+
+    mcp::ToolResult r;
+    r.value = mcp::json{
+        {"level", level},
+        {"seed", seed},
+        {"quests", questMode},
+        {"original_cathedral", originalCathedral},
+        {"width", grid.Width},
+        {"height", grid.Height},
+        {"dun_path", dunPath},
+        {"floor_count", floorCount},
+        {"dirt_count", dirtCount},
+        {"stairs_up_count", stairsUp},
+        {"stairs_down_count", stairsDown},
+        {"tiles", rows},
+        {"note", "Render with map.build (dun_path=<dun_path>) and the matching level CEL/TIL/MIN/SOL."},
+    };
+    return r;
+}
+
 void registerLevelTools(ToolRegistry& reg)
 {
     reg.registerTool(ToolDef{
@@ -362,6 +518,30 @@ void registerLevelTools(ToolRegistry& reg)
              }},
              {"required", json::array({"archive", "cel", "til", "min", "palette", "megatile"})}},
         toolLevelInspect});
+
+    reg.registerTool(ToolDef{
+        "level.generate",
+        "Natively generate a Diablo 1/Hellfire Cathedral (L1-L4) level from a "
+        "seed, using a faithful port of DevilutionX's drlg_l1 generator (same "
+        "Borland LCG, same RNG call order). Optionally places quest set pieces "
+        "(Butcher / Skeleton King / Ogden's Sign) extracted from the MPQ. Writes "
+        "an ExportDun-compatible <level>-<seed>.dun that map.build can render via "
+        "`dun_path`, and returns the 40x40 megatile grid as hex rows.",
+        json{{"type", "object"},
+             {"properties", json{
+                 {"archive", json{{"type", "string"}, {"description", "primary MPQ path"}}},
+                 {"archives", json{{"type", "array"}, {"items", json{{"type", "string"}}},
+                                    {"description", "additional MPQ search paths"}}},
+                 {"level", json{{"type", "integer"}, {"description", "Cathedral level 1..4"}}},
+                 {"seed", json{{"type", "integer"}, {"description", "DungeonSeeds[level] (uint32)"}}},
+                 {"original_cathedral", json{{"type", "boolean"},
+                                              {"description", "true = Diablo original Cathedral (default), false = Hellfire"}}},
+                 {"quests", json{{"type", "string"},
+                                  {"description", "vanilla (level defaults) | none | all"}}},
+                 {"out", json{{"type", "string"}, {"description", "output dir (default out/gen)"}}},
+             }},
+             {"required", json::array({"archive", "level", "seed"})}},
+        toolLevelGenerate});
 }
 
 } // namespace tools

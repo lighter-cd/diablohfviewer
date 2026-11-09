@@ -73,3 +73,10 @@ Desktop.ini
 # 本项目的改动历史记录在 changed-history.txt（入库，不忽略）。
 changed-history.tools996.txt
 
+
+# ---------- 原生动态地牢生成产物（level.generate / map.build dun_path） ----------
+out/gen/
+out/gen_test/
+out/maps_dbg/
+out/maps_random/
+

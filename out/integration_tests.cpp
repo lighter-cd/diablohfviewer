@@ -1303,6 +1303,75 @@ static void testSceneTools(const std::string& mpq) {
            allOk ? "PASS" : "FAIL");
 }
 
+static void testLevelGenerate(const std::string& mpq) {
+    std::vector<std::string> archives = { mpq };
+    {
+        size_t i = mpq.find_last_of("/\\");
+        std::string dir = (i != std::string::npos) ? mpq.substr(0, i + 1) : "";
+        std::string base = dir + "DIABDAT.MPQ";
+        if (base != mpq) archives.push_back(base);
+    }
+
+    std::string base;
+    for (const auto& a : archives) {
+        engine::Archive arc;
+        if (!arc.open(a)) continue;
+        std::vector<uint8_t> tmp;
+        if (arc.extract("levels\\l1data\\l1.cel", tmp) || arc.extract("levels/l1data/l1.cel", tmp)) {
+            base = a;
+            break;
+        }
+    }
+    if (base.empty()) {
+        printf("  (skipped level.generate; no DIABDAT.MPQ with L1 assets)\n");
+        printf("level.generate: %s\n", allOk ? "PASS" : "FAIL");
+        return;
+    }
+
+    const char* outDir = "out/gen_test";
+    ToolRegistry reg;
+    tools::registerMpqTools(reg);
+    tools::registerLevelTools(reg);
+    auto call = [&](const std::string& tool, const json& args) -> json {
+        ToolResult r = reg.dispatch(tool, args);
+        if (!r.ok)
+            throw std::runtime_error("tool failed: " + r.value.dump());
+        return r.value;
+    };
+
+    json first = call("level.generate",
+        json{{"archive", base}, {"level", 2}, {"seed", 1383137027}, {"out", outDir}});
+    CHECK(first.value("width", 0) == 40, "level.generate width 40");
+    CHECK(first.value("height", 0) == 40, "level.generate height 40");
+    CHECK(first.value("stairs_up_count", 0) > 0, "level.generate placed stairs up");
+    CHECK(first.contains("tiles") && first["tiles"].size() == 40, "level.generate returns 40 hex rows");
+    CHECK(first["tiles"][0].get<std::string>().size() == 80, "level.generate hex row width 80");
+
+    const std::string dunPath = first.value("dun_path", std::string());
+    CHECK(!dunPath.empty(), "level.generate wrote a dun path");
+
+    std::ifstream f(dunPath, std::ios::binary);
+    std::vector<uint8_t> dun { std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>() };
+    CHECK(dun.size() == 54404, "level.generate DUN is ExportDun-sized (54404 bytes)");
+    auto d = decoders::loadDun(dun);
+    CHECK(d.width == 40 && d.height == 40, "level.generate DUN parses as 40x40");
+    CHECK(d.tileLayer.size() == 1600, "level.generate DUN has 1600 megatiles");
+    CHECK(d.hasTransparency, "level.generate DUN transparency layer detected");
+
+    // Determinism through the public tool surface.
+    json second = call("level.generate",
+        json{{"archive", base}, {"level", 2}, {"seed", 1383137027}, {"out", outDir}});
+    CHECK(first["tiles"] == second["tiles"], "level.generate deterministic for same seed");
+
+    // Level 1 has no quests; "none" must also work without set-piece extraction.
+    json l1 = call("level.generate",
+        json{{"archive", base}, {"level", 1}, {"seed", 2588}, {"quests", "none"}, {"out", outDir}});
+    CHECK(l1.value("level", 0) == 1, "level.generate level 1 ok");
+    CHECK(l1.value("floor_count", 0) > 0, "level.generate level 1 has floor tiles");
+
+    printf("level.generate (%s): %s\n", base.c_str(), allOk ? "PASS" : "FAIL");
+}
+
 static void testLevelInspect(const std::string& mpq) {
     std::vector<std::string> archives = { mpq };
     {
@@ -1407,6 +1476,7 @@ int main() {
     testSpellListSynthesis();
     testLevelMap(mpq);
     testSceneTools(mpq);
+    testLevelGenerate(mpq);
     testLevelInspect(mpq);
     printf("=== %s ===\n", allOk ? "ALL PASS" : "FAILURES PRESENT");
     return allOk ? 0 : 1;

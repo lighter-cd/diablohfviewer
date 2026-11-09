@@ -176,8 +176,16 @@ return r % v
   泥泉、泪泉、铠甲架、武器架、宝箱等），由 `DRLG_PlaceThemeRooms` 在生成后放置。
 - `Source/levels/drlg_quests.cpp`：`DRLG_CheckQuests` 把任务 set-piece 放进地图。
 - `Source/levels/setmaps.cpp`：固定剧情关卡（`SL_*`）直接加载 `levels/.../*.dun`。
+- `Source/quests.cpp::InitialiseQuestPools`：新版 DevilutionX 默认
+  `randomizeQuests = true`，会以 `DungeonSeeds[15]` 为 seed，把
+  `{Q_SKELKING,Q_PWATER}`、`{Q_BUTCHER,Q_LTBANNER,Q_GARBUD}`、
+  `{Q_BLIND,Q_ROCK,Q_BLOOD}`、`{Q_MUSHROOM,Q_ZHAR,Q_ANVIL}`、
+  `{Q_VEIL,Q_WARLORD}` 各随机禁用一个任务。seed 0 时被禁用的是
+  `Q_SKELKING / Q_LTBANNER / Q_BLIND / Q_ANVIL / Q_VEIL`。
+  这直接影响 set-piece 与楼梯，因此**同一个 dungeon seed 也可能得到不同地图**。
 - **结论**：同一个 seed 在不同任务状态下可能得到不同地图；要复现某存档的完整地图，
-  必须同时复现 `DungeonSeeds[level]` 与 `Quests`/`gbIsHellfire` 状态。
+  必须同时复现 `DungeonSeeds[level]`、`DungeonSeeds[15]`（任务池）与
+  `Quests`/`gbIsHellfire` 状态。
 
 ---
 
@@ -198,14 +206,16 @@ DevilutionX 的调试构建带 Lua 控制台，`Source/lua/modules/dev/level.cpp
 ```text
 uint16 width=40, uint16 height=40
 40×40 uint16 dungeon tile layer
+80×80 uint16 padding 层（全 0）
 80×80 uint16 怪物层
 80×80 uint16 object 层
 80×80 uint16 dTransVal 透明层
 ```
 
-即 **3 个 micro 层**（monster / object / transparency）；固定预设 DUN 通常是 tile-only，
-城镇 sector DUN 有 4 个 micro 层（transparency 在 index 3）。`loadDun()` 现在会按文件
-实际层数自动选择 transparency 层（3 层取 index 2，≥4 层取 index 3）。
+即 **4 个 micro 层**（padding / monster / object / transparency，共 54404 字节）。
+固定预设 DUN 通常是 tile-only，城镇 sector DUN 有 4 个 micro 层。DevilutionX 的测试
+fixture 使用的是 13 层变体。`loadDun()` 现在统一取**最后一个完整 micro 层**作为
+transparency（4 层取 index 3、3 层取 index 2、13 层取 index 12）。
 
 工作流：
 
@@ -241,18 +251,68 @@ uint16 width=40, uint16 height=40
 > 当前 `map.build` 只读取 tile 层（+自动识别的 transparency），因此渲染的是
 > **地形/墙体/透明组**，不含怪与物件精灵。后续接入 object layer 后即可完整还原。
 
-### 6.2 原生移植（后续，彻底脱离 DevilutionX 运行时）
+### 6.2 原生生成（已实现：Cathedral L1–L4）
 
-建议按以下顺序落地到 `src/decoders/dungeon_gen_*`：
+`src/decoders/dungeon_gen.{h,cpp}` + `src/decoders/dungeon_gen_l1.cpp` 是
+`drlg_l1.cpp` Cathedral 分支的逐函数移植，包含：
 
-1. **RNG/骨架**：LCG + `GenerateRnd/FlipCoin` + `dungeon[40][40]`/`dPiece` 容器、
-   `DRLG_InitTrans`/`DRLG_RectTrans`/`FloodTransparencyValues`。
-2. **L1/Cathedral**：`GenerateLevel` + `Pass3`（先不做 Quests/Objects/Monsters），
-   用 6.1 导出的 `.dun` 做 tile-by-tile oracle；要求 40×40 完全一致。
-3. **L2/L3/L4** 按同样的 oracle 方法逐个移植；Quest floor / theme 先作为可选开关。
-4. **Crypt/Nest**（Hellfire）最后。
-5. 接入 `scene.build`：新增 `scene.generate`/`scene.list(seed)`，输出与 `dun_path`
-   相同的网格，再复用现有两遍渲染/光照/寻路。
+- Borland LCG（`0x015A4E35` + 1）与 `GenerateRnd` / `FlipCoin` / `DiscardRandomValues`。
+- `FirstRoom` / `GenerateRoom`（含原版 height/width 交换 bug）→ `MakeDmt` →
+  `FillChambers`（含 3 个 chamber + hall + set piece）→ `FixTilesPatterns` →
+  `AddWall` → `PlaceStairs` → `FixDirtTiles`/`FixCornerTiles` → `Substitution` →
+  `ApplyShadowsPatterns` → `LAMPS` → `FillFloor`。
+- 原版重试循环：面积 `< minarea`（L1 533 / L2 693 / 其它 761）或楼梯放不下时，
+  继续使用当前 LCG 状态重来（不是重置 seed）。
+- 任务 set-piece：`rnd6.dun`（Butcher）/ `skngdo.dun`（Skeleton King）/
+  `banner2.dun`（Ogden's Sign）；`L5STAIRSUP`（`originalCathedral` 且无 banner）。
+- **任务可用性必须按 `Quest::IsAvailable()` 计算**：`setlevel == 0`、
+  `currlevel == _qlevel`、`_qactive != QUEST_NOTAVAIL`、
+  多人模式下排除 `isSinglePlayerOnly`。
+  注意新版 DevilutionX 默认开启 `randomizeQuests`，会用 `DungeonSeeds[15]` 的
+  seed 通过 `InitialiseQuestPools` 把若干任务标为 `QUEST_NOTAVAIL`
+  （seed 0 时是 `Q_SKELKING` / `Q_LTBANNER` / `Q_BLIND` / `Q_ANVIL` / `Q_VEIL`）。
+  复现某张地图时必须使用同一任务状态；本项目的 `level.generate` 用
+  `quests: "vanilla" | "none" | "all"` 表达常见组合。
+
+MCP 工具：
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call",
+ "params":{"name":"level.generate","arguments":{
+   "archive":"D:/work/xt/diablo/DevilutionX-Hell Fire/DIABDAT.MPQ",
+   "level":2, "seed":271828182,
+   "original_cathedral":true, "quests":"vanilla",
+   "out":"out/gen"}}}
+```
+
+返回 `dun_path`（ExportDun 兼容，4 个 micro 层）、`tiles`（40 行 hex）以及
+`floor_count` / `stairs_up_count` / `stairs_down_count`。随后用 `map.build` 的
+`dun_path` 渲染；**Cathedral L1–L4 共用 `levels/l1data/l1.{cel,til,min,sol}` +
+`gendata/cut2.pal`（`micro_len=10` / `blocks=10`）**，不要误用 `l2data/l3data/l4data`
+（那些是 Catacombs/Caves/Hell）。
+
+验收（已通过）：DevilutionX 仓库自带的 `test/fixtures/{diablo,hellfire}/*.dun`
+共 **14 个 Cathedral fixture**（Diablo + Hellfire，含 Butcher/Skeleton King/
+Ogden's Sign/Poisoned Water 各种任务组合）与 `generateCathedral()` 输出
+**40×40 全格 0 差异**。单元测试会读取
+`DHFC_DRLG_FIXTURES`（默认 `D:/work/xt/diablo/DevilutionX/test/fixtures`），
+目录不存在时自动 SKIP。
+
+> set-piece 文件存在两个版本：零售 MPQ 与 DevilutionX 仓库
+> `test/fixtures/levels/l1data/`（后者是对齐测试基准的修正版）。要逐格复现
+> fixture，必须使用 fixture 目录中的 set-piece；`level.generate` 默认从
+> `archive`/`archives` 搜索栈读取，与运行时 mod 覆盖规则一致。
+
+后续仍需移植：
+
+1. **Catacombs（`drlg_l2.cpp`，L5–L8）**：房间/走廊/门 + `blind1`/`blood1`/
+   `bonestr2` set-piece + theme rooms。
+2. **Caves / Nest（`drlg_l3.cpp`，L9–L12 / Hellfire L6）**：区块/河流/水池/
+   栅栏/`anvil` 等。
+3. **Hell（`drlg_l4.cpp`，L13–L16）**：镜像布局 + `diab1..4` 固定房间保护。
+4. **Crypt（`drlg_l1.cpp` Crypt 分支，Hellfire L5）**：`uberroom`/`cornerstone`。
+5. `dTransVal` 的 flood-fill 也可按同样方式移植，以让生成 DUN 的透明遮挡与
+   导出文件完全一致（当前生成文件该层为 0）。
 
 验收标准：同一 seed + 同一任务状态下，生成器输出的 `dungeon[40][40]`（以及
 `dPiece` 的 2× 展开）与 DevilutionX `ExportDun` 的 tile 层 **0 差异**。
@@ -263,6 +323,9 @@ uint16 width=40, uint16 height=40
 
 - ✅ 固定地图、预设 `.dun`、完整场景渲染、光照、寻路、tile 查看器。
 - ✅ `map.build` 支持 `dun_path`，可直接渲染 DevilutionX 导出的动态地图。
-- ⏳ 生成器原生移植：尚未开始（本文件给出规则与移植顺序）。
+- ✅ **Cathedral L1–L4 原生生成**：`level.generate` 可按 seed 生成正确地图，
+  14 个 DevilutionX fixture 全部 0 差异（Diablo + Hellfire 任务组合）。
+- ⏳ Catacombs / Caves / Hell / Crypt / Nest 生成器尚未移植（规则见 §4）。
 - ⏳ 导出 DUN 的 monster/object 层尚未渲染；object 层接入后箱子/火把/桶等即可显示。
-- ⏳ `dTransVal`/`TransList` 的运行时遮挡仍未接入静态渲染。
+- ⏳ 生成 DUN 的 `dTransVal` 层当前为 0；`dTransVal`/`TransList` 的运行时遮挡
+  仍未接入静态渲染。

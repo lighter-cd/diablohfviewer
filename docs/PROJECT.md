@@ -756,11 +756,20 @@ DiabloHFConverter/
       L1–L4 与 Hellfire L5/L6 生成流程、主题/任务/miniset 依赖，以及用 DevilutionX 调试版
       Lua `dev.level.reset/warp/exportDun` 导出整层 `.dun` 的步骤。`map.build` 新增
       `dun_path`：可直接渲染导出的 40×40 动态地牢；`loadDun` 按文件实际层数自动识别
-      transparency（导出 3 层取 index 2，城镇 sector 4 层取 index 3）。原生生成器移植暂缓，
-      文档已给出按 L1→L2/L3/L4→Crypt/Nest 的实施顺序与 oracle 验收方法。
-- [ ] **原生动态生成器移植（后续）**：按 `docs/MAP_GENERATION.md` §6.2 把 DRLG_* 逐层移植进
-      `src/decoders/`，以 DevilutionX `ExportDun` 的 tile 层做 0 差异验收；当前通过
-      `dun_path` 已可查看完整动态地图。
+      transparency（导出 4 层取 index 3，城镇 sector 4 层取 index 3，测试 fixture 13 层取
+      index 12，即统一取最后一个完整 micro 层）。
+- [x] **原生 Cathedral 生成器移植（2026-11-09）**：`src/decoders/dungeon_gen.{h,cpp}` +
+      `dungeon_gen_l1.cpp` 逐函数移植 `drlg_l1.cpp` Cathedral 分支（LCG/GenerateRnd/FlipCoin、
+      FirstRoom/GenerateRoom/MakeDmt/FillChambers/FixTilesPatterns/AddWall/PlaceStairs/
+      Substitution/ApplyShadowsPatterns/LAMPS/FillFloor，含原版重试循环与 width/height 交换 bug）。
+      MCP 工具 `level.generate` 按 seed 生成 L1–L4，支持 `quests: vanilla|none|all` 与
+      Butcher/Skeleton King/Ogden's Sign set-piece，写出 ExportDun 兼容 `.dun`。
+      已与 DevilutionX `test/fixtures/{diablo,hellfire}` 的 **14 个 Cathedral fixture 全格
+      0 差异**（单元测试 oracle）。
+- [ ] **其余原生动态生成器移植（后续）**：按 `docs/MAP_GENERATION.md` §6.2 继续移植
+      Catacombs（L5–L8，`drlg_l2.cpp`）、Caves/Nest（L9–L12 / Hellfire L6，`drlg_l3.cpp`）、
+      Hell（L13–L16，`drlg_l4.cpp`）与 Crypt（Hellfire L5），仍以 `ExportDun` tile 层做
+      0 差异验收。
 - [ ] **逐像素光照 / lightmap（可选，后续）**：当前为 DevilutionX 默认的**每格平地光照**
       （`LightTables` + `dLight`），未实现 `perPixelLighting` 的 marching-squares 插值光图；
       地牢 DUN object layer 与 `dTransVal`/`TransList` 透明遮挡尚未接入。这些属于运行时/细节
@@ -777,6 +786,7 @@ DiabloHFConverter/
 | 静态 dLight（Normal/Hell/Soft、点光源、前端开关） | ✅ |
 | SOL 碰撞网格 A* 寻路（`scene.path`） | ✅ |
 | `level.inspect` 关卡 tile 查看器（megatile/micro/block/frame/组装） | ✅ |
+| `level.generate` 动态 Cathedral L1–L4 原生生成（14 个 DevilutionX fixture 0 差异） | ✅ |
 | `dSpecial` 城镇树木/拱门覆盖层 + Tristram FillTile（水池/传送入口） | ✅ |
 | tile 纵向翻转修复（triangle/trapezoid 与 square 统一 top-down） | ✅ |
 | 前端场景查看器 + 关卡 tile 查看器（`web/`） | ✅ |

@@ -34,9 +34,14 @@
 #include "decoders/level_light.h"
 #include "decoders/level_path.h"
 #include "decoders/level_scene.h"
+#include "decoders/dungeon_gen.h"
 #include "decoders/png.h"
 #include "tools/base64.h"
 #include "tools/spell_tables.h"
+
+#include <cstdlib>
+#include <exception>
+#include <fstream>
 
 #include <cstdio>
 #include <cstring>
@@ -1654,6 +1659,225 @@ static void testDeflateRoundTrip()
     if (ok) printf("deflate round-trip: PASS (%zu pair checks)\n", checked);
 }
 
+static void testDungeonGen()
+{
+    using namespace dhfc;
+    bool ok = true;
+
+    // 1) LCG arithmetic: each advance is state * 0x015A4E35 + 1 (mod 2^32).
+    {
+        DiabloRng rng(0x12345678u);
+        uint32_t expected = 0x12345678u;
+        for (int i = 0; i < 8; ++i) {
+            expected = expected * UINT32_C(0x015A4E35) + 1;
+            const uint32_t got = rng.advance();
+            if (got != expected) {
+                printf("dungeon.gen rng: FAIL (step %d got %08x expected %08x)\n", i, got, expected);
+                ok = false;
+            }
+        }
+    }
+
+    // 2) RNG state is observable and seedable.
+    {
+        DiabloRng rng(42);
+        rng.advance();
+        const uint32_t state = rng.state();
+        rng.seed(42);
+        if (rng.state() != 42 || state == 42) {
+            printf("dungeon.gen rng state: FAIL\n");
+            ok = false;
+        }
+    }
+
+    // 3) DUN tile layer parsing.
+    {
+        std::vector<uint8_t> bytes { 2, 0, 2, 0, 13, 0, 14, 0, 15, 0, 16, 0 };
+        DunTileLayer layer = parseDunTileLayer(bytes);
+        if (!layer.valid() || layer.width != 2 || layer.height != 2 || layer.at(1, 0) != 14
+            || layer.at(0, 1) != 15) {
+            printf("dungeon.gen dun parse: FAIL\n");
+            ok = false;
+        }
+        if (parseDunTileLayer(std::vector<uint8_t> { 2, 0 }).valid()) {
+            printf("dungeon.gen dun parse truncation: FAIL\n");
+            ok = false;
+        }
+    }
+
+    // 4) Vanilla quest availability per level.
+    {
+        const bool expect[5][4] = {
+            // butcher, pwater, skelking, banner
+            { false, false, false, false }, // level 0 (unused)
+            { false, false, false, false }, // L1
+            { true, true, false, false },   // L2
+            { false, false, true, false },  // L3
+            { false, false, false, true },  // L4
+        };
+        for (int level = 1; level <= 4; ++level) {
+            CathedralOptions o;
+            o.level = level;
+            applyVanillaCathedralQuests(o);
+            if (o.butcherQuest != expect[level][0] || o.poisonWaterQuest != expect[level][1]
+                || o.skeletonKingQuest != expect[level][2] || o.bannerQuest != expect[level][3]) {
+                printf("dungeon.gen vanilla quests L%d: FAIL\n", level);
+                ok = false;
+            }
+        }
+    }
+
+    // 5) Deterministic + structurally sane generation (no MPQ needed).
+    {
+        for (int level = 1; level <= 4; ++level) {
+            CathedralOptions a;
+            a.level = level;
+            a.seed = 2588;
+            CathedralOptions b = a;
+            const DungeonTileGrid g1 = generateCathedral(a);
+            const DungeonTileGrid g2 = generateCathedral(b);
+            if (g1.tiles != g2.tiles) {
+                printf("dungeon.gen determinism L%d: FAIL\n", level);
+                ok = false;
+            }
+
+            size_t stairsUp = 0, floorish = 0;
+            for (uint8_t v : g1.tiles) {
+                if (v == 0) {
+                    printf("dungeon.gen empty tile L%d: FAIL\n", level);
+                    ok = false;
+                    break;
+                }
+                if (v == 64)
+                    ++stairsUp;
+                if (v == 13 || (v >= 139 && v <= 145) || v == 162 || v == 163)
+                    ++floorish;
+            }
+            if (stairsUp == 0 || floorish == 0) {
+                printf("dungeon.gen structure L%d: FAIL (stairs=%zu floor=%zu)\n", level, stairsUp, floorish);
+                ok = false;
+            }
+
+            CathedralOptions c = a;
+            c.seed = 743271966;
+            if (generateCathedral(c).tiles == g1.tiles) {
+                printf("dungeon.gen seed variation L%d: FAIL\n", level);
+                ok = false;
+            }
+        }
+    }
+
+    // 6) Missing set piece data must be reported, not silently skipped.
+    {
+        CathedralOptions o;
+        o.level = 2;
+        applyVanillaCathedralQuests(o);
+        bool threw = false;
+        try {
+            generateCathedral(o);
+        } catch (const std::exception&) {
+            threw = true;
+        }
+        if (!threw) {
+            printf("dungeon.gen missing set piece: FAIL\n");
+            ok = false;
+        }
+    }
+
+    // 7) Oracle: compare against DevilutionX's committed dungeon fixtures.
+    {
+        const char* env = std::getenv("DHFC_DRLG_FIXTURES");
+        std::string fixtures = env != nullptr ? env : "D:/work/xt/diablo/DevilutionX/test/fixtures";
+        const std::string setPieces = fixtures + "/levels/l1data/";
+
+        struct Case {
+            const char* fixture;
+            int level;
+            uint32_t seed;
+            bool originalCathedral;
+            bool butcher, poisonWater, skeletonKing, banner;
+        };
+        const Case cases[] = {
+            { "diablo/1-2588.dun", 1, 2588, true, false, false, false, false },
+            { "diablo/1-743271966.dun", 1, 743271966, true, false, false, false, false },
+            { "diablo/2-1383137027.dun", 2, 1383137027, true, false, true, false, false },
+            { "diablo/3-844660068.dun", 3, 844660068, true, false, false, false, false },
+            { "diablo/4-609325643.dun", 4, 609325643, true, false, false, false, false },
+            { "diablo/4-902156014.dun", 4, 902156014, true, false, false, false, true },
+            { "hellfire/1-401921334.dun", 1, 401921334, false, false, false, false, false },
+            { "hellfire/1-536340718.dun", 1, 536340718, false, false, false, false, false },
+            { "hellfire/2-128964898.dun", 2, 128964898, false, false, false, false, false },
+            { "hellfire/2-1180526547.dun", 2, 1180526547, false, true, false, false, false },
+            { "hellfire/3-1369955278.dun", 3, 1369955278, false, false, false, true, false },
+            { "hellfire/3-1799396623.dun", 3, 1799396623, false, false, false, false, false },
+            { "hellfire/4-1190318991.dun", 4, 1190318991, false, false, false, false, false },
+            { "hellfire/4-1924296259.dun", 4, 1924296259, false, false, false, false, true },
+        };
+
+        const auto readBytes = [](const std::string& path) {
+            std::ifstream f(path, std::ios::binary);
+            return std::vector<uint8_t>(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+        };
+
+        DunTileLayer rnd6 = parseDunTileLayer(readBytes(setPieces + "rnd6.dun"));
+        DunTileLayer skngdo = parseDunTileLayer(readBytes(setPieces + "skngdo.dun"));
+        DunTileLayer banner2 = parseDunTileLayer(readBytes(setPieces + "banner2.dun"));
+
+        if (!rnd6.valid() || !skngdo.valid() || !banner2.valid()) {
+            printf("dungeon.gen oracle: SKIP (set fixtures not found at %s)\n", fixtures.c_str());
+        } else {
+            int checked = 0, failed = 0;
+            for (const Case& c : cases) {
+                DunTileLayer expected = parseDunTileLayer(readBytes(fixtures + "/" + c.fixture));
+                if (!expected.valid()) {
+                    printf("  dungeon.gen oracle %s: SKIP (missing)\n", c.fixture);
+                    continue;
+                }
+                CathedralOptions o;
+                o.level = c.level;
+                o.seed = c.seed;
+                o.originalCathedral = c.originalCathedral;
+                o.butcherQuest = c.butcher;
+                o.poisonWaterQuest = c.poisonWater;
+                o.skeletonKingQuest = c.skeletonKing;
+                o.bannerQuest = c.banner;
+                o.butcherSetPiece = &rnd6;
+                o.skeletonKingSetPiece = &skngdo;
+                o.bannerSetPiece = &banner2;
+
+                const DungeonTileGrid got = generateCathedral(o);
+                ++checked;
+                int diff = 0, firstX = -1, firstY = -1;
+                for (int y = 0; y < 40; ++y) {
+                    for (int x = 0; x < 40; ++x) {
+                        if (got.at(x, y) != static_cast<uint8_t>(expected.at(x, y))) {
+                            if (diff == 0) {
+                                firstX = x;
+                                firstY = y;
+                            }
+                            ++diff;
+                        }
+                    }
+                }
+                if (diff != 0) {
+                    ++failed;
+                    printf("  dungeon.gen oracle %s: FAIL diff=%d first=(%d,%d)\n", c.fixture, diff,
+                        firstX, firstY);
+                }
+            }
+            if (failed != 0) {
+                ok = false;
+            } else {
+                printf("  dungeon.gen oracle: %d fixture(s) matched\n", checked);
+            }
+        }
+    }
+
+    printf("dungeon.gen: %s\n", ok ? "PASS" : "FAIL");
+    if (!ok)
+        allOk = false;
+}
+
 int main()
 {
     printf("=== DiabloHFConverter unit tests ===\n");
@@ -1682,6 +1906,7 @@ int main()
     testLevelLight();
     testLevelPath();
     testLevelPngAndForcedDecode();
+    testDungeonGen();
     printf("=== %s ===\n", allOk ? "ALL PASS" : "FAILURES PRESENT");
     return allOk ? 0 : 1;
 }
