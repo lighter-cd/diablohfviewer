@@ -306,3 +306,7 @@
 ## 2026-11-09 10:54:16
 - 阶段 4（地图还原，目标 1）正式收工：更新 PROJECT.md 状态为完成并新增阶段 4 验收表（解码/两遍渲染/6 场景/dLight/寻路/level.inspect/dSpecial/FillTile/tile 纵向翻转修复/前端/三套测试），README §6 同步标注完成与仅剩的可选后续项。
 - 涉及: docs/PROJECT.md, README.md, changed-history.txt
+
+## 2026-11-09 11:03:24
+- 修复 Level Tile Viewer 不可操作：MPQ 路径改为默认填入真实值、连接后自动检测 level.inspect 是否存在于旧后端并自动执行首次检查、自动附带同目录 MPQ 搜索栈、新增 megatile 上一个/下一个浏览（后端返回 megatile_count/micro_count），并在旧后端缺少工具时给出明确重启提示。
+- 涉及: src/tools/level_tools.cpp, web/level.html, web/src/level.js, README.md, web/README.md, changed-history.txt

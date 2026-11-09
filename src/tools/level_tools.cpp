@@ -312,6 +312,8 @@ mcp::ToolResult toolLevelInspect(const mcp::json& params)
         {"palette", palName}, {"sol", solName},
         {"blocks", blocks}, {"micro_len", microLen},
         {"megatile", megatileId},
+        {"megatile_count", megatiles.size()},
+        {"micro_count", micros.size()},
         {"grid_width", gridW}, {"grid_height", gridH},
         {"micros", microArr},
         {"frames", frameArr},

@@ -4,15 +4,34 @@
 // base64 PNGs (assembly / micro pieces / CEL frames) onto canvases. The
 // backend does all MPQ/TIL/MIN/CEL work; this page never reads files.
 
-import { McpClient } from "./client.js?v=20261109c";
+import { McpClient } from "./client.js?v=20261109d";
 
 const $ = (id) => document.getElementById(id);
 const client = new McpClient();
+let hasLevelTool = false;
+let maxMegatile = 0;
 
 function setStatus(text, isError = false) {
   const el = $("status");
   el.textContent = text;
   el.classList.toggle("err", isError);
+}
+
+// The backend searches `archives` in order. Build the common DevilutionX MPQ
+// stack next to the selected archive so town/hellfire assets resolve even when
+// the primary archive is not DIABDAT.MPQ.
+function archiveStack(primary) {
+  const p = primary.replace(/\\/g, "/");
+  const slash = p.lastIndexOf("/");
+  const dir = slash >= 0 ? p.slice(0, slash + 1) : "";
+  const names = ["DIABDAT.MPQ", "hellfire.mpq", "devilutionx.mpq", "hfmonk.mpq", "hfopt1.mpq", "hfopt2.mpq"];
+  const out = [];
+  for (const n of names) {
+    const candidate = dir + n;
+    if (candidate.toLowerCase() !== p.toLowerCase() && !out.some((x) => x.toLowerCase() === candidate.toLowerCase()))
+      out.push(candidate);
+  }
+  return out;
 }
 
 function bytesFromBase64(b64) {
@@ -90,6 +109,7 @@ async function inspect() {
   }
   const args = {
     archive,
+    archives: archiveStack(archive),
     cel: $("cel").value.trim(),
     til: $("til").value.trim(),
     min: $("min").value.trim(),
@@ -103,8 +123,9 @@ async function inspect() {
   $("inspectBtn").disabled = true;
   try {
     const res = await client.callTool("level.inspect", args);
+    maxMegatile = res.megatile_count || res.megatile || 0;
     await render(res);
-    setStatus(`megatile ${res.megatile} · micros ${res.micros.map((m) => m.id).join(", ")} · ` +
+    setStatus(`megatile ${res.megatile}/${maxMegatile || "?"} · micros ${res.micros.map((m) => m.id).join(", ")} · ` +
               `frames ${res.frames.length} · 组装 ${res.assembly.width}×${res.assembly.height}`);
   } catch (e) {
     setStatus("level.inspect 失败: " + (e.message || e), true);
@@ -168,10 +189,20 @@ async function render(res) {
 
 $("connectBtn").addEventListener("click", async () => {
   $("connectBtn").disabled = true;
+  $("inspectBtn").disabled = true;
   try {
     await client.connect($("wsUrl").value.trim());
+    const listing = await client.listTools();
+    const tools = Array.isArray(listing) ? listing : (listing.tools || []);
+    hasLevelTool = tools.some((t) => t.name === "level.inspect");
+    if (!hasLevelTool) {
+      setStatus("后端没有 level.inspect：请停止旧 mcp-server、重新构建并重启 --ws", true);
+      return;
+    }
     $("inspectBtn").disabled = false;
-    setStatus("已连接");
+    setStatus(`已连接（${tools.length} tools）`);
+    // Auto-run the default inspection so the page is never an empty shell.
+    if ($("archive").value.trim()) await inspect();
   } catch (e) {
     setStatus("连接失败: " + (e.message || e), true);
   } finally {
@@ -179,4 +210,15 @@ $("connectBtn").addEventListener("click", async () => {
   }
 });
 
+function stepMegatile(delta) {
+  const input = $("megatile");
+  let v = (parseInt(input.value, 10) || 1) + delta;
+  if (v < 1) v = 1;
+  if (maxMegatile > 0 && v > maxMegatile) v = maxMegatile;
+  input.value = String(v);
+  inspect();
+}
+
+$("prevBtn").addEventListener("click", () => stepMegatile(-1));
+$("nextBtn").addEventListener("click", () => stepMegatile(1));
 $("inspectBtn").addEventListener("click", inspect);

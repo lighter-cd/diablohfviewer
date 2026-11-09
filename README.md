@@ -385,9 +385,11 @@ http://localhost:8000/level.html
 ```
 
 页面默认填好 Tristram 的 `levels/towndata/town.{cel,til,min,sol,pal}` 与 `megatile=71`
-（水池），点「连接」→「检查」即可看到 4 个 micro piece、每个 block 的
+（水池）；`MPQ 路径` 也已预填 `DIABDAT.MPQ`。点「连接」后会自动检查一次，
+并用 `◀ / ▶` 浏览上一个/下一个 megatile。每格显示 4 个 micro piece、每个 block 的
 `TileType/frame/data`、frames 594–605 的独立 PNG，以及这些 micro 拼出的透明底等距预览。
-这是定位 tile 绘制错误（而不是 objects）的关键工具。
+如果状态栏提示「后端没有 level.inspect」，说明 18765 端口上还是旧进程：停止后重新构建/
+重启 `mcp-server --ws 18765` 即可。
 
 > **2026-11-09 修复 tile 纵向翻转**：`DecodeLeft/RightTriangle`、`DecodeLeft/RightTrapezoid`
 > 输出的是 **top-down** RGBA，而 `DecodeSquare/TransparentSquare` 输出的是 **bottom-up**

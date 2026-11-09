@@ -247,8 +247,9 @@ web/
 ## 关卡 Tile 查看器（level.html）
 
 `http://localhost:8000/level.html`（同样需要 `mcp-server --ws 18765`）。页面调用
-`level.inspect`，默认预填 Tristram `levels/towndata/town.{cel,til,min,sol,pal}` 与
-`megatile=71`（水池）。连接后点「检查」可看到：
+`level.inspect`，默认预填 Tristram `levels/towndata/town.{cel,til,min,sol,pal}`、
+`DIABDAT.MPQ` 路径与 `megatile=71`（水池）。连接后会自动检查一次，并可用 `◀ / ▶`
+浏览上一个/下一个 megatile。可看到：
 
 - 4 个 micro piece（257–260）及每个 `mt` 的 `TileType / frame / data`；
 - 引用的全部 CEL 帧（594–605）独立 PNG，点击切换 1×/4×；
