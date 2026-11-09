@@ -33,6 +33,10 @@ struct SceneSpec {
     // In-archive asset names (forward or back slashes both work; the Archive
     // layer normalizes them).
     std::string cel, til, min, sol, palette, dun;
+    // Town-only special CEL (`levels/towndata/towns.cel`) whose frames are the
+    // 64-px-wide tree/arch overlays selected by dSpecial. Empty = none.
+    std::string specialCel;
+    uint16_t specialCelWidth = 64;
     std::vector<std::string> sectorDuns;              // town only
     std::vector<std::pair<int, int>> sectorOffsets;   // town only, micro coords
     SceneLayout layout = SceneLayout::Town;
@@ -48,12 +52,16 @@ struct SceneSpec {
     // `lightStyle` is a decoders::LightStyle value (0 normal, 1 hell, 2 soft).
     uint8_t ambientLight = 0;
     uint8_t lightStyle = 0;
+    // Apply the deterministic Tristram FillTile patches from town.cpp (warp
+    // stairs, clean fountain/well). Quest/Hellfire toggles are not simulated.
+    bool tristramPatches = false;
 };
 
 struct SceneGrid {
     int gw = 0, gh = 0;
     std::vector<uint16_t> micro;   // 0-based into micros; kNoMicro = outside
     std::vector<uint16_t> megaId;  // 1-based megatile id (0 = none/prefill)
+    std::vector<uint8_t> special;  // dSpecial overlay id (1-based, 0 = none)
 };
 
 // Assemble the Tristram town grid. `sectorDunBufs[i]` is the raw bytes of
@@ -68,9 +76,13 @@ SceneGrid buildDungeonScene(const SceneSpec& spec,
                             const std::vector<MegaTile>& megatiles,
                             const DunFile& dun);
 
-// Built-in scene catalog (Tristram + two L1 presets). Static, no MPQ needed.
+// Built-in scene catalog (Tristram + L1/L2/L3/L4 presets). Static, no MPQ needed.
 const std::vector<SceneSpec>& sceneCatalog();
 const SceneSpec* findScene(const std::string& id);
+
+// Town `dSpecial` mapping (DevilutionX town.cpp::InitTownPieces): returns the
+// 1-based special CEL frame id for a 0-based micro piece id, or 0 for none.
+uint8_t townSpecialFrameId(uint16_t microId);
 
 // Effective dPiece grid dims for a spec (dungeon scenes derive from the .dun
 // size; town scenes use the fixed grid). Used by scene.list and scene.build so

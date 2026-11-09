@@ -21,6 +21,8 @@
 
 #include "engine/archive.h"
 #include "tools/base64.h"
+#include "decoders/cel.h"
+#include "decoders/clx.h"
 #include "decoders/level.h"
 #include "decoders/level_light.h"
 #include "decoders/level_path.h"
@@ -77,9 +79,11 @@ struct SceneAssets {
     decoders::SceneGrid grid;
     std::vector<decoders::MicroTileRef> micros;
     std::vector<uint8_t> solFlags;
+    std::vector<uint8_t> palRgb;
     std::vector<uint8_t> palRgba;
     decoders::ReencodedLevelCel reencoded;
     std::vector<uint8_t> solid; // per-cell, from SOL (1 = blocks walking)
+    std::vector<decoders::SpriteFrameRGBA> specialSprites; // dSpecial frames
 };
 
 SceneAssets loadSceneAssets(const decoders::SceneSpec& spec,
@@ -113,12 +117,33 @@ SceneAssets loadSceneAssets(const decoders::SceneSpec& spec,
     if (megatiles.empty()) throw std::runtime_error("TIL parse failed");
     if (out.micros.empty()) throw std::runtime_error("MIN parse failed");
     if (palRgb.empty()) throw std::runtime_error("palette parse failed");
+    out.palRgb = palRgb;
     out.palRgba = decoders::paletteToRGBA(palRgb);
 
     if (spec.layout == decoders::SceneLayout::Town)
         out.grid = decoders::buildTownScene(spec, megatiles, sectorBufs);
     else
         out.grid = decoders::buildDungeonScene(spec, megatiles, decoders::loadDun(dunBuf));
+
+    // Town dSpecial overlays come from a separate CEL (towns.cel), not the level
+    // CEL. Decode them into RGBA frames indexed by dSpecial id - 1.
+    if (!spec.specialCel.empty()) {
+        std::vector<uint8_t> specialBuf;
+        if (extractAny(archives, spec.specialCel, specialBuf)) {
+            const std::vector<uint8_t> clx = decoders::celToClx(
+                specialBuf.data(), specialBuf.size(), spec.specialCelWidth);
+            const std::vector<decoders::DecodedFrame> frames =
+                decoders::decodeClx(clx, out.palRgb);
+            out.specialSprites.reserve(frames.size());
+            for (const auto& f : frames) {
+                decoders::SpriteFrameRGBA s;
+                s.width = f.width;
+                s.height = f.height;
+                s.rgba = f.rgba;
+                out.specialSprites.push_back(std::move(s));
+            }
+        }
+    }
 
     auto frameTypes = decoders::buildFrameTypes(out.micros, spec.microLen);
     out.reencoded = decoders::reencodeLevelCel(celBuf, frameTypes);
@@ -329,6 +354,8 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
                                          ambient, lights, autoLight);
     opts.lightStyle = spec->lightStyle;
     const bool lightingEnabled = !opts.lightLevels.empty();
+    opts.special = grid.special;
+    opts.specialSprites = std::move(assets.specialSprites);
 
     decoders::MapRenderResult map = decoders::renderMap(
         assets.reencoded, assets.micros, grid.micro, grid.gw, grid.gh,
@@ -377,6 +404,13 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
     writeBytes(overlayPath, overlayPng);
 
     // Sidecar metadata (per-cell flag grids).
+    size_t solidCount = 0, transCount = 0, lightLitCount = 0, specialCount = 0;
+    for (size_t i = 0; i < map.solid.size(); ++i) {
+        if (map.solid[i]) ++solidCount;
+        if (map.transparent[i]) ++transCount;
+        if (lightingEnabled && i < map.light.size() && map.light[i] == 0) ++lightLitCount;
+        if (i < grid.special.size() && grid.special[i] != 0) ++specialCount;
+    }
     mcp::json solidArr = mcp::json::array(), transArr = mcp::json::array();
     mcp::json blArr = mcp::json::array(), bmArr = mcp::json::array();
     mcp::json walkArr = mcp::json::array(), lightArr = mcp::json::array();
@@ -398,6 +432,10 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
         {"block_light", blArr}, {"block_missile", bmArr},
         {"walkable", walkArr},
     };
+    meta["special_count"] = specialCount;
+    meta["special"] = mcp::json::array();
+    for (const uint8_t id : grid.special)
+        meta["special"].push_back(id);
     if (lightingEnabled) {
         meta["light"] = lightArr;
         meta["ambient"] = ambient;
@@ -408,12 +446,6 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
         if (f) f << meta.dump();
     }
 
-    size_t solidCount = 0, transCount = 0, lightLitCount = 0;
-    for (size_t i = 0; i < map.solid.size(); ++i) {
-        if (map.solid[i]) ++solidCount;
-        if (map.transparent[i]) ++transCount;
-        if (lightingEnabled && i < map.light.size() && map.light[i] == 0) ++lightLitCount;
-    }
     const int walkableCount =
         decoders::countWalkableCells(assets.solid, map.gridW, map.gridH);
 
@@ -431,6 +463,7 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
         {"solid_count", solidCount}, {"walkable_count", walkableCount},
         {"transparent_count", transCount},
         {"transparent_pixel_count", transparentCount},
+        {"special_count", specialCount},
         {"lighting", lightingEnabled}, {"ambient", ambient},
         {"light_lit_count", lightLitCount},
         {"meta", meta},

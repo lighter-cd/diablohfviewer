@@ -48,6 +48,7 @@ SceneGrid buildTownScene(const SceneSpec& spec,
     const size_t cells = static_cast<size_t>(g.gw) * g.gh;
     g.micro.assign(cells, spec.prefillMicro);   // DrlgTPass3: prefill 426
     g.megaId.assign(cells, 0);
+    g.special.assign(cells, 0);
 
     const size_t n = std::min(spec.sectorDuns.size(), sectorDunBufs.size());
     for (size_t s = 0; s < n; ++s) {
@@ -75,6 +76,26 @@ SceneGrid buildTownScene(const SceneSpec& spec,
             }
         }
     }
+
+    // Deterministic Tristram post-sector patches (town.cpp:217-252). These
+    // FillTile calls write dPiece directly (unlike dungeon[] edits), so they are
+    // visible map content: warp stairs and the town fountain/well.
+    if (spec.tristramPatches) {
+        auto fillMega = [&](int x, int y, uint16_t id) {
+            if (id == 0 || static_cast<size_t>(id - 1) >= megatiles.size())
+                return;
+            putMega(g, x, y, megatiles[static_cast<size_t>(id - 1)], id);
+        };
+        fillMega(48, 20, 320); // catacombs warp (closed state)
+        fillMega(16, 68, 332); // caves warp
+        fillMega(16, 70, 331); // caves warp
+        fillMega(60, 70, 71);  // town fountain/well (clean state)
+    }
+
+    // DevilutionX DrlgTPass3 -> InitTownPieces: mark dSpecial cells after the
+    // whole dPiece grid is assembled.
+    for (size_t idx = 0; idx < cells; ++idx)
+        g.special[idx] = townSpecialFrameId(g.micro[idx]);
     return g;
 }
 
@@ -96,6 +117,7 @@ SceneGrid buildDungeonScene(const SceneSpec& spec,
     }
     const size_t cells = static_cast<size_t>(g.gw) * g.gh;
     g.megaId.assign(cells, 0);
+    g.special.assign(cells, 0);
 
     // DRLG_LPass3: prefill every 2x2 block with the "Dirt" megatile's four
     // micros (megatiles[Dirt-1], Dirt=22 for L1), repeated across the grid.
@@ -128,6 +150,29 @@ SceneGrid buildDungeonScene(const SceneSpec& spec,
     return g;
 }
 
+uint8_t townSpecialFrameId(uint16_t microId)
+{
+    // DevilutionX town.cpp::InitTownPieces (Tristram).
+    switch (microId) {
+    case 359: return 1;
+    case 357: return 2;
+    case 128: return 6;
+    case 129: return 7;
+    case 127: return 8;
+    case 116: return 9;
+    case 156: return 10;
+    case 157: return 11;
+    case 155: return 12;
+    case 161: return 13;
+    case 159: return 14;
+    case 213: return 15;
+    case 211: return 16;
+    case 216: return 17;
+    case 215: return 18;
+    default: return 0;
+    }
+}
+
 const std::vector<SceneSpec>& sceneCatalog()
 {
     static const std::vector<SceneSpec> catalog = [] {
@@ -143,6 +188,8 @@ const std::vector<SceneSpec>& sceneCatalog()
         town.min = "levels/towndata/town.min";
         town.sol = "levels/towndata/town.sol";
         town.palette = "levels/towndata/town.pal";
+        town.specialCel = "levels/towndata/towns.cel";
+        town.specialCelWidth = 64;
         town.sectorDuns = {
             "levels/towndata/sector1s.dun", "levels/towndata/sector2s.dun",
             "levels/towndata/sector3s.dun", "levels/towndata/sector4s.dun",
@@ -153,6 +200,7 @@ const std::vector<SceneSpec>& sceneCatalog()
         town.blocks = 16;
         town.prefillMicro = 426;
         town.emptyMicro = 218;
+        town.tristramPatches = true;
         // 96x96 = exact bbox covered by the four sectors (sector1s is 25x25
         // at (46,46) => 46+50=96). DevilutionX's dPiece is 112x112 with a
         // 16-cell prefill border; we crop to the meaningful scene to keep the

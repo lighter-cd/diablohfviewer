@@ -61,6 +61,32 @@ void blitFrame(const uint8_t* frame, int frameW, int frameH,
     }
 }
 
+// Blit a decoded top-down sprite with its BOTTOM row at `bottomY` and its left
+// edge at `dx`. Used for town `dSpecial` CEL overlays (DrawDungeon's pSpecialCels
+// pass draws ClxDraw with the sprite's bottom at the tile base).
+void blitSpriteBottom(const SpriteFrameRGBA& spr,
+                      uint8_t* dst, int dstW, int dstH, int dstPitch,
+                      int dx, int bottomY)
+{
+    if (spr.width <= 0 || spr.height <= 0)
+        return;
+    for (int sr = 0; sr < spr.height; ++sr) {
+        const int dr = bottomY - (spr.height - 1) + sr;
+        if (dr < 0 || dr >= dstH)
+            continue;
+        const uint8_t* srcRow = spr.rgba.data() + static_cast<size_t>(sr) * spr.width * 4;
+        uint8_t* row = dst + static_cast<size_t>(dr) * dstPitch;
+        for (int sx = 0; sx < spr.width; ++sx) {
+            const int px = dx + sx;
+            if (px < 0 || px >= dstW)
+                continue;
+            const uint8_t* p = srcRow + static_cast<size_t>(sx) * 4;
+            if (p[3] != 0)
+                std::memcpy(row + static_cast<size_t>(px) * 4, p, 4);
+        }
+    }
+}
+
 // A CEL block is drawable only if it has a value, a nonzero (1-based) frame,
 // and that frame exists in the re-encoded CEL.
 bool blockDrawable(const LevelCelBlock& b, const ReencodedLevelCel& cel)
@@ -284,6 +310,12 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
             if (j < 0 || j >= gh)
                 continue;
             const size_t idx = static_cast<size_t>(j) * gw + i;
+            // DevilutionX DrawFloor only draws floor cells; solid/wall cells
+            // are rendered by DrawCell (real tile types + wall stack) in Pass 2.
+            // Drawing a forced floor diamond for a solid cell decodes its
+            // wall/foliage data as triangles and produces garbage.
+            if (!isFloor(idx))
+                continue;
             const int x = cellX(i, j);
             const int slot = slotTop(colTop(i, j), 0);
             for (int side = 0; side < 2; ++side) {
@@ -294,10 +326,18 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
                 if (!blockDrawable(blk, cel))
                     continue;
                 int fh = 0;
-                decodeReencodedFrameAs(cel, blk.frame() - 1,
-                                       side == 0 ? TileType::LeftTriangle
-                                                 : TileType::RightTriangle,
-                                       paletteAt(idx), frame, fh);
+                // TransparentSquare frames are RLE squares that combine floor
+                // and foliage. Forcing them through the triangle decoder reads
+                // RLE bytes as triangle pixels (garbage specks), so decode their
+                // real shape here.
+                if (blk.type() == TileType::TransparentSquare) {
+                    decodeReencodedFrame(cel, blk.frame() - 1, paletteAt(idx), frame, fh);
+                } else {
+                    decodeReencodedFrameAs(cel, blk.frame() - 1,
+                                           side == 0 ? TileType::LeftTriangle
+                                                     : TileType::RightTriangle,
+                                           paletteAt(idx), frame, fh);
+                }
                 blitFrame(frame.data(), 32, 32, res.rgba.data(), res.width,
                           res.height, pitch, x + side * 32, slot);
             }
@@ -342,6 +382,20 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
                     decodeReencodedFrame(cel, blk.frame() - 1, paletteAt(idx), frame, fh);
                     blitFrame(frame.data(), 32, 32, res.rgba.data(), res.width,
                               res.height, pitch, x + side * 32, slot);
+                }
+            }
+
+            // Town dSpecial overlay (tree canopies, arches, etc.), drawn after
+            // the cell content like DrawDungeon's pSpecialCels pass. The sprite
+            // is bottom-anchored at the cell base.
+            if (idx < opts.special.size() && opts.special[idx] != 0) {
+                const size_t si = static_cast<size_t>(opts.special[idx] - 1);
+                if (si < opts.specialSprites.size()) {
+                    const int baseY = ct + Hm - 1;
+                    const SpriteFrameRGBA& spr = opts.specialSprites[si];
+                    const int sx = x + (64 - spr.width) / 2;
+                    blitSpriteBottom(spr, res.rgba.data(), res.width, res.height,
+                                     pitch, sx, baseY);
                 }
             }
         }

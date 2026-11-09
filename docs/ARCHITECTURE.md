@@ -491,6 +491,13 @@ scene.path {id,archive,archives?,from:{x,y},to:{x,y},max_steps?=1024,preview_max
 - 原生 PNG 只落盘（城镇 96×96 网格约 6145×3296），**WS 只传整数降采样后的
   ≤1000px 预览 + 同尺寸叠加层**，二者由同一 `SceneProjection` + 同一 `step` 生成，
   像素级对齐。`src/decoders/png.cpp::encodePNG` 提供内存 PNG 字节（供 base64）。
+- **tiles / objects**：`renderMap` Pass 1 只处理 `IsFloor`（SOL 非 Solid/BlockMissile）格子，
+  避免对墙基/树叶数据强行三角形解码；`TransparentSquare` 地板按真实 RLE 解码
+  （DevilutionX 的 `ReencodeDungeonCels` 会拆成 triangle floor + foliage，本实现直接画完整
+  RLE，先保证不产生噪点）。城镇 `dSpecial`（`town.cpp::InitTownPieces`）映射到
+  `levels/towndata/towns.cel`（64×224 树冠帧），在 `Meta.special` 暴露并按底部锚定绘制。
+  Tristram 另外应用非任务态 `FillTile`（水井/喷泉、传送入口）。地牢 DUN object layer 与
+  `dTransVal`/`TransList` 透明遮挡尚未实现。
 - 前端 `web/` 第 5 种浏览模式（§10.5）把两张 PNG 解码为 bitmap 后绘制到叠放的两个
   `<canvas>`，用同一 transform 做缩放/平移；新增「光照」开关触发 `scene.build(lighting:true)`。
   后端 `src/main.cpp` 调 `registerSceneTools(reg)`，stdio + WS 共用 registry。

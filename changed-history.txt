@@ -290,3 +290,7 @@
 ## 2026-11-09 08:09:08
 - 修复地图整体旋转 180°：DevilutionX 屏幕轴应为 screenX=(i-j)*32 / screenY=(i+j)*16（East=(+1,-1)），此前写成 (j-i)/-(i+j) 导致上下左右全颠倒；同步修正 renderMap 绘制顺序为升序 i+j、sceneProjection、SOL 叠加层与 scene.path 的像素坐标，并加非方形场景投影回归断言。
 - 涉及: src/decoders/level_render.cpp, src/tools/scene_tools.cpp, out/unit_tests.cpp, README.md, docs/PROJECT.md, docs/ARCHITECTURE.md, changed-history.txt
+
+## 2026-11-09 08:58:52
+- 修正地图 tiles/objects 绘制判断：Pass 1 只绘制 SOL IsFloor 格（墙体/实心格不再被强行画地板三角形），TransparentSquare 地板按真实 RLE 解码（消除截图中橙色噪点），新增 dSpecial 城镇特殊覆盖层（townSpecialFrameId + towns.cel 树木/拱门，meta.special/special_count），并应用 Tristram 非任务态 FillTile（水井/喷泉与传送入口）；同步 README/PROJECT/ARCHITECTURE 与单测/集成测试。
+- 涉及: src/decoders/level.h, src/decoders/level_render.cpp, src/decoders/level_scene.h, src/decoders/level_scene.cpp, src/tools/scene_tools.cpp, out/unit_tests.cpp, out/integration_tests.cpp, README.md, docs/PROJECT.md, docs/ARCHITECTURE.md, changed-history.txt

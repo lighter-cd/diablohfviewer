@@ -1230,6 +1230,10 @@ static void testSceneTools(const std::string& mpq) {
           "scene.build walkable array sized gw*gh");
     CHECK(v.value("walkable_count", 0) > 0,
           "scene.build walkable_count positive");
+    CHECK(v.value("special_count", 0) > 0,
+          "scene.build emits dSpecial town overlays (trees/arches)");
+    CHECK(v["meta"]["special"].size() == (size_t)(96 * 96),
+          "scene.build special array sized gw*gh");
     // Decode the base64 and confirm the PNG signature.
     auto pngSigOk = [](const std::string& b64) {
         auto bytes = base64::decode(b64);

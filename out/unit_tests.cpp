@@ -1312,6 +1312,11 @@ static void testLevelScene()
     lvlChk(g.gw == 12 && g.gh == 12, "buildTownScene grid dims");
     lvlChk(g.micro.size() == 144u && g.megaId.size() == 144u,
            "buildTownScene grid sized gw*gh");
+    lvlChk(g.special.size() == 144u, "buildTownScene dSpecial grid sized gw*gh");
+    lvlChk(decoders::townSpecialFrameId(359) == 1 &&
+               decoders::townSpecialFrameId(215) == 18 &&
+               decoders::townSpecialFrameId(0) == 0,
+           "townSpecialFrameId maps InitTownPieces micro ids");
     // Prefill 426 covers every cell not written by a sector.
     int n426 = 0, n218 = 0;
     for (uint16_t v : g.micro) { if (v == 426) n426++; if (v == 218) n218++; }

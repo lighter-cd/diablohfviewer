@@ -83,6 +83,14 @@ constexpr int MAXTILES = 1379;
 // cannot double as "empty": we need an explicit out-of-band value.
 constexpr uint16_t kNoMicro = 0xFFFF;
 
+// A decoded RGBA sprite frame (top-down rows), used for town special CEL
+// overlays (`towns.cel`) that are not part of the level micro-tile CEL.
+struct SpriteFrameRGBA {
+    int width = 0;
+    int height = 0;
+    std::vector<uint8_t> rgba; // width*height*4, row-major, row 0 = top
+};
+
 // Options for the composite map render. Defaults produce a fully opaque,
 // faithfully-composited scene (DevilutionX two-pass: floors, then walls).
 struct MapRenderOptions {
@@ -100,6 +108,11 @@ struct MapRenderOptions {
     std::vector<uint8_t> lightLevels;
     // 0 = Normal, 1 = Hell, 2 = Soft (see decoders::LightStyle).
     uint8_t lightStyle = 0;
+    // Optional town `dSpecial` overlay (1-based frame id per cell, 0 = none).
+    // `specialSprites[id-1]` is drawn with its bottom anchored at the cell base,
+    // matching DevilutionX DrawDungeon's pSpecialCels pass (town trees etc.).
+    std::vector<uint8_t> special;
+    std::vector<SpriteFrameRGBA> specialSprites;
 };
 
 // Isometric bounding box of a (gw x gh) micro grid with `microLen` blocks per

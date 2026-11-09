@@ -711,6 +711,18 @@ DiabloHFConverter/
         `walkable` 数组、`scene.path` 起止格与原生/预览坐标；`l1_rnd2` + `lighting:true` 断言
         环境光 15 / 中心火把 / `meta.light` 尺寸；`l4_diab1` 断言 44×44、microLen 12、0 透明像素。
   - 构建/运行见仓库根 `README.md` §测试 与 §6（关卡/场景）。
+- [x] **tiles / objects 绘制修正（2026-11-09）**：
+      - **Pass 1 只画 `IsFloor` 格子**（`!Solid && !BlockMissile`）；此前对墙体/实心格也强行画地板菱形，
+        会把墙基/树叶数据按三角形解码，产生黑块/彩色噪点。
+      - **`TransparentSquare` 地板按真实 RLE 解码**；此前强制三角形解码会把 RLE 控制字节当调色板索引，
+        正是截图中橙色噪点的来源（DevilutionX `ReencodeDungeonCels` 会把它拆成 triangle floor + foliage）。
+      - **`dSpecial` 城镇特殊覆盖层**：`townSpecialFrameId()` 转录 `InitTownPieces`（micro 359/357/128/…/215），
+        `scene.build` 从 `levels/towndata/towns.cel`（64px 宽、224px 高）解码并底部锚定绘制树木/拱门；
+        `meta.special` / `special_count` 暴露每格 id。
+      - **Tristram `FillTile` 补丁**：应用非任务态的水井/喷泉 `(60,70,71)` 与传送入口 `(48,20,320)`、
+        `(16,68,332)`、`(16,70,331)`，这些是 `dPiece` 内容而非 automap 层。
+      - **未处理**：地牢 DUN 的 object layer（箱子/火把等 `objects/*.cel`）与 `dTransVal`/`TransList`
+        的透明遮挡，仍属后续项。
 - [x] **静态光照（dLight，2026-11-09）**：`src/decoders/level_light.cpp` 忠实移植
       `Source/engine/light_tables.cpp::MakeLightTable` 与 `Source/lighting.cpp::DoLighting`：
       生成 16 级 `LightTables`（Normal / Hell / Soft）、`LightFalloffs[16][128]`、
@@ -798,8 +810,8 @@ DiabloHFConverter/
 SOL 碰撞网格 A* 寻路（`scene.path`）、L2/L3/L4 预设场景。`scene.build` 默认仍 FullyLit，
 可显式开启光照。
 
-**明确延后**：逐像素光照/lightmap、`dTransVal` 透明混合、`dSpecial` 树木拱门与 special CEL
-`towns`、任务态 `FillTile` 补丁、`automap.dun`（可后续仅用于 SOL）、Hellfire `nlevels`
+**明确延后**：逐像素光照/lightmap、`dTransVal`/`TransList` 透明遮挡、地牢 DUN object layer
+（箱子/火把等 `objects/*.cel`）、`automap.dun`（可后续仅用于 SOL）、Hellfire `nlevels`
 其它层（L5/L6 随机生成，只有 `uberroom.dun`/`cornerstone.dun` 固定房间）。
 
 ### 阶段 5：GUI 布局与显示（目标 4）
