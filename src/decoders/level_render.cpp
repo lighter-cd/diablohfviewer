@@ -12,9 +12,9 @@
 //   * Pass 2 (walls): mt[2..microLen-1] are drawn in pairs, each pair 32px
 //     higher, back-to-front (descending i+j), with hasValue() guards.
 //
-// The isometric transform is worldToScreen:
-//   screenX = (j - i) * 32
-//   screenY = -(j + i) * 16      (base of the cell; stacks grow upward)
+// The isometric transform is DevilutionX's screen axes:
+//   screenX = (x - y) * 32
+//   screenY = (x + y) * 16      (base of the cell; stacks grow upward)
 //
 // Every pixel is filled with opts.background first, so the output has NO
 // transparent gaps. Previously the buffer was left at (0,0,0,0), which any
@@ -117,10 +117,15 @@ SceneProjection sceneProjection(int gw, int gh, int microLen)
 {
     SceneProjection p;
     const int Hm = (microLen / 2) * 32;
-    p.minX = -(static_cast<long>(gw) - 1) * 32;
-    p.minY = -(static_cast<long>(gw) + gh - 2) * 16 - Hm + 1;
-    const long maxX = (static_cast<long>(gh) - 1) * 32 + 64;
-    const long maxY = 0;
+    // DevilutionX screen axes: East = (x+1,y-1) moves +32 px X, and the
+    // per-row step (x+1 or y+1) moves +16 px Y. Therefore:
+    //   screenX = (x - y) * 32
+    //   screenY = (x + y) * 16
+    // (Our grid uses i=x, j=y; the previous (j-i, -(j+i)) was a 180° rotation.)
+    p.minX = -static_cast<long>(gh - 1) * 32;
+    p.minY = -Hm + 1;
+    const long maxX = static_cast<long>(gw - 1) * 32 + 64;
+    const long maxY = static_cast<long>(gw + gh - 2) * 16;
     p.width = maxX - p.minX + 1;
     p.height = maxY - p.minY + 1;
     return p;
@@ -208,14 +213,16 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
 
     std::vector<uint8_t> frame(32 * 32 * 4);
 
-    // Screen position of a cell: x = left of the 64px diamond, colTop = top of
-    // the whole (microLen/2 * 32) column. Slot b occupies rows
-    // colTop + (Hm - (b+1)*32) .. +31, so b=0 (floor) is the bottom slot.
+    // Screen position of a cell (DevilutionX screen axes: East=(+1,-1) so
+    // X=(x-y), and rows advance (x+y) downward):
+    //   screenX = (i - j) * 32, screenY = (i + j) * 16
+    // colTop is the top of the whole (microLen/2 * 32) column. Slot b occupies
+    // rows colTop + (Hm - (b+1)*32) .. +31, so b=0 (floor) is the bottom slot.
     const auto cellX = [&](int i, int j) {
-        return static_cast<int>((static_cast<long>(j) - i) * 32 - proj.minX);
+        return static_cast<int>((static_cast<long>(i) - j) * 32 - proj.minX);
     };
     const auto colTop = [&](int i, int j) {
-        const long baseY = -(static_cast<long>(j) + i) * 16 - proj.minY;
+        const long baseY = (static_cast<long>(i) + j) * 16 - proj.minY;
         return static_cast<int>(baseY - Hm + 1);
     };
     const auto slotTop = [&](int ct, int b) {
@@ -264,13 +271,14 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
     };
 
     // ---- Pass 1: floor diamonds for EVERY cell (complete ground plane) ----
-    // Drawn far-to-near so nearer diamonds overlap farther ones correctly.
+    // Drawn far-to-near (ascending i+j: smaller screen Y first), so nearer
+    // diamonds overlap farther ones correctly.
     // DevilutionX DrawFloorTile forces LeftTriangle / RightTriangle regardless
     // of the block's stored type; CopyRun writes opaque pixels, so even a frame
     // encoded as a square/trapezoid yields a filled (if stylized) diamond.
     // If a cell's own floor block is missing, fall back to the prefill floor.
     const int maxSum = (gw - 1) + (gh - 1);
-    for (int s = maxSum; s >= 0; --s) {
+    for (int s = 0; s <= maxSum; ++s) {
         for (int i = 0; i < gw; ++i) {
             const int j = s - i;
             if (j < 0 || j >= gh)
@@ -296,8 +304,8 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
         }
     }
 
-    // ---- Pass 2: walls / objects, back-to-front (descending i+j) ----
-    for (int s = maxSum; s >= 0; --s) {
+    // ---- Pass 2: walls / objects, back-to-front (ascending i+j) ----
+    for (int s = 0; s <= maxSum; ++s) {
         for (int i = 0; i < gw; ++i) {
             const int j = s - i;
             if (j < 0 || j >= gh)

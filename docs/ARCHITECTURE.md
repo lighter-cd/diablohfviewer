@@ -403,7 +403,7 @@ MPQ 抽取
                                (Square 1024B / 三角 512B / 梯形 784B / 透明方保留 RLE)
   renderMap(reencoded, micros, grid, gw, gh, solFlags, transparency, palRGBA, microLen, opts)
        ├─ Pass 1 地板：每格 mt[0]/mt[1] 强制左/右三角 → 64×32 菱形（铺满地面）
-       ├─ Pass 2 墙体：降序 i+j, mt[2..] 成对向上叠, hasValue() 守卫
+       ├─ Pass 2 墙体：升序 i+j, mt[2..] 成对向上叠, hasValue() 守卫
        ├─ 背景：每像素先填 opts.background（不透明）→ 0 透明像素，无「黑块」
        ├─ 光照（可选 opts.lightLevels）：每格用 LightTables[level] 烘焙调色板解码
        └─► MapRenderResult: rgba 全图 + solid/blockLight/blockMissile/transparent/light 每格数组
@@ -414,8 +414,9 @@ RightTriangle(3)、LeftTrapezoid(4)、RightTrapezoid(5)。新增 `decodeReencode
 支持强制三角形（地板，`DrawFloorTile` 语义）。`sceneProjection(gw,gh,microLen)` 抽出包围盒，
 供渲染器与叠加层共用同一坐标。
 
-**等距变换**（`worldToScreen`）：`screenX=(j-i)*32`、`screenY=-(j+i)*16`，
-`screenY` 越大越靠近观察者；**绘制顺序为降序 `i+j`**（从远到近）。
+**等距变换**（DevilutionX 屏幕轴）：`screenX=(i-j)*32`、`screenY=(i+j)*16`，
+`screenY` 越大越靠近观察者；**绘制顺序为升序 `i+j`**（从远到近）。
+（2026-11-09 修正：此前用 `(j-i)` / `-(i+j)`，相对游戏原图整体旋转 180°。）
 
 **关键约定 / 已踩坑（2026-11-09 更正）**：
 - **TIL 微瓦片索引是 0-based 原样值**（`micros[mi]`），`0` 是合法地板；`LevelCelBlock.frame()`

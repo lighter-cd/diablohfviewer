@@ -245,8 +245,8 @@ std::vector<uint8_t> buildOverlay(const decoders::MapRenderResult& map,
     for (int j = 0; j < map.gridH; ++j) {
         for (int i = 0; i < map.gridW; ++i) {
             const size_t idx = static_cast<size_t>(j) * map.gridW + i;
-            const long baseX = (static_cast<long>(j) - i) * 32 - minX;
-            const long baseY = -(static_cast<long>(j) + i) * 16 - minY;
+            const long baseX = (static_cast<long>(i) - j) * 32 - minX;
+            const long baseY = (static_cast<long>(i) + j) * 16 - minY;
             const long slot = baseY - Hm + 1 + (Hm - 32); // floor slot top
             // Diamond corners in native coords -> preview coords.
             const int topX = static_cast<int>((baseX + 32) / step);
@@ -474,8 +474,8 @@ mcp::ToolResult toolScenePath(const mcp::json& params) {
     // Project a cell to the centre of its 64x32 floor diamond, matching
     // renderMap()/buildOverlay() exactly.
     auto project = [&](const decoders::PathPoint& p) {
-        const long sx = (static_cast<long>(p.y) - p.x) * 32 - proj.minX + 32;
-        const long colTop = -(static_cast<long>(p.y) + p.x) * 16 - proj.minY - Hm + 1;
+        const long sx = (static_cast<long>(p.x) - p.y) * 32 - proj.minX + 32;
+        const long colTop = (static_cast<long>(p.x) + p.y) * 16 - proj.minY - Hm + 1;
         const long sy = colTop + (Hm - 32) + 16;
         return std::pair<int, int>{ static_cast<int>(sx), static_cast<int>(sy) };
     };

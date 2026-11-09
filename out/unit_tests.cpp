@@ -1364,6 +1364,13 @@ static void testLevelScene()
     lvlChk(decoders::findScene("nope") == nullptr, "findScene rejects unknown id");
     auto p = decoders::sceneProjection(4, 4, 10);
     lvlChk(p.width > 0 && p.height > 0, "sceneProjection positive dims");
+    // Non-square grid pins the DevilutionX screen axes: screenX=(x-y)*32,
+    // screenY=(x+y)*16 (NOT the old 180°-rotated (y-x, -(x+y))).
+    auto po = decoders::sceneProjection(4, 2, 10);
+    lvlChk(po.minX == -32 && po.minY == -159,
+           "sceneProjection uses screen axes (x-y, x+y)");
+    lvlChk(po.width == 193 && po.height == 224,
+           "sceneProjection non-square bounds");
     auto dims = decoders::sceneGridDims(cat[1]);
     lvlChk(dims.first == 54 && dims.second == 54,
            "sceneGridDims matches dungeon DUN-derived grid");

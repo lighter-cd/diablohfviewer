@@ -685,10 +685,11 @@ DiabloHFConverter/
       无条件把 mt[0]/mt[1] 当左/右三角形）；**已修调色板索引为 4 字节 RGBA 步长**
       （`paletteToRGBA` 产出 1024 字节表），修正了此前 3 字节步长导致的彩虹噪点。
 - [x] **等距合成渲染（2026-11-09 重写为忠实两遍绘制）**：`renderMap` 移植 `DrawGame` →
-      `DrawFloor` + `DrawTileContent/DrawCell` + `worldToScreen`：
-      `screenX=(j-i)*32`、`screenY=-(j+i)*16`。**Pass 1** 为每个格子把 `mt[0]/mt[1]` 强制画成
+      `DrawFloor` + `DrawTileContent/DrawCell` + DevilutionX 屏幕轴：
+      `screenX=(i-j)*32`、`screenY=(i+j)*16`（2026-11-09 修正：此前用 `(j-i)`/`-(i+j)`，
+      相对游戏原图整体旋转 180°）。**Pass 1** 为每个格子把 `mt[0]/mt[1]` 强制画成
       左/右三角形、组成 64×32 地板菱形（完整地面平面，无空洞）；**Pass 2** 从远到近
-      （降序 `i+j`）把 `mt[2..microLen-1]` 成对向上叠墙（每对高 32px），`hasValue()` 守卫。
+      （升序 `i+j`）把 `mt[2..microLen-1]` 成对向上叠墙（每对高 32px），`hasValue()` 守卫。
       每像素先填 `opts.background`（默认不透明黑）→ **输出 0 透明像素，黑块消失**；
       `kNoMicro` 格子用 `prefillMicro` 补地板；SOL 按微瓦片 piece id 取标志（IsFloor 判定）。
       `sceneProjection(gw,gh,microLen)` 抽出包围盒，供渲染器与叠加层共用。

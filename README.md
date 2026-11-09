@@ -325,6 +325,14 @@ PNG）、`preview_width/height`、`scale`、`width/height`（原生尺寸）、`
 sidecar JSON 写到 `out/scenes/`。原生大图只落盘，WS 只传降采样预览，两层由同一
 `SceneProjection` 生成、像素级对齐。
 
+> **地图原图/资源在哪**：MPQ 内没有现成的地图 PNG。城镇是
+> `DIABDAT.MPQ` 的 `levels/towndata/town.{cel,til,min,sol,pal}` +
+> `sector1s..4s.dun`（以及 `automap.dun`/`automap.amp`）；地牢是
+> `levels/lNdata/lN.{cel,til,min,sol}` + 对应 `.dun`。本工具把它们拼装/渲染后写到
+> `out/scenes/<id>.png`（原生）、`<id>_preview.png`（≤1000px）、`<id>_overlay.png`
+> （SOL 叠加层）和 `<id>.json`（sidecar）。屏幕轴与 DevilutionX 一致：
+> `screenX=(x-y)*32`、`screenY=(x+y)*16`（East 增加 X、行增加 Y）。
+
 **光照（可选，忠实 dLight）**：`lighting:true` 时按场景默认环境光（城镇 0 全亮、地牢 15
 全黑）+ `lights[]` 点光源，用 DevilutionX `LightTables`（`level_light.cpp`）逐格烘焙调色板
 暗部；`auto_light` 在无显式光源时于场景中心放一支 radius-15 火把，避免地牢预览全黑。
