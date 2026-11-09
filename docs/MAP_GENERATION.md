@@ -240,7 +240,7 @@ transparency（4 层取 index 3、3 层取 index 2、13 层取 index 12）。
       "til":"levels/l1data/l1.til",
       "min":"levels/l1data/l1.min",
       "sol":"levels/l1data/l1.sol",
-      "palette":"gendata/cut2.pal",
+      "palette":"levels/l1data/l1_2.pal",
       "dun_path":"out/gen/1-123456789.dun",
       "micro_len":10, "blocks":10}}}
    ```
@@ -288,8 +288,10 @@ MCP 工具：
 返回 `dun_path`（ExportDun 兼容，4 个 micro 层）、`tiles`（40 行 hex）以及
 `floor_count` / `stairs_up_count` / `stairs_down_count`。随后用 `map.build` 的
 `dun_path` 渲染；**Cathedral L1–L4 共用 `levels/l1data/l1.{cel,til,min,sol}` +
-`gendata/cut2.pal`（`micro_len=10` / `blocks=10`）**，不要误用 `l2data/l3data/l4data`
-（那些是 Catacombs/Caves/Hell）。
+`levels/l1data/l1_1..l1_4.pal` 之一（游戏内 `LoadRndLvlPal` 在进层时随机选，示例用
+`l1_2.pal`；`gendata/cut2.pal` 是过场调色板，会让地牢偏棕）**（`micro_len=10` /
+`blocks=10`），不要误用 `l2data/l3data/l4data`（那些是 Catacombs/Caves/Hell）。
+`level.generate` 的 `palette_variant`（1..4）会回传对应的 `palette` 与 `tileset`。
 
 验收（已通过）：DevilutionX 仓库自带的 `test/fixtures/{diablo,hellfire}/*.dun`
 共 **14 个 Cathedral fixture**（Diablo + Hellfire，含 Butcher/Skeleton King/

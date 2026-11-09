@@ -404,6 +404,12 @@ mcp::ToolResult toolLevelGenerate(const mcp::json& params)
     const std::string questMode = params.value("quests", std::string("vanilla"));
     const std::string outDir = params.value("out", std::string("out/gen"));
 
+    // In-game `LoadRndLvlPal` picks one of l1_1..l1_4 randomly when the level
+    // is loaded; the palette is not part of the .dun, so let the caller choose.
+    const int paletteVariant = params.value("palette_variant", 2);
+    if (paletteVariant < 1 || paletteVariant > 4)
+        throw std::invalid_argument("`palette_variant` must be 1..4 (levels/l1data/l1_<n>.pal)");
+
     dhfc::CathedralOptions options;
     options.level = level;
     options.seed = seed;
@@ -475,6 +481,8 @@ mcp::ToolResult toolLevelGenerate(const mcp::json& params)
         {"seed", seed},
         {"quests", questMode},
         {"original_cathedral", originalCathedral},
+        {"tileset", "levels/l1data"},
+        {"palette", "levels/l1data/l1_" + std::to_string(paletteVariant) + ".pal"},
         {"width", grid.Width},
         {"height", grid.Height},
         {"dun_path", dunPath},
@@ -483,7 +491,7 @@ mcp::ToolResult toolLevelGenerate(const mcp::json& params)
         {"stairs_up_count", stairsUp},
         {"stairs_down_count", stairsDown},
         {"tiles", rows},
-        {"note", "Render with map.build (dun_path=<dun_path>) and the matching level CEL/TIL/MIN/SOL."},
+        {"note", "Render with map.build: cel/til/min/sol from `tileset`, `palette`, dun_path=<dun_path>, micro_len=10, blocks=10."},
     };
     return r;
 }
@@ -538,6 +546,8 @@ void registerLevelTools(ToolRegistry& reg)
                                               {"description", "true = Diablo original Cathedral (default), false = Hellfire"}}},
                  {"quests", json{{"type", "string"},
                                   {"description", "vanilla (level defaults) | none | all"}}},
+                 {"palette_variant", json{{"type", "integer"},
+                                           {"description", "1..4 -> levels/l1data/l1_<n>.pal (default 2); the engine picks one randomly per level load"}}},
                  {"out", json{{"type", "string"}, {"description", "output dir (default out/gen)"}}},
              }},
              {"required", json::array({"archive", "level", "seed"})}},

@@ -105,7 +105,7 @@ mcp::ToolResult toolMapBuild(const mcp::json& params) {
     const std::string dunPath = params.value("dun_path", std::string());
     if (dunName.empty() && dunPath.empty())
         throw std::invalid_argument("provide `dun` (archive name) or `dun_path` (local .dun)");
-    const std::string palName = params.value("palette", std::string("gendata/cut2.pal"));
+    const std::string palName = params.value("palette", std::string("levels/l1data/l1_2.pal"));
     const int microLen = params.value("micro_len", 10);
     const int blocks = params.value("blocks", 10);
     const std::string outDir = params.value("out", std::string("out/maps"));
@@ -277,7 +277,7 @@ void registerMapTools(ToolRegistry& reg) {
                  {"sol",        json{{"type","string"},{"description","SOL in-archive name"}}},
                  {"dun",        json{{"type","string"},{"description","DUN in-archive name (required unless dun_path)"}}},
                  {"dun_path",   json{{"type","string"},{"description","local .dun path (e.g. exported by DevilutionX debug dev.level.exportDun)"}}},
-                 {"palette",    json{{"type","string"},{"description","palette (default gendata/cut2.pal)"}}},
+                 {"palette",    json{{"type","string"},{"description","PAL name (default levels/l1data/l1_2.pal; Cathedral randomly uses l1_1..l1_4 in-game)"}}},
                  {"micro_len",  json{{"type","integer"},{"description","10 normal, 12 Hell"}}},
                  {"blocks",     json{{"type","integer"},{"description","MIN stride: 10 normal, 16 Hell"}}},
                  {"out",        json{{"type","string"},{"description","output dir (default out/maps)"}}},

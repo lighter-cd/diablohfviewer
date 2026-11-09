@@ -770,6 +770,12 @@ DiabloHFConverter/
       Catacombs（L5–L8，`drlg_l2.cpp`）、Caves/Nest（L9–L12 / Hellfire L6，`drlg_l3.cpp`）、
       Hell（L13–L16，`drlg_l4.cpp`）与 Crypt（Hellfire L5），仍以 `ExportDun` tile 层做
       0 差异验收。
+- [x] **关卡调色板修正（2026-11-09）**：地牢不应使用 `gendata/cut2.pal`（过场调色板，会让
+      整张图偏棕）。按 DevilutionX `LoadRndLvlPal`，Cathedral 使用
+      `levels/l1data/l1_1..l1_4.pal`（进层随机选一），Catacombs/Caves/Hell 分别用
+      `l2data/l2_*.pal` / `l3data/l3_*.pal` / `l4data/l4_*.pal`。`map.build` 默认
+      palette 改为 `levels/l1data/l1_2.pal`，`sceneCatalog` 的 `l1_rnd2`/`l1_skngdo`
+      改为 `l1_2.pal`；`level.generate` 新增 `palette_variant`（1..4）并回传 `tileset`/`palette`。
 - [ ] **逐像素光照 / lightmap（可选，后续）**：当前为 DevilutionX 默认的**每格平地光照**
       （`LightTables` + `dLight`），未实现 `perPixelLighting` 的 marching-squares 插值光图；
       地牢 DUN object layer 与 `dTransVal`/`TransList` 透明遮挡尚未接入。这些属于运行时/细节

@@ -231,10 +231,10 @@ const std::vector<SceneSpec>& sceneCatalog()
         };
         const DunScene dunScenes[] = {
             { "l1_rnd2", "大教堂 L1 · rnd2 房间", "levels/l1data",
-              "levels/l1data/rnd2.dun", 11, 11, "gendata/cut2.pal",
+              "levels/l1data/rnd2.dun", 11, 11, "levels/l1data/l1_2.pal",
               10, 10, 22, 15, 0 },
             { "l1_skngdo", "大教堂 L1 · skngdo 大厅", "levels/l1data",
-              "levels/l1data/skngdo.dun", 7, 7, "gendata/cut2.pal",
+              "levels/l1data/skngdo.dun", 7, 7, "levels/l1data/l1_2.pal",
               10, 10, 22, 15, 0 },
             { "l2_blind", "地下墓穴 L2 · blind 房间", "levels/l2data",
               "levels/l2data/blind1.dun", 11, 11, "levels/l2data/l2_2.pal",

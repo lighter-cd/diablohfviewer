@@ -1077,7 +1077,7 @@ static void testLevelMap(const std::string& mpq) {
 
     std::string cel = "levels/l1data/l1.cel", til = "levels/l1data/l1.til",
                 min = "levels/l1data/l1.min", sol = "levels/l1data/l1.sol",
-                pal = "gendata/cut2.pal";
+                pal = "levels/l1data/l1_2.pal";
     std::vector<std::string> duns = {"levels/l1data/rnd2.dun",
                                      "levels/l1data/skngdo.dun",
                                      "levels/l1data/l1.dun"};
