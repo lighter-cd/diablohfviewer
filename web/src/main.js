@@ -1986,6 +1986,11 @@ function wireControls() {
       $("sceneView").hidden = !scene;
       $("guiView").hidden = !gui;
       $("overlaysPanel").hidden = viewOwned;
+      // The shared sprite/character control bar (palette / TRN / directions /
+      // frame / zoom / play / fps / #meta) does not apply to the GUI layout
+      // viewer, which has its own controls in #guiPane and shows its summary in
+      // #currentName. Hide it so the GUI stage isn't cluttered with dead inputs.
+      $("stageControls").hidden = gui;
       // Combat uses a fixed 8-way scene direction; other modes use the sprite's
       // own direction count when the next sprite is decoded.
       if (combat) syncCombatDirControl();
