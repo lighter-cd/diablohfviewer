@@ -129,6 +129,10 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
   `devilutionx.mpq` 存 `ui_art\diablo.pal` 与 `.clx`；前端把 `sprite.list` 收集到的
   `allArchives` 全栈传给 `ui.build`。逐资源调色板分工与全部 18 屏转录表见
   `docs/UI_LAYOUT.md`。
+- **不提供界面动画播放**：界面中的动画元素（如标题画面 / Logo 的 diablo 字样火焰）只作
+  静态呈现，查看器**没有「播放动画」按钮**。`ui.build` 在后端把整屏合成一张静态 640×480
+  PNG，这是既定方案；2026-11-10 评估后明确放弃该需求，不为此改动合成流程。详见
+  `docs/UI_LAYOUT.md` §6.1。
 
 ## 测试
 

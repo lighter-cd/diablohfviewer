@@ -328,3 +328,7 @@
 ## 2026-11-09 23:38:54
 - 完成阶段 5（目标 4）DiabloUI 界面布局还原与可视化：新增 header-only 纯数据目录 src/tools/ui_layout.h（转录 DevilutionX 18 屏布局：菜单/底部控制面板含血蓝球/角色·物品栏·法术书·任务日志/商店/对话框）与像素工具 src/tools/ui_render.h，MCP 工具 ui.list/ui.layout/ui.build（src/tools/ui_tools.cpp，用真实 MPQ 美术按坐标离屏合成 640x480 PNG + 元素框叠加层 + 逐资源调色板 bank，实测修正游戏内 CEL 用 levels/towndata/town.pal、菜单 CLX 用 ui_art/diablo.pal 的彩虹噪点问题），main.cpp 注册；前端 web/ 新增第 6 种浏览模式「界面布局查看器」(真实美术底图 + 系统字体近似文字层可开关 + hover 元素详情)；unit/core/integration 三套测试新增 ui.* 用例全绿、端到端 stdio + 无头 Chrome 验证通过；文档同步 PROJECT.md/ARCHITECTURE.md/README.md/web/README.md 并新增 docs/UI_LAYOUT.md。
 - 涉及: src/tools/ui_layout.h, src/tools/ui_render.h, src/tools/ui_tools.h, src/tools/ui_tools.cpp, src/main.cpp, web/index.html, web/src/main.js, web/styles.css, web/README.md, out/unit_tests.cpp, out/integration_tests.cpp, README.md, docs/PROJECT.md, docs/ARCHITECTURE.md, docs/UI_LAYOUT.md, .gitignore, changed-history.txt
+
+## 2026-11-10 09:50:53
+- 界面布局查看器「播放动画」需求明确放弃、不改动既定方案：在界面查看器相关文档中声明动画元素（标题画面/Logo 的 diablo 火焰）只静态呈现、不提供播放按钮，原因是 ui.build 后端整屏合成单张静态 640x480 PNG；同步 docs/ 与根 README。
+- 涉及: README.md, web/README.md, docs/UI_LAYOUT.md, docs/PROJECT.md, docs/ARCHITECTURE.md
