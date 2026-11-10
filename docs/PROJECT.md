@@ -883,6 +883,13 @@ SOL 碰撞网格 A* 寻路（`scene.path`）、L2/L3/L4 预设场景。`scene.bu
       文字由前端按布局字段用系统字体近似绘制（可一键关闭核对纯美术底图）、左栏「元素」
       下拉框列出全部元素供选中查看详情并高亮（不用鼠标悬停）。三套测试（unit / core /
       integration）全绿，18 屏全可构建、0 透明像素。
+- [x] **界面查看器 MPQ 全栈修复（2026-11-10）**：`sprite.list` 增返顶层 `archives[]`
+      （recovered.json 全部档案），前端 `loadCatalog()` 用它构建 `allArchives` 整栈传给
+      `ui.build` / `scene.build`。此前只从 `sprites[].archive_path` 推导，漏掉不含
+      CL2/CEL 精灵的 `devilutionx.mpq`，导致角色面板 `data\charbg.clx`、网格商店
+      `data\stash.clx`、对话框 `ui_art\dvl_*.clx` 报 `missing`、依赖
+      `ui_art\diablo.pal` 的 CLX 报 `decode_error`；修复后 18 屏全量审计仅剩 5 项
+      `width_unknown`（缺帧宽 CEL，属既有延后项，见「明确延后」）。
 
   **关键实测结论（调色板分工）**：`ui_art\diablo.pal`（devilutionx.mpq）是**菜单/CLX 转换
   调色板**（低索引为纯原色，用于 `dvl_*.clx` 对话框资源）；原版游戏内 `.cel`（`ctrlpan\*`、

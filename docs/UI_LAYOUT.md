@@ -57,6 +57,10 @@ rainbow 像素占比实测（`max-min>160 且 max>200` 的高饱和纯色）：
 
 UI 美术跨档案：`DIABDAT.MPQ` 存原版 `.pcx/.cel` + `town.pal`，`devilutionx.mpq` 存
 `diablo.pal` + `.clx` + `fonts\*.trn`。`ui.build` 必须传全 MPQ 栈（`archive` + `archives`）。
+该栈由前端 `sprite.list` 返回的顶层 `archives[]` 提供（recovered.json 全部档案，
+含无 CL2/CEL 精灵的 `devilutionx.mpq`）；若只按精灵 `archive_path` 推导会漏档，
+使 `charbg.clx` / `stash.clx` / `dvl_*.clx` 报 `missing`、依赖 `diablo.pal` 的 CLX
+报 `decode_error`（2026-11-10 修复）。
 
 `CtrlPan` 主菜单背景 `ui_art\mainmenu.pcx` 本身**近乎全黑**（实测最大通道值 12）——这是
 真实游戏美术：亮色 Diablo 动画 logo（`ui_art\smlogo`/`hf_logo2`，运行时 `UiAddLogo`）与

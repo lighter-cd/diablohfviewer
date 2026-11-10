@@ -221,6 +221,11 @@ web/
 - `width:"auto"` 由后端按精灵路径自动查 DevilutionX 数据表取帧宽。
 - `sprite.list` 支持 `kind`：`sprite`（默认，CL2/CEL）/ `palette`（仅 `.pal`）/ `all`。
   前端用 `kind:"palette"` 拉取**全部 MPQ** 内的 `.pal`（每条带 `archive_path`）填入下拉框。
+  `sprite.list` 还返回顶层 `archives[]`（recovered.json 内**全部** MPQ 路径）：`main.js`
+  用它构建 `allArchives` 并整栈传给 `ui.build` / `scene.build`。不能只从
+  `sprites[].archive_path` 推导——像 `devilutionx.mpq` 这样只含 `.clx`/`.pal`、不含
+  CL2/CEL 精灵的档案会被漏掉，导致界面底图 `missing`、CLX 因 `diablo.pal` 缺失而
+  `decode_error`。
 - `sprite.decode` 额外接受 `archives`（额外 MPQ 路径数组）：精灵与其调色板常不在同一档案
   （如 DIABDAT 的 `missiles\fireplar.cl2` 配 hellfire 的 `nlevels\cutl5.pal`）。前端把
   「精灵所在 MPQ + 调色板所在 MPQ」一并传入，`sprite.decode` 在档案栈中查找；若只传 `archive`

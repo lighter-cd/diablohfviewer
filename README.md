@@ -81,7 +81,7 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
 | `mpq.dump` | 前 N 字节十六进制预览 |
 | `palette.load` | 加载 `.pal` 调色板为 RGBA（`src/decoders/palette.cpp`） |
 | `sprite.decode` | 解码 `.clx` / `.cel` / `.cl2` / `.pcx` 精灵为 RGBA 帧；`.cl2`/`.cel` 传 `width` 整数或 `"auto"` 自动按路径查表。可选 `archives`（额外 MPQ 路径数组）：精灵/调色板可来自与 `archive` 不同的 MPQ，用于跨档案解析调色板。**损坏/截断的 CL2/CEL 或错误 `width` 会返回错误而非崩溃**（`src/tools/sprite_tools.cpp`、`src/decoders/cl2.cpp`、`src/decoders/cel.cpp`） |
-| `sprite.list` | 枚举 `recovered.json` 中真实存在的精灵名（按 family/class/type 分类并带自动帧宽），供前端建目录树（`src/tools/sprite_tools.cpp`） |
+| `sprite.list` | 枚举 `recovered.json` 中真实存在的精灵名（按 family/class/type 分类并带自动帧宽），供前端建目录树；另返回 `archives`（`recovered.json` 里**全部** MPQ 路径，含无 CL2/CEL 精灵的 `devilutionx.mpq`），前端把它整栈传给 `ui.build` / `scene.build` 以解析 `.clx` 界面美术与 `ui_art\diablo.pal`（`src/tools/sprite_tools.cpp`） |
 | `spell.list` | 从 DevilutionX 数据表（`spelldat` / `misdat` / `missile_sprites` / `monstdat`）合成**玩家技能与怪物远程攻击的全阶段视觉目录**：每个条目按 施法 → 投射 → 命中 → debuff 四阶段组织；`sprite` 层给出编号 `missiles\{name}{N}.cl2` 文件清单 + 显式 `width`（编号文件**不能**用 `width:"auto"`），`trn` 层给出目标 debuff 的调色板重映射；另附 `impact_catalog` 候选命中特效。每条还带 `name_zh`（中文名，取自 `Translations/zh_TW.po`→`zh_CN.po` 的 `msgctxt "spell"`，无翻译则回退英文名）、`description`（按已解析阶段链 + 玩家法力/智力消耗合成的中文说明），以及**法术级别参数**：`level`（`spelldat.bookLevel`，法术等级/阶）、`staff_level`、`mana_cost`、`mana_multiplier`（每升 1 级训练减少的法力）、`min_mana`、`staff_min/staff_max`，与 `mana_by_level`（按 `GetManaAmount` 公式算出的 1..bookLevel 各级基础法力 `{level, mana}`，含 `min_mana` 下限，未乘职业系数）；另含 `visual_by_level`（玩家 1..bookLevel / 怪物 1..16 各级**视觉参数**，逐法术从 DevilutionX handler 转录：持续时间 `duration_ticks`/`duration_sec`、弹速 `speed`、范围 `range_tiles`/`radius_tiles`、弹射物数 `count` 及法术特有字段如 `segments`/`wall_length_tiles`，含角色/地下城层依赖的项标 `_note`；无级别视觉缩放的法术为空）。**怪物攻击侧**除 `GetMissileType()` 的 14 类远程 AI 外，还覆盖**在 AI 函数里直接 `AddMissile` 的形态**（Counselor 按智力发 Firebolt/ChargedBolt/LightningControl/Fireball + 近身双层 Flash、Familiar 闪电、Gloom 冲撞、Mega 近身地狱火），每个形态单独一条并有 `variant` / `condition` 字段（`id` 为 `AI` 或 `AI.variant`）；`unique_monstdat` 的唯一怪会额外叠加，故 Hork Demon（HorkSpawn）、Zhar / Lazarus（按智力 3 归入 Counselor.Fireball）、Red Vex / Black Jade（LazarusSuccubus）均按真实 AI 归属。另含 **`abilities[]` 引擎级怪物特殊能力**：`Blink` 受重击瞬移、`AcidPuddle` 酸怪死亡留池、`Hidden` 潜行系隐身，每条带 `monsters` / `trigger` / `source_ref`（Diablo 1 没有 D2 式 Thunderstorm / Waller / Vortex / Shielding 词缀）。另含 **`traps[]` 陷阱法术** 10 条：墙上机关陷阱（箭矢 / 火焰弹 / 闪电，按有效层数出现）、带陷阱宝箱（箭矢 / 火焰箭 / 新星，地狱火另有火焰之环 / 偷药水 / 吸法力）、地狱火喷火口与火焰拉杆，每条带 `objects`（宿主 `OBJ_*`）/ `trigger` / `source_ref`。当前为 51 技能 / 25 怪物攻击 / 3 特殊能力 / 10 陷阱。可用 `source` / `id` 过滤（`src/tools/sprite_tools.cpp`、`src/tools/spell_tables.h`、`src/tools/spell_visual_model.h`） |
 | `map.build` | 解码 Diablo 1 / Hellfire 关卡（TIL / MIN / DUN / SOL / level CEL）并渲染完整等距地图 PNG + ≤400px 预览 PNG + 每格碰撞/光照/透明标志 sidecar JSON 到 `out/maps/`，返回摘要与 base64 预览。必填 `archive` + `cel`/`til`/`min`/`sol`，以及 `dun`（档案内名）**或 `dun_path`（本地 `.dun`，用于 DevilutionX 调试版导出的动态地牢）**；可选 `palette`（默认 `levels/l1data/l1_2.pal`；**Cathedral 在游戏里由 `LoadRndLvlPal` 随机选 `l1_1..l1_4.pal` 之一，`gendata/cut2.pal` 是过场调色板，不要用于地牢**）、`archives`（额外 MPQ 搜索栈）、`micro_len`（10 原版 / 12 地狱火）、`blocks`（10 / 16）、`out`。当前为 FullyLit 渲染（逐像素光照为运行时效果，延后）。L1 示例：`levels/l1data/l1.cel`/`l1.til`/`l1.min`/`l1.sol` + `levels/l1data/rnd2.dun`；动态地图见 `docs/MAP_GENERATION.md`（`src/tools/map_tools.cpp`、`src/decoders/level_*.cpp`） |
 | `scene.list` | 列出可复原的**完整场景**（Tristram 城镇 + L1/L2/L3/L4 预设），返回 id/title/layout/网格尺寸/默认环境光，无需 MPQ（`src/tools/scene_tools.cpp`） |
@@ -129,9 +129,10 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
 - 加载状态：未连接时「元素」下拉框也显示占位项；加载失败会清空元素状态与画布并允许重试；在途期间
   的任何新请求（切换界面或同屏重载）都会自动补发，同一屏重载保留已选元素，不会残留上一屏数据。
 - UI 美术跨 MPQ：`DIABDAT.MPQ` 存原版 `.pcx/.cel` 与 `levels\towndata\town.pal`，
-  `devilutionx.mpq` 存 `ui_art\diablo.pal` 与 `.clx`；前端把 `sprite.list` 收集到的
-  `allArchives` 全栈传给 `ui.build`。逐资源调色板分工与全部 18 屏转录表见
-  `docs/UI_LAYOUT.md`。
+  `devilutionx.mpq` 存 `ui_art\diablo.pal` 与 `.clx`；前端把 `sprite.list` 返回的
+  `archives` **全栈**（含无精灵的 `devilutionx.mpq`）传给 `ui.build`，否则 `.clx` 底图会
+  报 `missing`、依赖 `diablo.pal` 的 CLX 会报 `decode_error`。逐资源调色板分工与全部
+  18 屏转录表见 `docs/UI_LAYOUT.md`。
 - **不提供界面动画播放**：界面中的动画元素（如标题画面 / Logo 的 diablo 字样火焰）只作
   静态呈现，查看器**没有「播放动画」按钮**。`ui.build` 在后端把整屏合成一张静态 640×480
   PNG，这是既定方案；2026-11-10 评估后明确放弃该需求，不为此改动合成流程。详见

@@ -776,8 +776,27 @@ mcp::ToolResult toolSpriteList(const mcp::json& params)
         }
     }
 
+    // Full MPQ stack from recovered.json. Some archives (notably devilutionx.mpq)
+    // contain NO CL2/CEL sprites but DO hold the converted .clx UI art and
+    // ui_art\diablo.pal. ui.build / scene.build search the `archives` stack, so
+    // the frontend must receive EVERY archive path -- deriving the stack only
+    // from sprite entries silently drops those archives and makes every .clx
+    // background / dialog / button report `missing` or `decode_error`.
+    mcp::json archives = mcp::json::array();
+    if (dict.contains("archives") && dict["archives"].is_array()) {
+        std::vector<std::string> seen;
+        for (const auto& arch : dict["archives"]) {
+            std::string archPath = arch.value("path", "");
+            if (archPath.empty()) continue;
+            if (std::find(seen.begin(), seen.end(), archPath) != seen.end()) continue;
+            seen.push_back(archPath);
+            archives.push_back(archPath);
+        }
+    }
+
     mcp::ToolResult r;
     r.value = mcp::json{ { "count", static_cast<int>(sprites.size()) },
+                         { "archives", archives },
                          { "sprites", sprites } };
     return r;
 }
@@ -981,7 +1000,11 @@ void registerSpriteTools(ToolRegistry& reg)
         "type and carries the auto-resolved frame width (0 if no table). Filter with "
         "'family' / 'class'. Use kind='palette' to list the archive's .pal palettes "
         "(for the decode palette dropdown). The frontend builds its catalog tree from "
-        "this and then calls sprite.decode(name, width:\"auto\") per leaf.",
+        "this and then calls sprite.decode(name, width:\"auto\") per leaf. Also returns "
+        "'archives': EVERY MPQ path from recovered.json (including archives that hold "
+        "no CL2/CEL sprites, e.g. devilutionx.mpq with its .clx UI art and "
+        "ui_art\\diablo.pal) -- pass this full stack as 'archives' to ui.build / "
+        "scene.build so cross-archive art resolves.",
         json{ { "type", "object" },
               { "properties",
                 json{ { "dict",

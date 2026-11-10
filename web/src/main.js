@@ -210,11 +210,21 @@ async function loadCatalog() {
     lastSprites = sprites;
     renderCurrentCatalog();
     setMeta(`catalog: ${res.count ?? sprites.length} sprites`);
-    // Collect the distinct archive paths so the monster/NPC viewer can offer an
-    // MPQ selector (synthesized monster/towner entries have no archive of their own).
+    // Build the FULL MPQ stack. sprite.list reports every archive from
+    // recovered.json, including ones holding no CL2/CEL sprites (notably
+    // devilutionx.mpq, which owns the .clx UI art + ui_art\diablo.pal). Deriving
+    // the stack only from sprite entries made ui.build / scene.build miss those
+    // archives, so char panel / store / dialog backgrounds reported `missing`
+    // and their CLX `decode_error`. Union with per-sprite paths for older
+    // backends that don't return `archives` yet.
     allArchives = [];
+    const norm = (p) => (p || "").trim().replace(/\\/g, "/");
+    for (const a of (res && res.archives) || []) {
+      const p = norm(typeof a === "string" ? a : (a && a.path));
+      if (p && !allArchives.includes(p)) allArchives.push(p);
+    }
     for (const s of sprites) {
-      const p = s.archive_path;
+      const p = norm(s.archive_path);
       if (p && !allArchives.includes(p)) allArchives.push(p);
     }
     await loadPalettes();

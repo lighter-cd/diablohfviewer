@@ -251,6 +251,13 @@ static void testSpriteList() {
         d << "{ \"name\": \"plrgfx\\\\warrior\\\\wha\\\\whaat.cl2\", \"size\": 1 }, ";
         d << "{ \"name\": \"items\\\\armor2.cel\", \"size\": 1 }, ";
         d << "{ \"name\": \"gendata\\\\cut2.pal\", \"size\": 1 } ";
+        d << "] }, ";
+        // devilutionx-style archive: ONLY .clx UI art, no CL2/CEL/pal sprites.
+        // It must still appear in archives[] -- deriving the stack from
+        // sprites[] alone is exactly the bug that made charbg.clx "missing".
+        d << "{ \"name\": \"devilutionx.mpq\", \"path\": \"D:/fixtures/devilutionx.mpq\", \"recovered\": [ ";
+        d << "{ \"name\": \"data\\\\charbg.clx\", \"size\": 1 }, ";
+        d << "{ \"name\": \"data\\\\stash.clx\", \"size\": 1 } ";
         d << "] } ] }";
     }
     json lst = call("sprite.list", json{{"dict", dictPath}});
@@ -273,10 +280,32 @@ static void testSpriteList() {
         if (s.value("archive_path", std::string()) == "D:/fixtures/DIABDAT.MPQ")
             hasPath = true;
     CHECK(hasPath, "sprite.list surfaces archive_path from recovered.json");
+    // Full MPQ stack: EVERY archive from recovered.json, including the one with
+    // no CL2/CEL sprites (devilutionx.mpq holds only .clx UI art). The frontend
+    // passes this whole stack to ui.build / scene.build.
+    CHECK(lst.contains("archives") && lst["archives"].is_array() &&
+              lst["archives"].size() == 2,
+          "sprite.list returns archives[] with every MPQ (incl. no-sprite ones)");
+    bool hasDiabdat = false, hasDx = false, dup = false;
+    std::vector<std::string> seen;
+    for (auto& a : lst["archives"]) {
+        CHECK(a.is_string(), "archives[] entries are path strings");
+        std::string p = a.get<std::string>();
+        if (p == "D:/fixtures/DIABDAT.MPQ") hasDiabdat = true;
+        if (p == "D:/fixtures/devilutionx.mpq") hasDx = true;
+        if (std::find(seen.begin(), seen.end(), p) != seen.end()) dup = true;
+        seen.push_back(p);
+    }
+    CHECK(hasDiabdat && hasDx, "archives[] covers both sprite and no-sprite archives");
+    CHECK(!dup, "archives[] is deduplicated");
+    // The .clx-only archive must NOT add any enumerated sprite/palette.
+    CHECK(lst.value("count", -1) == 3, "no-sprite archive does not inflate sprite count");
 
     // kind:"palette" must enumerate only .pal files (here the gendata\cut2.pal).
     json pal = call("sprite.list", json{{"dict", dictPath}, {"kind", "palette"}});
     CHECK(pal.value("count", -1) == 1, "sprite.list kind:palette enumerates 1 .pal");
+    CHECK(pal.value("archives", json::array()).size() == 2,
+          "kind:palette still returns the full archives[] stack");
     if (pal.value("count", 0) == 1) {
         const auto& p = pal["sprites"][0];
         CHECK(p.value("family", "") == "palette", "palette entry family == palette");
@@ -285,6 +314,8 @@ static void testSpriteList() {
     // kind:"all" returns sprites + palettes together.
     json all = call("sprite.list", json{{"dict", dictPath}, {"kind", "all"}});
     CHECK(all.value("count", -1) == 4, "sprite.list kind:all enumerates 3 sprites + 1 palette");
+    CHECK(all.value("archives", json::array()).size() == 2,
+          "kind:all still returns the full archives[] stack");
 
     std::remove(dictPath.c_str());
     printf("sprite_tools (list): %s\n", allOk ? "PASS" : "FAIL");

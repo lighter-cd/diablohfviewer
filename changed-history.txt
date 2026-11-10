@@ -344,3 +344,7 @@
 ## 2026-11-10 12:13:52
 - 复核并修复 main.js 加载并发逻辑：以单调递增的 guiLoadSeq 请求代号 + stale() 取代只比较 guiSel.value 的 superseded()，使同屏重载（编号角标开关等）与跨屏切换请求都能在 finally 补发；编号角标开关守卫改为 loaded||loading；补发前 resetGuiElementView 只复位视图以保留选中项，失败时 clearGuiElementState 连三张画布一起清空。
 - 涉及: web/src/main.js, README.md, web/README.md, docs/ARCHITECTURE.md
+
+## 2026-11-10 16:08:37
+- 修复界面布局查看器角色面板底图等 6 项解码失败：根因是 sprite.list 只从精灵条目推导 MPQ 栈，漏掉不含 CL2/CEL 精灵的 devilutionx.mpq（charbg/stash/dvl_*.clx 与 diablo.pal 全在此档），致 ui.build 报 missing/decode_error；sprite.list 增返顶层 archives[]（recovered.json 全部档案），前端 loadCatalog 用它构建 allArchives 整栈传给 ui.build/scene.build，并补回归单测。18 屏全量审计：missing/decode_error 全清，仅剩 5 项既有 width_unknown（缺帧宽 CEL）。
+- 涉及: src/tools/sprite_tools.cpp, web/src/main.js, out/integration_tests.cpp, README.md, web/README.md, docs/ARCHITECTURE.md, docs/UI_LAYOUT.md, docs/PROJECT.md
