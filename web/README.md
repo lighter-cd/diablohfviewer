@@ -222,7 +222,9 @@ web/
 - 工具调用：`{method:"tools/call", params:{name, arguments}}`，回包按 `id` 配对。
 - `sprite.decode` 返回 `frames:[{index,width,height,rgba_base64}]`，
   `rgba_base64` 为**原始 RGBA8**（`w*h*4` 字节），不是 PNG data URL。
-- `width:"auto"` 由后端按精灵路径自动查 DevilutionX 数据表取帧宽。
+- `width:"auto"` 由后端按精灵路径自动查 DevilutionX 数据表取帧宽；`items` 类 CEL 无数据表，
+  改按 DevilutionX `LoadCel` 编译期宽度解析（掉落动画 96 / `duricons` 32 / `map\mapztown` 640），
+  故目录树里每个 `items` 叶子都能直接解码，不再需要手填数字宽度。
 - `sprite.list` 支持 `kind`：`sprite`（默认，CL2/CEL）/ `palette`（仅 `.pal`）/
   `ui`（界面布局引用的美术：`ui_art\*.pcx`、`data\*.clx/.cel`、`ctrlpan\*.cel` …，
   每条带 `palette`/`width`/`frames`/`transparent_index`）/ `all`（sprite + palette）。
@@ -247,7 +249,9 @@ web/
   一并经 `sprite.decode` 的 `archives` 传入，因此**即使调色板在另一个 MPQ 也能正确上色**。
   不同家族精灵适用不同调色板，可手动切换观察。
 - **错误显式提示**：遇到暂不支持的格式、缺 `archive_path`、或解码失败，主视窗会以红色错误条
-  （`errorBanner`）明确提示原因，而不会静默无反应。
+  （`errorBanner`）明确提示原因，而不会静默无反应。后端把工具失败包成通用的
+  `tool execution failed`，`client.js` 会从 `error.data.error` 取出真实原因（如
+  `cel requires a positive integer 'width'`）展示，便于定位。
 
 ## 已知限制（后续打磨）
 

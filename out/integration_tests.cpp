@@ -274,6 +274,11 @@ static void testSpriteList() {
     }
     CHECK(nWarrior == 2, "sprite.list classified 2 warrior plrgfx sprites");
     CHECK(nItems == 1, "sprite.list classified 1 items sprite");
+    // items CEL now resolves a real auto width (DevilutionX ItemAnimWidth=96)
+    // instead of 0, so the directory browser can decode it without a manual width.
+    for (auto& s : lst["sprites"])
+        if (s.value("name", "") == "items\\armor2.cel")
+            CHECK(s.value("width", 0) == 96, "sprite.list items\\armor2.cel width == 96");
     // archive_path is surfaced from recovered.json so the frontend need not ask.
     bool hasPath = false;
     for (auto& s : lst["sprites"])
@@ -746,6 +751,61 @@ static void testSpriteDecodeCow() {
     CHECK(bad.is_object() && (bad.contains("result") || bad.contains("error")),
           "cow with bad width returns a response (no SIGSEGV)");
     printf("sprite_tools (cow width): %s\n", allOk ? "PASS" : "FAIL");
+}
+
+// Pick an MPQ that actually holds an items CEL + a palette, so the test is
+// independent of the bundled dictionary / cwd. SKIPs cleanly otherwise.
+static std::string findItemsMpq() {
+    std::vector<std::string> cands;
+    if (const char* e = std::getenv("DHFC_TEST_MPQ"))
+        cands.push_back(e);
+    cands.push_back("/d/work/xt/diablo/DevilutionX-Hell Fire/DIABDAT.MPQ");
+    cands.push_back("/d/work/xt/diablo/DevilutionX-Hell Fire/hellfire.mpq");
+    for (auto& c : cands) {
+        std::ifstream f(engine::Archive::normalizePath(c));
+        if (!f.good())
+            continue;
+        engine::Archive a;
+        if (a.open(c) && a.verify("items\\armor2.cel") &&
+            a.verify("gendata\\cut2.pal"))
+            return c;
+    }
+    return "";
+}
+
+// Every items CEL must decode with width:"auto" (DevilutionX ItemAnimWidth=96).
+// Regression for the directory browser: items\armor2.cel (and all its siblings)
+// used to fail with "cel requires a positive integer 'width'" because autoWidth
+// returned -1 ("items have no width table").
+static void testSpriteDecodeItems() {
+    std::string mpq = findItemsMpq();
+    if (mpq.empty()) {
+        printf("  (skipped items decode; no MPQ with items\\armor2.cel)\n");
+        printf("sprite_tools (items decode): %s\n", allOk ? "PASS" : "FAIL");
+        return;
+    }
+    ToolRegistry reg;
+    tools::registerMpqTools(reg);
+    tools::registerSpriteTools(reg);
+    auto call = [&](const json& args) -> json {
+        auto resp = handleRequest(reg, json{
+            {"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/call"},
+            {"params", json{{"name", "sprite.decode"}, {"arguments", args}}}});
+        return resp ? *resp : json::object();
+    };
+
+    json autoResp = call(json{{"archive", mpq},
+                              {"name", "items\\armor2.cel"},
+                              {"width", "auto"},
+                              {"palette_name", "gendata\\cut2.pal"}});
+    CHECK(!autoResp.contains("error"), "items armor2 width:auto has no JSON-RPC error");
+    json dec = autoResp.value("result", json::object());
+    CHECK(dec.value("format", std::string()) == "cel", "items armor2 decodes as cel");
+    CHECK(dec.value("frame_count", 0) > 0, "items armor2 frame_count > 0");
+    if (dec.contains("frames") && dec["frames"].is_array() && !dec["frames"].empty())
+        CHECK(dec["frames"][0].value("width", 0) == 96,
+              "items armor2 frame width == 96");
+    printf("sprite_tools (items decode): %s\n", allOk ? "PASS" : "FAIL");
 }
 
 // spell.list: stage-ordered spell / monster-attack catalog synthesized from the
@@ -1692,6 +1752,7 @@ int main() {
     testSpriteDecodeRejectsTruncatedCl2();
     testSpriteListCatalogFixes();
     testSpriteDecodeCow();
+    testSpriteDecodeItems();
     testSpellListSynthesis();
     testLevelMap(mpq);
     testSceneTools(mpq);

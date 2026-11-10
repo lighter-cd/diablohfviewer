@@ -51,8 +51,15 @@ export class McpClient {
     const entry = this.pending.get(msg.id);
     if (!entry) return;
     this.pending.delete(msg.id);
-    if (msg.error) entry.reject(new Error(msg.error.message || JSON.stringify(msg.error)));
-    else entry.resolve(msg.result);
+    if (msg.error) {
+      // The backend wraps tool failures in a generic "tool execution failed";
+      // the real reason (e.g. "cel requires a positive integer 'width'") lives
+      // in error.data.error. Surface it so decode failures are actionable.
+      const detail = msg.error.data && msg.error.data.error;
+      entry.reject(new Error(detail || msg.error.message || JSON.stringify(msg.error)));
+    } else {
+      entry.resolve(msg.result);
+    }
   }
 
   _send(method, params) {

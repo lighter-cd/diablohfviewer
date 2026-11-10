@@ -569,8 +569,6 @@ static void testSpriteWidth()
         if (w != 96) { allOk = false; ok = false; printf("  autoWidth warrior stand expected 96 got %d (%s)\n", w, dbg.c_str()); }
         int wm = decoders::sprite_width::autoWidth("monsters\\acid\\acida.cl2", dev, dbg);
         if (wm <= 0) { allOk = false; ok = false; printf("  autoWidth monster expected >0 got %d (%s)\n", wm, dbg.c_str()); }
-        int wi = decoders::sprite_width::autoWidth("items\\armor2.cel", dev, dbg);
-        if (wi != -1) { allOk = false; ok = false; printf("  autoWidth items should fail (no width table)\n"); }
         // DevilutionX quirk: MPQ folder "sorceror" maps to class dir "sorcerer".
         int ws = decoders::sprite_width::autoWidth("plrgfx\\sorceror\\sha\\shaas.cl2", dev, dbg);
         if (ws != 96) { allOk = false; ok = false; printf("  autoWidth sorceror(->sorcerer) stand expected 96 got %d (%s)\n", ws, dbg.c_str()); }
@@ -584,6 +582,31 @@ static void testSpriteWidth()
         if (fpdD != 16) { allOk = false; ok = false; printf("  monsterFramesPerDir zombie d expected 16 got %d (%s)\n", fpdD, dbg.c_str()); }
     } else {
         printf("  (sprite_width autoWidth: SKIP, DevilutionX not found at %s)\n", dev.string().c_str());
+    }
+
+    // 3) items CEL widths mirror DevilutionX engine constants (no TSV needed).
+    //    Regression for "all items CEL fail to decode (width:\"auto\" -> -1)":
+    //    ItemAnimWidth=96 for every item drop animation, 32 for duricons,
+    //    640 for the map\mapztown automap graphic. These are hardcoded in the
+    //    engine's LoadCel call sites, so they must resolve even without tables.
+    {
+        std::filesystem::path dev("D:/work/xt/diablo/DevilutionX");
+        std::string dbg;
+        struct ItemCase { const char* name; int want; };
+        const ItemCase itemCases[] = {
+            { "items\\armor2.cel", 96 },
+            { "items\\fbook.cel", 96 },
+            { "items\\duricons.cel", 32 },
+            { "items\\map\\mapztown.cel", 640 },
+        };
+        for (const auto& c : itemCases) {
+            int w = decoders::sprite_width::autoWidth(c.name, dev, dbg);
+            if (w != c.want) {
+                allOk = false; ok = false;
+                printf("  autoWidth(%s) expected %d got %d (%s)\n",
+                       c.name, c.want, w, dbg.c_str());
+            }
+        }
     }
 
     printf("sprite_width: %s\n", ok ? "PASS" : "FAIL");

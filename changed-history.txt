@@ -352,3 +352,7 @@
 ## 2026-11-11 00:49:53
 - 界面布局查看器精简 + 目录浏览可看 UI 美术：删除多余的「加载界面」按钮（切换界面下拉框已自动 ui.build）；sprite.list 新增 kind:"ui"，把 ui_layout.h 引用的 UI 美术去重列为 family:"ui" 条目（带 palette/width/frames/transparent_index/archive_path），前端 loadCatalog 合并进目录树形成 ui 分支、点叶子逐帧查看；修复 sprite.decode 对 PCX 误抛 auto width failed、PCX 重复解码成 2 帧、CEL 沿用条目自带 width 覆盖 auto，恢复 spelicon.cel(w56)/charbut.cel(w41) 帧宽使 needs_width 归零；UI 叶子按自身 palette 取色、allArchives 整栈解析跨档案 town.pal；三套测试全绿，无头 Chrome 端到端验证 PCX/CLX/CEL 叶子均可解码播放帧动画。
 - 涉及: src/tools/sprite_tools.cpp, src/tools/ui_layout.h, web/index.html, web/src/main.js, out/unit_tests.cpp, out/integration_tests.cpp, README.md, web/README.md, docs/ARCHITECTURE.md, docs/UI_LAYOUT.md, docs/PROJECT.md, changed-history.txt
+
+## 2026-11-11 02:12:06
+- 修复目录浏览模式下 items 类全部 CEL 解码失败：autoWidth 对 items 返回 -1 使 sprite.list 报 width=0，前端退化 width:"auto" 后 sprite.decode 抛 "cel requires a positive integer 'width'"，再被 jsonrpc 包成无信息量的 "tool execution failed"；按 DevilutionX LoadCel 编译期宽度补齐（掉落动画 ItemAnimWidth=96 / duricons=32 / map\mapztown=640），45 个 items CEL 全量 width:"auto" 解码通过；client.js 改从 error.data.error 展示真实原因；补回归单测、同步文档并刷新前端缓存版本号。
+- 涉及: src/decoders/sprite_width.cpp, web/src/client.js, web/src/main.js, web/src/level.js, web/index.html, web/level.html, out/unit_tests.cpp, out/integration_tests.cpp, README.md, web/README.md, docs/ARCHITECTURE.md, docs/PROJECT.md

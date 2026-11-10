@@ -278,8 +278,9 @@ out/recover_phase0.exe [devilutionx_root] [mpq_root]
 > 注意：CL2/CEL 文件**不存储帧宽**，需按 DevilutionX 动画表传入 `width`
 > （如 warrior Stand=96、Attack/Death=128，详见各 `sprites.tsv` 的 `stand`/`attack`…列；
 > 怪物/导弹/物品/物件/NPC 各有对应宽度）。把 `<width>` 写成 `auto` 即可让工具按
-> 精灵路径自动查表取宽，无需手填；物品（CEL）无宽度表，仍需手填数字。调色板用任意
-> 256 色 `.pal` 即可出形，选对游戏调色板则颜色正确。
+> 精灵路径自动查表取宽，无需手填；物品（CEL）由 DevilutionX 引擎常量自动取宽
+> （掉落动画统一 `ItemAnimWidth=96`、`items\duricons.cel` 32、`items\map\mapztown.cel` 640），
+> 也可手填数字。调色板用任意 256 色 `.pal` 即可出形，选对游戏调色板则颜色正确。
 
 ```bash
 g++ -I 3rdparty -I 3rdparty/StormLib/src -I src -std=c++17 -static \
@@ -304,11 +305,12 @@ out/render_sprite.exe \
 - 源码路径：`mpq-info/render_sprite.cpp` + `src/decoders/png.cpp` + `src/decoders/deflate.cpp`；
   PNG 编码器与 DEFLATE 压缩器含于单元测试（`writePNG` → 回读校验 round-trip、
   `testDeflateRoundTrip` 的 compress↔decompress 穷举回环）。
-- 自动查表覆盖 5 类精灵：`plrgfx`（按 `sprites.tsv` 的 `stand`/`walk`/`attack`(含 `bow`)/`swHit`/`lightning`/`fire`/`magic`/`death`/`block` 列）、`monsters`（按 `monstdat.tsv` 的 `width`）、`missiles`（按 `missile_sprites.tsv` 的 `width`）、`objects`（按 `objdat.tsv` 的 `animWidth`）、`towners`（按 `towners.tsv` 的 `animWidth`）。`items` 无宽度表，需手填。
+- 自动查表覆盖 6 类精灵：`plrgfx`（按 `sprites.tsv` 的 `stand`/`walk`/`attack`(含 `bow`)/`swHit`/`lightning`/`fire`/`magic`/`death`/`block` 列）、`monsters`（按 `monstdat.tsv` 的 `width`）、`missiles`（按 `missile_sprites.tsv` 的 `width`）、`objects`（按 `objdat.tsv` 的 `animWidth`）、`towners`（按 `towners.tsv` 的 `animWidth`），以及 `items`（无 TSV，按 DevilutionX `LoadCel` 编译期宽度：掉落动画统一 `ItemAnimWidth=96`（`items.h:185`）、`duricons`=32（`control_panel.cpp:406`）、`map\mapztown`=640（`doom.cpp:25`））。
 - 已验证：`plrgfx\warrior\wlu\wluas.cl2` 自动查表取宽 96 渲染为 96×96 战士立姿精灵（含盾牌），
   80 帧（8 方向 × 10）均可解码无错位；怪物 `monsters\acid\acida.cl2`（宽 128）、导弹
   `missiles\arrows.cl2`（宽 96）、物件 `objects\armstand.cel`（宽 96）、NPC `towners\drunk\twndrunk.cel`
-  （宽 96）均经自动查表渲染成功。
+  （宽 96）均经自动查表渲染成功；`items` 下全部 45 个 CEL（含 `items\armor2.cel` 宽 96、
+  `items\duricons.cel` 宽 32、`items\map\mapztown.cel` 宽 640）经 `width:"auto"` 全量解码通过。
 
 ### 6. 关卡地图与完整场景（阶段 4/5）
 

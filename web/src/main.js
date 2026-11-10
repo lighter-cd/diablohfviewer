@@ -17,9 +17,9 @@
 // Player CL2 frames are stored direction-major: 8 directions x N frames, so
 // frameIndex = dir * framesPerDir + frameInDir (framesPerDir = total/8).
 
-import { McpClient } from "./client.js?v=20261110a";
-import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js?v=20261110a";
-import { drawFrame, drawComposite, drawScene } from "./viewer.js?v=20261110a";
+import { McpClient } from "./client.js?v=20261111a";
+import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js?v=20261111a";
+import { drawFrame, drawComposite, drawScene } from "./viewer.js?v=20261111a";
 
 const $ = (id) => document.getElementById(id);
 

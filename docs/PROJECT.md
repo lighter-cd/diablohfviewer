@@ -477,8 +477,17 @@ DiabloHFConverter/
       - `synthesizeTowners` 从 `TOWN_COW` 行读取 `animWidth=128` 填入硬编码的
         `towners\animals\cow.cel`；`autoWidth` 增加 `TOWN_COW` 回退（cow 的 `animPath` 为空、
         CEL 路径只在 `towners.cpp` 硬编码），使 `width:"auto"` 能解码（96 帧）。
-      - 回归测试 `testSpriteListCatalogFixes`（目录过滤 + 宽度）与 `testSpriteDecodeCow`（auto
-        解码 + 错误宽度不崩）。全量 320 条回归 ok=319，仅剩 dmagew 残缺 CL2 的预期干净错误。
+      - 回归测试       `testSpriteListCatalogFixes`（目录过滤 + 宽度）与 `testSpriteDecodeCow`（auto
+      解码 + 错误宽度不崩）。全量 320 条回归 ok=319，仅剩 dmagew 残缺 CL2 的预期干净错误。
+- [x] 修复目录浏览 `items` 全部 CEL 解码失败（2026-11-11）：根因是 `autoWidth` 对
+      `items` 返回 -1（"无宽度表"），`sprite.list` 报 `width=0`，前端退化成
+      `width:"auto"` 后 `sprite.decode` 抛 `cel requires a positive integer 'width'`，
+      再被 `jsonrpc` 包成无信息量的 `tool execution failed`。按 DevilutionX `LoadCel`
+      编译期常量补宽（掉落动画 `ItemAnimWidth=96`、`duricons`=32、`map\mapztown`=640），
+      45 个 `items` CEL 全量 `width:"auto"` 解码通过；`client.js` 改从
+      `error.data.error` 取真实原因以便定位。回归：`testSpriteWidth`（含 duricons /
+      mapztown 常量）、`testSpriteList`（width==96）、`testSpriteDecodeItems`（真实 MPQ
+      auto 解码）。
 
 ### 特效叠加层（alpha 合成）
 - 通用叠加子系统：在任一浏览模式下选中基础精灵后，右侧「特效叠加层」面板（默认折叠，点「展开」）可把

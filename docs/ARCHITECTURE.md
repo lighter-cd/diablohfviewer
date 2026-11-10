@@ -267,6 +267,11 @@ mcp-server --stdio --ws 18765      # 同时（开发调试最方便）
                            "width":"auto"}}}
    // width:"auto" 由 Server 按路径查 DevilutionX 数据表取宽，前端无需自带宽度表
    ```
+   `autoWidth` 覆盖 `plrgfx`/`monsters`/`missiles`/`objects`/`towners` 五张 TSV 表，
+   外加 `items`：物品 CEL 无 TSV，按 DevilutionX `LoadCel` 编译期宽度解析——掉落动画
+   统一 `ItemAnimWidth=96`（`items.h:185`）、`items\duricons.cel`=32
+   （`control_panel.cpp:406`）、`items\map\mapztown.cel`=640（`doom.cpp:25`），
+   因此 `sprite.list` 对 `items` 条目也返回可用 `width`，目录浏览可直接解码。
 
 > 契约与 stdio 完全一致 = 同一套 `dispatch`，前端无需特殊适配。rgba 为原始像素，
 > 前端负责 ImageData 组装与 Canvas 绘制。

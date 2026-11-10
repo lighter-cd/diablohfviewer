@@ -279,8 +279,19 @@ int autoWidth(const std::string& spritePath, const std::filesystem::path& devRoo
         return -1;
     }
     if ((idx = findTok("items")) >= 0) {
-        dbg = "items (CEL) have no width table; pass a numeric width";
-        return -1;
+        // CEL has no width table: DevilutionX loads every item CEL with an
+        // explicit width compiled into the game, not read from a TSV.
+        //   InitItemGFX(): LoadCel("items\\<dropName>", ItemAnimWidth=96)  (items.h:185)
+        //   control_panel.cpp: LoadCel("items\\duricons", 32)             (control_panel.cpp:406)
+        //   doom.cpp:          LoadCel("items\\map\\mapztown", 640)       (doom.cpp:25)
+        // Mirror those constants so width:"auto" resolves for item CELs just
+        // like the engine (and so sprite.list reports a usable width).
+        const std::string rel = stripExt(joinAfter(idx)); // e.g. "armor2", "map\mapztown"
+        int w = 96;
+        if (rel == "duricons") w = 32;
+        else if (rel == "map\\mapztown") w = 640;
+        dbg = "items/" + rel + " -> width=" + std::to_string(w) + " (DevilutionX LoadCel width)";
+        return w;
     }
     dbg = "unknown sprite family (expected plrgfx/monsters/missiles/"
           "objects/towners/items in the path)";
