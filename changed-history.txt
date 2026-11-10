@@ -332,3 +332,7 @@
 ## 2026-11-10 09:50:53
 - 界面布局查看器「播放动画」需求明确放弃、不改动既定方案：在界面查看器相关文档中声明动画元素（标题画面/Logo 的 diablo 火焰）只静态呈现、不提供播放按钮，原因是 ui.build 后端整屏合成单张静态 640x480 PNG；同步 docs/ 与根 README。
 - 涉及: README.md, web/README.md, docs/UI_LAYOUT.md, docs/PROJECT.md, docs/ARCHITECTURE.md
+
+## 2026-11-10 10:42:55
+- 界面布局查看器去掉鼠标悬停命中：左栏新增「元素」下拉框列出当前界面全部元素（含纯文字元素），选中即在 #guiInfo 显示详情并在画面高亮对应矩形；删除 guiHitTest 与 mousemove/mouseleave 监听，缩放切换时按倍率重定位高亮框；同步文档与缓存版本号。
+- 涉及: web/index.html, web/src/main.js, web/styles.css, README.md, web/README.md, docs/ARCHITECTURE.md, docs/PROJECT.md

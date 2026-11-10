@@ -176,9 +176,10 @@ PNG 与一层文字 canvas 叠放（复用场景查看器的 `sceneDrawPng` + CS
   底图彼此独立、可验证。
 - **叠加层 `#guiOverlay`**：后端生成的元素框（按类型分色）+ 编号角标，可开关
   「显示元素框叠加层 / 显示编号角标」。
-- **hover 详情**：`guiHitTest` 把鼠标坐标换算到 640×480 逻辑坐标，命中元素即在左栏
-  `#guiInfo` 显示类型 / 矩形 / 引用资源 / 调色板 / 解码状态 / DevilutionX 源码位置，
-  并在图上画高亮框。
+- **元素详情（下拉框选择，不用鼠标悬停）**：左栏「元素」下拉框由 `populateGuiElementSelect`
+  列出当前界面 `ui.build.elements` 的**全部元素**（含纯文字元素），选中后 `selectGuiElement`
+  在左栏 `#guiInfo` 显示类型 / 矩形 / 引用资源 / 调色板 / 解码状态 / DevilutionX 源码位置，
+  并在图上画高亮框（`#guiSelectBox`）。缩放切换时 `refreshGuiSelection` 重新按倍率定位高亮框。
 
 UI 美术跨档案：`DIABDAT.MPQ` 存原版 `.pcx/.cel` 与 `levels\towndata\town.pal`，
 `devilutionx.mpq` 存 `ui_art\diablo.pal` 与 `.clx`；前端把 `sprite.list` 收集到的

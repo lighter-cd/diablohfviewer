@@ -123,8 +123,9 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
 - **文字**由前端按 `ui.layout`/`ui.build` 的 `text`/`font_size`/`color`/`align` 字段用系统
   字体**近似绘制**（游戏位图字体在 MPQ 中仅恢复基本 ASCII、中文缺字，故逐字渲染延后）；
   「显示文字」开关可一键关闭以核对纯美术底图，占位符 `{PLAYER_NAME}` 等替换为示意值。
-- 「显示元素框叠加层」「显示编号角标」「缩放 1×/2×」可调；鼠标**悬停**画面元素即在左栏
-  `#guiInfo` 显示该元素的类型/矩形/引用资源/解码状态/DevilutionX 源码位置。
+- 「显示元素框叠加层」「显示编号角标」「缩放 1×/2×」可调；左栏「元素」**下拉框**列出当前
+  界面全部元素，选中即在左栏 `#guiInfo` 显示该元素的类型/矩形/引用资源/解码状态/
+  DevilutionX 源码位置，并在画面上高亮对应元素框（不依赖鼠标悬停）。
 - UI 美术跨 MPQ：`DIABDAT.MPQ` 存原版 `.pcx/.cel` 与 `levels\towndata\town.pal`，
   `devilutionx.mpq` 存 `ui_art\diablo.pal` 与 `.clx`；前端把 `sprite.list` 收集到的
   `allArchives` 全栈传给 `ui.build`。逐资源调色板分工与全部 18 屏转录表见

@@ -17,9 +17,9 @@
 // Player CL2 frames are stored direction-major: 8 directions x N frames, so
 // frameIndex = dir * framesPerDir + frameInDir (framesPerDir = total/8).
 
-import { McpClient } from "./client.js?v=20261109c";
-import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js?v=20261109c";
-import { drawFrame, drawComposite, drawScene } from "./viewer.js?v=20261109c";
+import { McpClient } from "./client.js?v=20261110a";
+import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js?v=20261110a";
+import { drawFrame, drawComposite, drawScene } from "./viewer.js?v=20261110a";
 
 const $ = (id) => document.getElementById(id);
 
@@ -1598,9 +1598,11 @@ function wireSceneControls() {
 // text/font_size/color/align/flags fields from ui.build.elements. This layer is
 // toggleable so the pure "real art" composite can be inspected on its own.
 
+const GUI_INFO_PROMPT = "<em>从上方「元素」下拉框选择元素查看详情…</em>";
 const guiState = {
-  catalog: [],      // ui.list screens
-  elements: [],     // ui.build elements for the current screen
+  catalog: [],        // ui.list screens
+  elements: [],       // ui.build elements for the current screen
+  selectedIndex: -1,  // dropdown-selected element (re-highlighted on zoom)
   zoom: 2,
   loaded: false,
   loading: false,
@@ -1738,6 +1740,7 @@ async function loadGuiScreen() {
     await sceneDrawPng($("guiBase"), res.image_base64);
     await sceneDrawPng($("guiOverlay"), res.overlay_base64 || "");
     guiState.elements = res.elements || [];
+    populateGuiElementSelect();
     drawGuiText($("guiText"), guiState.elements);
     $("guiOverlay").hidden = !res.overlay_base64 || !$("guiOverlayToggle").checked;
     guiState.loaded = true;
@@ -1746,7 +1749,6 @@ async function loadGuiScreen() {
     setMeta(`${res.title}  640×480  元素 ${res.element_count}  框 ${res.overlay_box_count}  ` +
             `美术解码 ok=${res.art_ok_count} 缺=${res.art_missing_count} 错=${res.art_error_count}  ` +
             `调色板 [${pals}]  透明像素 ${res.transparent_pixel_count}`);
-    $("guiInfo").innerHTML = "<em>悬停画面中的元素查看详情…</em>";
   } catch (e) {
     showError("ui.build 失败: " + (e.message || e));
     setMeta("界面加载失败", true);
@@ -1764,23 +1766,48 @@ async function showGuiView() {
   }
 }
 
-// Hover: translate client coords to logical 640x480, find the topmost element
-// whose rect contains the point, then show its details + a highlight box.
-function guiHitTest(lx, ly) {
-  const list = guiState.elements;
-  for (let i = list.length - 1; i >= 0; i--) {
-    const r = list[i].rect;
-    if (r && lx >= r[0] && ly >= r[1] && lx <= r[0] + r[2] && ly <= r[1] + r[3])
-      return list[i];
-  }
-  return null;
+// Populate the element dropdown from the current screen's ui.build elements.
+// ALL elements are listed (including text-only ones with no backend art), so
+// users can inspect any element without having to hover its (possibly tiny or
+// overlapping) rectangle on the canvas.
+function populateGuiElementSelect() {
+  const sel = $("guiElementSel");
+  sel.innerHTML = "";
+  const ph = document.createElement("option");
+  ph.value = "";
+  ph.textContent = "— 选择元素 —";
+  sel.appendChild(ph);
+  guiState.elements.forEach((el, i) => {
+    const o = document.createElement("option");
+    o.value = String(i);
+    o.textContent = `${i + 1}. ${el.label || el.id}  [${el.type}]`;
+    sel.appendChild(o);
+  });
+  sel.value = "";
+  guiState.selectedIndex = -1;
+  showGuiElementDetail(null);
+}
+
+// Show details + highlight for the dropdown-selected element (or clear them).
+function selectGuiElement(index) {
+  const el = Number.isInteger(index) && index >= 0 && index < guiState.elements.length
+    ? guiState.elements[index] : null;
+  guiState.selectedIndex = el ? index : -1;
+  showGuiElementDetail(el);
+}
+
+// The highlight box is positioned in zoomed pixels, so re-apply it after a
+// zoom change while keeping the current dropdown selection.
+function refreshGuiSelection() {
+  showGuiElementDetail(guiState.selectedIndex >= 0
+    ? guiState.elements[guiState.selectedIndex] : null);
 }
 
 function showGuiElementDetail(el) {
-  if (!el) { $("guiHoverBox").hidden = true; return; }
+  const box = $("guiSelectBox");
+  if (!el) { box.hidden = true; $("guiInfo").innerHTML = GUI_INFO_PROMPT; return; }
   const r = el.rect || [0, 0, 0, 0];
   const z = guiState.zoom;
-  const box = $("guiHoverBox");
   box.style.left = `${r[0] * z}px`;
   box.style.top = `${r[1] * z}px`;
   box.style.width = `${r[2] * z}px`;
@@ -1806,9 +1833,13 @@ function showGuiElementDetail(el) {
 function wireGuiControls() {
   $("guiLoadBtn").addEventListener("click", () => loadGuiScreen());
   $("guiSel").addEventListener("change", () => loadGuiScreen());
+  $("guiElementSel").addEventListener("change", (e) => {
+    selectGuiElement(e.target.value === "" ? -1 : parseInt(e.target.value, 10));
+  });
   $("guiZoom").addEventListener("change", (e) => {
     guiState.zoom = Math.max(1, Math.min(2, parseInt(e.target.value, 10) || 1));
     applyGuiTransform();
+    refreshGuiSelection();
   });
   $("guiOverlayToggle").addEventListener("change", (e) => {
     $("guiOverlay").hidden = !e.target.checked;
@@ -1820,17 +1851,6 @@ function wireGuiControls() {
   $("guiTextToggle").addEventListener("change", () => {
     // text layer is drawn client-side; just redraw, no backend call.
     drawGuiText($("guiText"), guiState.elements);
-  });
-  // Hover hit-testing on the base canvas (in logical 640x480 coords).
-  $("guiBase").addEventListener("mousemove", (e) => {
-    if (!isGuiMode()) return;
-    const rect = $("guiBase").getBoundingClientRect();
-    const lx = (e.clientX - rect.left) / guiState.zoom;
-    const ly = (e.clientY - rect.top) / guiState.zoom;
-    showGuiElementDetail(guiHitTest(lx, ly));
-  });
-  $("guiBase").addEventListener("mouseleave", () => {
-    $("guiHoverBox").hidden = true;
   });
 }
 

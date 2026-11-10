@@ -880,8 +880,9 @@ SOL 碰撞网格 A* 寻路（`scene.path`）、L2/L3/L4 预设场景。`scene.bu
       `ui.layout`（单屏完整布局 JSON）/`ui.build`（用**真实 MPQ 美术**离屏合成 640×480
       PNG + 对齐的元素框叠加层 + base64 + sidecar）。`src/tools/ui_render.h` 提供纯 RGBA
       像素原语。前端 `web/` 新增**第 6 种浏览模式「界面布局查看器」**：底图为真实美术、
-      文字由前端按布局字段用系统字体近似绘制（可一键关闭核对纯美术底图）、hover 元素看
-      详情。三套测试（unit / core / integration）全绿，18 屏全可构建、0 透明像素。
+      文字由前端按布局字段用系统字体近似绘制（可一键关闭核对纯美术底图）、左栏「元素」
+      下拉框列出全部元素供选中查看详情并高亮（不用鼠标悬停）。三套测试（unit / core /
+      integration）全绿，18 屏全可构建、0 透明像素。
 
   **关键实测结论（调色板分工）**：`ui_art\diablo.pal`（devilutionx.mpq）是**菜单/CLX 转换
   调色板**（低索引为纯原色，用于 `dvl_*.clx` 对话框资源）；原版游戏内 `.cel`（`ctrlpan\*`、
@@ -897,7 +898,7 @@ SOL 碰撞网格 A* 寻路（`scene.path`）、L2/L3/L4 预设场景。`scene.bu
   | `ui.list` / `ui.layout` / `ui.build` 三工具 + stdio/WS 双传输 | ✅ `ui_tools.cpp` |
   | 真实 MPQ 美术离屏合成（PCX 内嵌 / CEL / CLX + 逐资源调色板） | ✅ 18 屏全可构建 |
   | 元素框叠加层 + 编号角标 + 0 透明像素不透明背景 | ✅ `ui_render.h` |
-  | 前端第 6 种浏览模式 + 近似字体文字层 + hover 详情 | ✅ `web/` |
+  | 前端第 6 种浏览模式 + 近似字体文字层 + 「元素」下拉框选查看详情 | ✅ `web/` |
   | 单元 / 集成 / core 三套测试 + `mcp-server.exe` 构建 | ✅ 全绿 |
 
   **明确不实现（2026-11-10 项目取舍）**：界面动画播放（「播放动画」按钮）。界面动画元素

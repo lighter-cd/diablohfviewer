@@ -813,8 +813,10 @@ RGBA 画布 → 按名加载 palette bank → 元素按 `z`（同 z 按 index）
 前端绘制的唯一数据源。前端 `web/` 加第 6 个 radio/pane（复用 scene 的 PNG→canvas
 `sceneDrawPng` 与 CSS `width/height` 缩放范式），三层 canvas 叠加：`#guiBase`（真实美术）
 + `#guiText`（`drawGuiText` 系统字体近似、占位符替换、可开关）+ `#guiOverlay`（后端框线
-PNG），`guiHitTest` 做悬停命中并把元素详情填进左栏 `#guiInfo`。`isViewOwnedMode()`
-（scene 或 gui）让共享精灵控件在这两种模式下成为 no-op。`?v=20261109c` 统一刷新缓存。
+PNG）。左栏「元素」下拉框（`populateGuiElementSelect`）列出当前界面全部元素，选中者由
+`selectGuiElement` 把详情填进左栏 `#guiInfo` 并在 `#guiSelectBox` 高亮其矩形——**不用鼠标
+悬停**。`isViewOwnedMode()`（scene 或 gui）让共享精灵控件在这两种模式下成为 no-op。
+`?v=20261110a` 统一刷新缓存。
 
 > **界面动画（明确不实现，2026-11-10 项目取舍）**：`ui.build` 每次调用只合成**一张静态
 > 640×480 PNG**，前端也只有单张 `#guiBase`；界面动画元素（标题画面 Logo 火焰等）不播放

@@ -27,7 +27,8 @@
       panel with health/mana orbs, character/inventory panels, stores, dialogs)
       via ui.list / ui.build. Backend composites REAL MPQ art into a 640x480
       PNG + element-box overlay; the frontend draws the text layer with an
-      approximate system font on top (toggleable). Hover an element for details.
+      approximate system font on top (toggleable). Pick an element from the
+      dropdown to inspect its details (no mouse hover).
 -->
 <html lang="zh">
 <head>
@@ -36,7 +37,7 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta http-equiv="Pragma" content="no-cache" />
   <title>DiabloHFConverter · Sprite & Scene Viewer</title>
-  <link rel="stylesheet" href="styles.css?v=20261109c" />
+  <link rel="stylesheet" href="styles.css?v=20261110a" />
 </head>
 <body>
   <header>
@@ -183,6 +184,9 @@
         <label>界面
           <select id="guiSel"></select>
         </label>
+        <label>元素（选中查看详情）
+          <select id="guiElementSel"></select>
+        </label>
         <label>MPQ 路径（可选，覆盖主档案）
           <input id="guiArchive" type="text" placeholder="留空则用目录中的档案栈" />
         </label>
@@ -197,8 +201,8 @@
         <label class="scene-check"><input type="checkbox" id="guiNumberToggle" checked /> 显示编号角标</label>
         <label class="scene-check"><input type="checkbox" id="guiTextToggle" checked /> 显示文字（近似字体）</label>
       </div>
-      <div class="char-hint">后端 ui.build 用真实 MPQ 美术（背景 PCX / 面板 CEL / 血蓝球 / 按钮 CLX）按 DevilutionX 坐标合成 640×480 底图，并生成对齐的元素框叠加层 PNG。文字由前端用系统字体按布局字段近似绘制（非游戏原版位图字体，可关闭核对纯美术底图）。鼠标悬停元素框查看类型 / 矩形 / 引用资源 / 源码位置。</div>
-      <div class="gui-info" id="guiInfo"><em>悬停画面中的元素查看详情…</em></div>
+      <div class="char-hint">后端 ui.build 用真实 MPQ 美术（背景 PCX / 面板 CEL / 血蓝球 / 按钮 CLX）按 DevilutionX 坐标合成 640×480 底图，并生成对齐的元素框叠加层 PNG。文字由前端用系统字体按布局字段近似绘制（非游戏原版位图字体，可关闭核对纯美术底图）。从「元素」下拉框选中任一元素，即在下方查看类型 / 矩形 / 引用资源 / 源码位置等详情，并在画面上高亮对应元素框；不再使用鼠标悬停。</div>
+      <div class="gui-info" id="guiInfo"><em>从上方「元素」下拉框选择元素查看详情…</em></div>
     </aside>
 
     <section class="stage">
@@ -278,7 +282,7 @@
             <canvas id="guiBase" aria-label="gui base"></canvas>
             <canvas id="guiText" aria-label="gui text"></canvas>
             <canvas id="guiOverlay" aria-label="gui overlay"></canvas>
-            <div id="guiHoverBox" class="gui-hover-box" hidden></div>
+            <div id="guiSelectBox" class="gui-select-box" hidden></div>
           </div>
         </div>
       </div>
@@ -290,6 +294,6 @@
     </aside>
   </main>
 
-  <script type="module" src="src/main.js?v=20261109c"></script>
+  <script type="module" src="src/main.js?v=20261110a"></script>
 </body>
 </html>

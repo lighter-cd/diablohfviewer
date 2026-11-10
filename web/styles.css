@@ -308,16 +308,16 @@ canvas { background: transparent; image-rendering: pixelated; }
   image-rendering: pixelated;
   user-select: none;
 }
-/* guiBase receives hover events; text + overlay layers are transparent to the
-   pointer so the base canvas underneath always gets the mouse. */
+/* Text + overlay layers are display-only. Element inspection is driven by the
+   dropdown above (not mouse hover); the box below highlights the selection. */
 #guiText, #guiOverlay { pointer-events: none; }
 #guiText[hidden], #guiOverlay[hidden] { display: none; }
-.gui-hover-box {
+.gui-select-box {
   position: absolute; border: 2px solid #ffe27a;
   background: rgba(255, 226, 122, 0.12);
   pointer-events: none; box-sizing: border-box;
 }
-.gui-hover-box[hidden] { display: none; }
+.gui-select-box[hidden] { display: none; }
 #guiZoom { background: #15151a; color: #e6e6e6; border: 1px solid #3a3a42; border-radius: 4px; padding: 4px 6px; font-size: 13px; }
 #guiArchive { background: #15151a; color: #e6e6e6; border: 1px solid #3a3a42; border-radius: 4px; padding: 4px 6px; font-size: 12px; }
 #guiLoadBtn {
