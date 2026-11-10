@@ -1614,7 +1614,7 @@ const guiState = {
   elements: [],       // ui.build elements for the current screen
   selectedIndex: -1,  // dropdown-selected element (re-highlighted on zoom)
   screenId: "",       // screen whose elements are currently shown
-  zoom: 2,
+  zoom: 1,            // default display magnification for the UI layout viewer
   loaded: false,
   loading: false,
 };
@@ -1781,10 +1781,14 @@ async function loadGuiScreen() {
     guiState.screenId = id;
     guiState.loaded = true;
     applyGuiTransform();
+    // One consolidated summary line in the top-right "当前资源" area; keep the
+    // bottom status bar free of duplicates.
     const pals = (res.palettes || []).map((p) => p.name.split(/[\\/]/).pop()).join(", ") || "embedded";
-    setMeta(`${res.title}  640×480  元素 ${res.element_count}  框 ${res.overlay_box_count}  ` +
-            `美术解码 ok=${res.art_ok_count} 缺=${res.art_missing_count} 错=${res.art_error_count}  ` +
-            `调色板 [${pals}]  透明像素 ${res.transparent_pixel_count}`);
+    $("currentName").textContent =
+      `${res.title}  640×480  元素 ${res.element_count}  框 ${res.overlay_box_count}  ` +
+      `美术解码 ok=${res.art_ok_count} 缺=${res.art_missing_count} 错=${res.art_error_count}  ` +
+      `调色板 [${pals}]  透明像素 ${res.transparent_pixel_count}`;
+    setMeta("");
   } catch (e) {
     clearGuiElementState();
     showError("ui.build 失败: " + (e.message || e));
