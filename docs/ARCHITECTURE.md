@@ -823,10 +823,13 @@ PNG）。左栏「元素」下拉框（`populateGuiElementSelect`）列出当前
 > 序列帧、不提供「播放动画」按钮。要播放就得改上述分层或把合成移到其它层，属于方案级
 > 调整，本项目不为此改动，也不新增工具。详见 `docs/UI_LAYOUT.md` §6.1。
 
-> **加载状态一致性（2026-11-10）**：`loadGuiScreen` 用 `superseded()` 检测在途构建期间的界面
-> 选择变化，并在 `finally` 重新发起，避免快速切换时请求被静默丢弃；`clearGuiElementState()`
-> 在初始化 / 加载失败 / 无档案时把元素下拉框、详情与高亮框复位为占位项 + 提示，不残留上一屏
-> 数据，且失败后允许切回重试；同一屏重载用 `preserveIndex` 保留选中项。`res.elements` 经
-> `Array.isArray` 校验，渲染时对 `null` / 缺字段元素做防御，编号仍与后端叠加层角标对齐。
+> **加载状态一致性（2026-11-10）**：`loadGuiScreen` 用单调递增的 `guiLoadSeq` 作请求代号，
+> **每次调用（含被在途守卫丢弃的那次）都自增**，`stale() = seq !== guiLoadSeq` 判定是否已有更新
+> 请求；在途期间的任何请求（跨屏切换 **或同屏重载**，如编号角标开关）都由 `finally` 以最新参数
+> 补发，不会静默丢弃，且补发自带新代号故收敛终止。提前 `return` 前用 `resetGuiElementView()`
+> 只复位视图（保留选中簿记供同屏补发恢复）；`clearGuiElementState()` 在初始化 / 加载失败 / 无档案
+> 时复位下拉框、详情、高亮框并清空三张画布，失败后允许重试。同一屏重载用 `preserveIndex` 保留
+> 选中项。`res.elements` 经 `Array.isArray` 校验，渲染时对 `null` / 缺字段元素做防御，编号仍与
+> 后端叠加层角标对齐。
 
 > 18 屏逐界面转录表、资源清单、调色板实测数据与延后项见 `docs/UI_LAYOUT.md`。

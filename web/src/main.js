@@ -1609,6 +1609,13 @@ const guiState = {
   loading: false,
 };
 
+// Monotonic request counter. EVERY loadGuiScreen() call advances it, including
+// the ones dropped by the in-flight guard, so an active build can detect that a
+// newer request arrived even when the screen id did not change (e.g. toggling
+// number tags during a build). Comparing the DOM value against a captured id
+// is not enough: it misses same-screen reload requests entirely.
+let guiLoadSeq = 0;
+
 // font_size (DevilutionX GameFontTables) -> approximate CSS px. Game fonts are
 // ~22/24/30/42/46 tall; a slightly smaller CSS size keeps lines inside rects.
 function guiFontSize(fs) {
@@ -1716,21 +1723,22 @@ async function loadGuiCatalog() {
 }
 
 async function loadGuiScreen() {
+  const seq = ++guiLoadSeq;
   const id = $("guiSel").value || "mainmenu";
   // Preserve the selected element only when reloading the SAME screen (number
   // tags toggle / manual reload); a genuine screen switch starts unselected.
   const preserveIndex = (id === guiState.screenId) ? guiState.selectedIndex : -1;
+  const stale = () => seq !== guiLoadSeq;
   if (guiState.loading) {
-    // A newer request arrives while a build is in flight: don't run a second
-    // concurrent build. `superseded()` in `finally` detects the selection
-    // change and re-issues the load for the current screen.
+    // Don't run a second concurrent build. This call already advanced
+    // guiLoadSeq, so the active build sees `stale()` and re-issues in `finally`
+    // with the freshest parameters.
     return;
   }
   hideError();
   setMeta(`加载界面 ${id} …`);
   $("guiLoadBtn").disabled = true;
   guiState.loading = true;
-  const superseded = () => ($("guiSel").value || "mainmenu") !== id;
   try {
     const args = { id, overlay: true, label_numbers: !!$("guiNumberToggle").checked,
                    out: "out/ui" };
@@ -1749,10 +1757,10 @@ async function loadGuiScreen() {
     }
     const res = await client.callTool("ui.build", args);
     if (!res || !res.image_base64) throw new Error("ui.build 未返回图像");
-    if (superseded()) return; // newer screen requested; re-issued in `finally`
+    if (stale()) return; // newer request; re-issued in `finally`
     await sceneDrawPng($("guiBase"), res.image_base64);
     await sceneDrawPng($("guiOverlay"), res.overlay_base64 || "");
-    if (superseded()) return;
+    if (stale()) return;
     // Only accept an array; keep entries as-is so dropdown numbering still
     // matches the backend overlay number tags (malformed entries are handled
     // defensively when rendered).
@@ -1774,9 +1782,14 @@ async function loadGuiScreen() {
   } finally {
     guiState.loading = false;
     $("guiLoadBtn").disabled = false;
-    // If the screen selection moved on during the in-flight build, build the
-    // current screen now instead of leaving the UI on a stale screen.
-    if (superseded()) loadGuiScreen();
+    // Any newer request (same screen OR a different one) that arrived while
+    // this build was in flight is honoured here: clear the view, then rebuild
+    // with the freshest parameters. The re-issued call gets its own sequence
+    // number, so this terminates once no further request is pending.
+    if (stale()) {
+      resetGuiElementView();
+      loadGuiScreen();
+    }
   }
 }
 
@@ -1788,14 +1801,38 @@ async function showGuiView() {
   }
 }
 
-// Reset the element dropdown / detail pane / highlight box to the empty state.
-// Called on init and on any failed or aborted build, so stale per-screen data
-// from a previous screen never lingers when a load does not succeed.
+// Clear the three stacked canvases so a failed build never leaves the previous
+// screen's picture (or a partially drawn frame) behind.
+function clearGuiCanvases() {
+  for (const id of ["guiBase", "guiText", "guiOverlay"]) {
+    const c = $(id);
+    c.getContext("2d").clearRect(0, 0, c.width, c.height);
+  }
+}
+
+// View-only reset: dropdown shows just the placeholder, detail pane shows the
+// prompt and the highlight box is hidden. Selection bookkeeping is left intact
+// so a same-screen re-issue can restore the previously selected element.
+function resetGuiElementView() {
+  const sel = $("guiElementSel");
+  sel.innerHTML = "";
+  const ph = document.createElement("option");
+  ph.value = "";
+  ph.textContent = "— 选择元素 —";
+  sel.appendChild(ph);
+  sel.value = "";
+  showGuiElementDetail(null);
+}
+
+// Reset element state (view + bookkeeping) and clear the canvases. Called on
+// init and on any failed or aborted build, so stale per-screen data from a
+// previous screen never lingers when a load does not succeed.
 function clearGuiElementState() {
   guiState.elements = [];
   guiState.selectedIndex = -1;
   guiState.screenId = "";
   guiState.loaded = false;
+  clearGuiCanvases();
   populateGuiElementSelect();
 }
 
@@ -1806,11 +1843,7 @@ function clearGuiElementState() {
 // when reloading the SAME screen (number-tag toggle / manual reload).
 function populateGuiElementSelect(preserveIndex = -1) {
   const sel = $("guiElementSel");
-  sel.innerHTML = "";
-  const ph = document.createElement("option");
-  ph.value = "";
-  ph.textContent = "— 选择元素 —";
-  sel.appendChild(ph);
+  resetGuiElementView();
   // Keep entries as-is (no filtering) so the 1..N numbering still matches the
   // backend overlay number tags; just render defensively if a field is missing.
   guiState.elements.forEach((el, i) => {
@@ -1821,9 +1854,7 @@ function populateGuiElementSelect(preserveIndex = -1) {
     o.textContent = `${i + 1}. ${label}  [${type}]`;
     sel.appendChild(o);
   });
-  sel.value = "";
   guiState.selectedIndex = -1;
-  showGuiElementDetail(null);
   if (Number.isInteger(preserveIndex) && preserveIndex >= 0 &&
       preserveIndex < guiState.elements.length && guiState.elements[preserveIndex]) {
     sel.value = String(preserveIndex);
@@ -1892,8 +1923,11 @@ function wireGuiControls() {
     $("guiOverlay").hidden = !e.target.checked;
   });
   $("guiNumberToggle").addEventListener("change", () => {
-    // number tags are baked into the backend overlay PNG -> rebuild.
-    if (guiState.loaded) loadGuiScreen();
+    // number tags are baked into the backend overlay PNG -> rebuild. Register
+    // the request whenever a screen is loaded OR a build is in flight; the
+    // sequence counter dedups/retries it with the freshest parameters. (The
+    // guard only avoids a pointless build before the first connect.)
+    if (guiState.loaded || guiState.loading) loadGuiScreen();
   });
   $("guiTextToggle").addEventListener("change", () => {
     // text layer is drawn client-side; just redraw, no backend call.
