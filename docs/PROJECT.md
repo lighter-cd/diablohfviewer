@@ -890,6 +890,16 @@ SOL 碰撞网格 A* 寻路（`scene.path`）、L2/L3/L4 预设场景。`scene.bu
       `data\stash.clx`、对话框 `ui_art\dvl_*.clx` 报 `missing`、依赖
       `ui_art\diablo.pal` 的 CLX 报 `decode_error`；修复后 18 屏全量审计仅剩 5 项
       `width_unknown`（缺帧宽 CEL，属既有延后项，见「明确延后」）。
+- [x] **界面查看器精简 + 目录浏览可看 UI 美术（2026-11-10）**：删除多余的「加载界面」
+      按钮（切换界面下拉框已自动 `ui.build`）；`sprite.list` 新增 `kind:"ui"`，把
+      `ui_layout.h::screens()` 引用的全部美术去重列为 `family:"ui"` 条目（带
+      `palette`/`width`/`frames`/`transparent_index`/解析后的 `archive_path`），前端
+      `loadCatalog()` 合并进目录树形成 `ui` 分支，点叶子即逐帧查看。修复 `sprite.decode`
+      对 PCX 误抛 `auto width failed`（PCX/CLX 自描述、不需要帧宽）、PCX 重复解码成 2 帧、
+      以及 CEL 用条目自带 `width` 覆盖 `"auto"`；恢复 `spelicon.cel`(w56) /
+      `charbut.cel`(w41) 帧宽，`needs_width` 归零。UI 叶子按自身 `palette` 取色、整栈
+      `allArchives` 解析跨档案 `town.pal`。三套测试全绿，无头 Chrome 端到端验证 PCX/CLX/CEL
+      叶子均可解码并显示帧动画。
 
   **关键实测结论（调色板分工）**：`ui_art\diablo.pal`（devilutionx.mpq）是**菜单/CLX 转换
   调色板**（低索引为纯原色，用于 `dvl_*.clx` 对话框资源）；原版游戏内 `.cel`（`ctrlpan\*`、

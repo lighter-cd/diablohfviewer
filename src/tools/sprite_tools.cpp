@@ -15,11 +15,13 @@
 #include "decoders/cl2.h"
 #include "decoders/pcx.h"
 #include "decoders/sprite_width.h"
+#include "tools/ui_layout.h"
 
 #include <filesystem>
 #include <fstream>
 
 #include <algorithm>
+#include <map>
 #include <set>
 #include <cstdint>
 #include <stdexcept>
@@ -257,8 +259,10 @@ mcp::ToolResult toolSpriteDecode(const mcp::json& params)
     if (useAutoWidth) {
         std::string dbg;
         spriteWidth = decoders::sprite_width::autoWidth(name, devRoot, dbg);
-        if (spriteWidth <= 0)
-            throw std::runtime_error("auto width failed: " + dbg);
+        // Only CL2/CEL truly require a resolved width; PCX/CLX are
+        // self-describing (PCX header, CLX frame table), so a failed lookup is
+        // harmless there. The per-format checks below still enforce a positive
+        // width for CL2/CEL, so don't throw here for formats that don't need it.
     }
 
     if (endsWith(lower, ".clx")) {
@@ -279,7 +283,6 @@ mcp::ToolResult toolSpriteDecode(const mcp::json& params)
         decoders::DecodedFrame fr;
         if (!decoders::decodePcx(buf, fr, &embeddedPal))
             throw std::runtime_error("unsupported or truncated PCX: " + name);
-        frames.push_back(std::move(fr));
     } else {
         throw std::runtime_error(
             "unsupported sprite format (expected .clx/.cl2/.cel/.pcx): " + name);
@@ -289,9 +292,6 @@ mcp::ToolResult toolSpriteDecode(const mcp::json& params)
     std::vector<uint8_t> pal;
     bool havePal = false;
     if (format == "pcx") {
-        decoders::DecodedFrame fr;
-        if (decoders::decodePcx(buf, fr, &embeddedPal))
-            frames.push_back(std::move(fr));
         try {
             pal = resolvePalette(archs, params, name, &embeddedPal);
             havePal = true;
@@ -324,6 +324,8 @@ mcp::ToolResult toolSpriteDecode(const mcp::json& params)
 
     // Decode with the (possibly TRN-remapped) palette.
     if (format == "pcx") {
+        if (pal.empty() && !embeddedPal.empty())
+            pal = embeddedPal;   // fall back to the PCX's own embedded palette
         if (!pal.empty()) {
             decoders::DecodedFrame fr;
             decoders::decodePcx(buf, fr, nullptr, &pal);
@@ -724,7 +726,32 @@ mcp::ToolResult toolSpriteList(const mcp::json& params)
     std::string kind =
         (params.contains("kind") && params["kind"].is_string())
             ? params["kind"].get<std::string>() : "sprite";
-    // kind: "sprite" (default) | "palette" | "all"
+    // kind: "sprite" (default) | "palette" | "ui" | "all"
+    //   - "ui": ONLY the UI layout's referenced art (ui_art\*.pcx, data\*.clx/.cel,
+    //     ctrlpan\spelicon.cel, ...) from the static DiabloUI screen table
+    //     (ui.layout). Lets the Catalog browser show the same art the GUI layout
+    //     viewer composites, with frame info for animation playback. "all" stays
+    //     sprite+palette only so existing callers keep their counts.
+
+    // Map archive name -> full path (for resolving UI art archive hints).
+    std::map<std::string, std::string> archNameToPath;
+    std::string firstArchPath;
+    if (dict.contains("archives") && dict["archives"].is_array()) {
+        for (auto& arch : dict["archives"]) {
+            std::string n = arch.value("name", "");
+            std::string p = arch.value("path", "");
+            if (p.empty()) continue;
+            if (firstArchPath.empty()) firstArchPath = p;
+            if (!n.empty() && !archNameToPath.count(n)) archNameToPath[n] = p;
+        }
+    }
+    auto resolveArchPath = [&](const std::string& hint) -> std::string {
+        if (!hint.empty()) {
+            auto it = archNameToPath.find(hint);
+            if (it != archNameToPath.end()) return it->second;
+        }
+        return firstArchPath;
+    };
 
     mcp::json sprites = mcp::json::array();
     if (famFilter == "monsters" || famFilter == "towners") {
@@ -737,7 +764,7 @@ mcp::ToolResult toolSpriteList(const mcp::json& params)
                 continue;
             sprites.push_back(s);
         }
-    } else if (dict.contains("archives") && dict["archives"].is_array()) {
+    } else if (kind != "ui" && dict.contains("archives") && dict["archives"].is_array()) {
         for (auto& arch : dict["archives"]) {
             std::string archName = arch.value("name", "");
             std::string archPath = arch.value("path", "");
@@ -772,6 +799,35 @@ mcp::ToolResult toolSpriteList(const mcp::json& params)
                     { "class", si.cls },
                     { "type", si.type },
                     { "width", w } });
+            }
+        }
+    }
+
+    // Enumerate the UI layout's referenced art (ui_art\*.pcx, data\*.clx/.cel,
+    // ctrlpan\spelicon.cel, ...) so the Catalog browser can show the same art the
+    // GUI layout viewer composites. Deduplicated across all screens by name.
+    if (kind == "ui") {
+        std::set<std::string> seen;
+        for (const auto& s : ui_layout::screens()) {
+            for (const auto& art : ui_layout::uniqueArtRefs(s)) {
+                if (seen.count(art.name)) continue;
+                seen.insert(art.name);
+                std::string nm = art.name;
+                for (char& c : nm) if (c == '\\') c = '/';
+                std::string cls = "ui";
+                size_t sl = nm.find('/');
+                if (sl != std::string::npos) cls = nm.substr(0, sl);
+                sprites.push_back(mcp::json{
+                    { "name", art.name },
+                    { "archive", art.archive_hint },
+                    { "archive_path", resolveArchPath(art.archive_hint) },
+                    { "family", "ui" },
+                    { "class", cls },
+                    { "type", art.format },
+                    { "palette", art.palette },
+                    { "width", art.width },
+                    { "frames", art.frames },
+                    { "transparent_index", art.transparent_index } });
             }
         }
     }
@@ -999,12 +1055,16 @@ void registerSpriteTools(ToolRegistry& reg)
         "StormLib one-way-hash verify). Each entry is classified into family / class / "
         "type and carries the auto-resolved frame width (0 if no table). Filter with "
         "'family' / 'class'. Use kind='palette' to list the archive's .pal palettes "
-        "(for the decode palette dropdown). The frontend builds its catalog tree from "
-        "this and then calls sprite.decode(name, width:\"auto\") per leaf. Also returns "
-        "'archives': EVERY MPQ path from recovered.json (including archives that hold "
-        "no CL2/CEL sprites, e.g. devilutionx.mpq with its .clx UI art and "
-        "ui_art\\diablo.pal) -- pass this full stack as 'archives' to ui.build / "
-        "scene.build so cross-archive art resolves.",
+        "(for the decode palette dropdown). Use kind='ui' to list the UI layout's "
+        "referenced art (ui_art\\*.pcx, data\\*.clx/.cel, ctrlpan\\spelicon.cel, ...) "
+        "from the static DiabloUI screen table, so the Catalog browser can show the "
+        "same art the GUI layout viewer composites (with frame info for playback). "
+        "kind='all' returns sprites + palettes together (no UI art). The frontend builds "
+        "its catalog tree from this and then calls sprite.decode(name, width:\"auto\") "
+        "per leaf. Also returns 'archives': EVERY MPQ path from recovered.json "
+        "(including archives that hold no CL2/CEL sprites, e.g. devilutionx.mpq with "
+        "its .clx UI art and ui_art\\diablo.pal) -- pass this full stack as 'archives' "
+        "to ui.build / scene.build so cross-archive art resolves.",
         json{ { "type", "object" },
               { "properties",
                 json{ { "dict",
@@ -1021,7 +1081,7 @@ void registerSpriteTools(ToolRegistry& reg)
                               { "description", "filter by class (classPath, assetsSuffix, or sprite name; empty = all)" } } },
                       { "kind",
                         json{ { "type", "string" },
-                              { "description", "what to enumerate: 'sprite' (default, CL2/CEL) | 'palette' (.pal files) | 'all'" } } } } },
+                              { "description", "what to enumerate: 'sprite' (default, CL2/CEL) | 'palette' (.pal files) | 'ui' (UI layout art) | 'all' (sprite + palette)" } } } } },
               { "required", json::array({}) } },
         toolSpriteList });
 

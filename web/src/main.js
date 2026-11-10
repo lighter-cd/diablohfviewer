@@ -207,9 +207,20 @@ async function loadCatalog() {
   try {
     const res = await client.callTool("sprite.list", {});
     const sprites = (res && res.sprites) || [];
-    lastSprites = sprites;
+    lastSprites = sprites.slice();
+    // Also pull the UI layout's referenced art (ui_art\*.pcx, data\*.clx/.cel,
+    // ctrlpan\spelicon.cel, ...) so the Catalog browser can show the same art the
+    // GUI layout viewer composites, with frame info for playback.
+    try {
+      const uiRes = await client.callTool("sprite.list", { kind: "ui" });
+      const uiSprites = (uiRes && uiRes.sprites) || [];
+      for (const s of uiSprites) if (!lastSprites.some((x) => x.name === s.name))
+        lastSprites.push(s);
+    } catch (e) {
+      console.warn("sprite.list(kind:ui) failed:", e);
+    }
     renderCurrentCatalog();
-    setMeta(`catalog: ${res.count ?? sprites.length} sprites`);
+    setMeta(`catalog: ${lastSprites.length} sprites`);
     // Build the FULL MPQ stack. sprite.list reports every archive from
     // recovered.json, including ones holding no CL2/CEL sprites (notably
     // devilutionx.mpq, which owns the .clx UI art + ui_art\diablo.pal). Deriving
@@ -683,7 +694,13 @@ function buildDecodeArgs(sprite, nameOverride, opts = {}) {
   // asked to open it twice and fails ("cannot open archive").
   const norm = (p) => (p || "").trim().replace(/\\/g, "/");
   const archive = norm(sprite.archive_path);
-  const palette = $("palette").value;
+  // UI art (family "ui") carries its own authoritative palette (embedded for
+  // .pcx, "ui_art\\diablo.pal" for menu/dialog .clx, "levels\\towndata\\town.pal"
+  // for in-game .cel/.clx). Prefer it over the global palette dropdown so the
+  // Catalog browser can render UI leaves without forcing a manual palette pick.
+  const ownPalette = (sprite && sprite.palette && sprite.palette !== "embedded")
+    ? sprite.palette : "";
+  const palette = ownPalette || $("palette").value;
   const paletteArchive = paletteArchives.get(palette) || "";
   // Monsters/NPCs are spread across MPQs (Hellfire monsters live in
   // hellfire.mpq, base ones in DIABDAT.MPQ, some in hfopt1.mpq, ...), so give
@@ -703,8 +720,11 @@ function buildDecodeArgs(sprite, nameOverride, opts = {}) {
     archives,
     name: nameOverride || sprite.name,
     // Numbered missiles\{name}{N}.cl2 effects need an explicit width from
-    // spell.list; width:"auto" only works for un-numbered sprite paths.
-    width: opts.width !== undefined ? opts.width : "auto",
+    // spell.list; width:"auto" only works for un-numbered sprite paths. For
+    // catalog entries that already carry a known width (e.g. UI art CEL with an
+    // explicit frame width), prefer that over "auto" so decode succeeds.
+    width: opts.width !== undefined ? opts.width
+          : (sprite && sprite.width ? sprite.width : "auto"),
     palette_name: palette,
   };
   // An explicit TRN (combat debuff tint on the target) wins over the global
@@ -750,7 +770,8 @@ async function onSelectSprite(sprite) {
     return;
   }
   const palette = $("palette").value;
-  if (!palette) {
+  const ownPalette = (sprite.palette && sprite.palette !== "embedded");
+  if (!ownPalette && !palette) {
     showError("请先在上方选择一个调色板。");
     stopPlay();
     return;
@@ -1747,7 +1768,6 @@ async function loadGuiScreen() {
   }
   hideError();
   setMeta(`加载界面 ${id} …`);
-  $("guiLoadBtn").disabled = true;
   guiState.loading = true;
   try {
     const args = { id, overlay: true, label_numbers: !!$("guiNumberToggle").checked,
@@ -1795,7 +1815,6 @@ async function loadGuiScreen() {
     setMeta("界面加载失败", true);
   } finally {
     guiState.loading = false;
-    $("guiLoadBtn").disabled = false;
     // Any newer request (same screen OR a different one) that arrived while
     // this build was in flight is honoured here: clear the view, then rebuild
     // with the freshest parameters. The re-issued call gets its own sequence
@@ -1923,7 +1942,6 @@ function wireGuiControls() {
   // Initialise the element dropdown with its placeholder even before any
   // screen has loaded (no archives / not connected yet -> still shows a hint).
   clearGuiElementState();
-  $("guiLoadBtn").addEventListener("click", () => loadGuiScreen());
   $("guiSel").addEventListener("change", () => loadGuiScreen());
   $("guiElementSel").addEventListener("change", (e) => {
     selectGuiElement(e.target.value === "" ? -1 : parseInt(e.target.value, 10));

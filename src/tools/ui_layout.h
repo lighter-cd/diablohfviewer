@@ -466,9 +466,9 @@ inline std::vector<Screen> buildScreens() {
         // current spell button + spell icon (spelicon width unknown -> needs_width)
         s.elements.push_back(btn("cp.spell_btn", "当前法术按钮", {565, 416, 56, 56},
                                  "{SPELL}", 3, "control_panel.cpp:103 SpellButtonRect"));
-        { Element si = img("cp.spell_icon", "法术图标（spelicon 宽未恢复）",
-                           {565, 416, 56, 56}, cel("ctrlpan\\spelicon.cel", 0), 4,
-                           "control_panel.cpp:406; needs_width");
+        { Element si = img("cp.spell_icon", "法术图标（spelicon 56×56）",
+                           {565, 416, 56, 56}, cel("ctrlpan\\spelicon.cel", 56), 4,
+                           "control_panel.cpp:406");
           s.elements.push_back(std::move(si)); }
         v.push_back(std::move(s));
     }
@@ -504,7 +504,7 @@ inline std::vector<Screen> buildScreens() {
         for (int i = 0; i < 4; ++i) {
             Element b = btn("ch.plus" + std::to_string(i), "属性 +按钮",
                 {137, 138 + i * 29, 41, 22}, "+", 3, "control_panel.cpp:74-79");
-            b.has_art = true; b.art = cel("data\\charbut.cel", 0);
+            b.has_art = true; b.art = cel("data\\charbut.cel", 41);
             s.elements.push_back(std::move(b));
         }
         v.push_back(std::move(s));

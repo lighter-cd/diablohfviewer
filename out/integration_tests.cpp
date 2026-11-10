@@ -1637,12 +1637,14 @@ static void testUiTools(const std::string& mpq) {
         CHECK(townOk, "ui.build(control_panel) town.pal resolved (cross-archive)");
         CHECK(panel8Ok, "ui.build(control_panel) panel8.cel width=640 from catalog");
         CHECK(bulbsOk >= 1, "ui.build(control_panel) p8bulbs.cel decoded 88x88");
-        // needs_width resource is skipped, never faked
-        bool speliconSkipped = false;
+        // spelicon.cel's width was recovered (56 px, SPLICONLENGTH), so the
+        // spell icon now decodes cleanly instead of being skipped as
+        // width_unknown. Its palette is the cross-archive town.pal above.
+        bool speliconDecoded = false;
         for (const auto& e : v["elements"])
             if (e.value("id", "") == "cp.spell_icon" &&
-                e.value("decode_status", "") == "width_unknown") speliconSkipped = true;
-        CHECK(speliconSkipped, "ui.build width_unknown CEL skipped cleanly");
+                e.value("decode_status", "") == "ok") speliconDecoded = true;
+        CHECK(speliconDecoded, "ui.build spell icon CEL decodes (width recovered)");
     }
 
     // Missing-palette fallback: give only a stack WITHOUT the palette files.

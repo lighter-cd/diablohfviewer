@@ -2043,10 +2043,15 @@ static void testUiArtNeedsWidth()
     if (ui_layout::artRefCount(*cp) != static_cast<int>(refs.size())) {
         printf("  artRefCount mismatch\n"); ok = false;
     }
+    // spelicon.cel's frame width was recovered (56 px, SPLICONLENGTH), so it is
+    // no longer a "needs_width" entry and all UI CEL/CL2 art must carry a
+    // positive width. This lets the Catalog browser decode every UI leaf.
+    bool speliconWidth = false;
+    for (const auto& a : refs)
+        if (a.name == "ctrlpan\\spelicon.cel" && a.width > 0) speliconWidth = true;
+    if (!speliconWidth) { printf("  spelicon width not recovered\n"); ok = false; }
     auto nw = ui_layout::needsWidthList(*cp);
-    bool hasSpelicon = false;
-    for (const auto& n : nw) if (n == "ctrlpan\\spelicon.cel") hasSpelicon = true;
-    if (!hasSpelicon) { printf("  spelicon not in needs_width\n"); ok = false; }
+    if (!nw.empty()) { printf("  unexpected needs_width entries remain\n"); ok = false; }
     printf("ui_layout art/needsWidth: %s\n", ok ? "PASS" : "FAIL");
     if (!ok) allOk = false;
 }

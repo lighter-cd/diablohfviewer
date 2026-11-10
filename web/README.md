@@ -30,6 +30,10 @@ python -m http.server 8000        # 或： npx serve .
 
 - **目录浏览**（默认）：左侧目录树由 `sprite.list` 构建；点任一精灵即调用 `sprite.decode`
   并绘制，用下方「方向 / 帧」滑块翻看，或点「▶ 播放」循环播放当前方向的动画。
+  另有 `ui` 分支（`sprite.list(kind:"ui")`），列出界面布局查看器用到的全部 UI 美术
+  （`ui_art\*.pcx` / `data\*.clx·.cel` / `ctrlpan\*.cel` 等），点开即可看这些元素及其
+  帧动画；每个 UI 叶子自带 `palette` / `width` / `frames`，解码时自动按自身调色板取色，
+  无需手动在下拉框选调色板。
 - **角色查看器**：见下方独立章节。
 - **怪物 / NPC 查看器**：见下方独立章节。怪物/NPC 没有 MPQ listfile，目录由后端按
   DevilutionX 数据表（`monstdat.tsv` / `towners.tsv`）**合成**（`sprite.list(family:"monsters"/"towners")`）。
@@ -161,7 +165,7 @@ NPC 固定单方向。两者宽度均由后端自动查表（`monstdat.tsv` / `t
 顶部「浏览模式」切到 **界面布局查看器**。左栏「界面」下拉由 `ui.list` 填充 **18 个
 DiabloUI 界面**（主菜单 / 标题 / 制作群 / 英雄·难度选择 / OK·YesNo / 设置 / 底部控制面板
 含血蓝球 / 角色·物品栏·法术书·任务日志 / 文本·网格商店 / 大·小对话框及 CLX 变体），
-选中或点「加载界面」触发 `ui.build`。
+选中即自动触发 `ui.build`（切换界面下拉框已加载并显示，故移除了原「加载界面」按钮）。
 
 后端 `ui.build` 用**真实 MPQ 美术**按 DevilutionX 转录坐标合成 640×480 底图（背景 PCX、
 面板 CEL、血蓝球、按钮 CLX，不透明背景 0 透明像素）+ 对齐的元素框叠加层 PNG。前端把两张
@@ -219,8 +223,12 @@ web/
 - `sprite.decode` 返回 `frames:[{index,width,height,rgba_base64}]`，
   `rgba_base64` 为**原始 RGBA8**（`w*h*4` 字节），不是 PNG data URL。
 - `width:"auto"` 由后端按精灵路径自动查 DevilutionX 数据表取帧宽。
-- `sprite.list` 支持 `kind`：`sprite`（默认，CL2/CEL）/ `palette`（仅 `.pal`）/ `all`。
-  前端用 `kind:"palette"` 拉取**全部 MPQ** 内的 `.pal`（每条带 `archive_path`）填入下拉框。
+- `sprite.list` 支持 `kind`：`sprite`（默认，CL2/CEL）/ `palette`（仅 `.pal`）/
+  `ui`（界面布局引用的美术：`ui_art\*.pcx`、`data\*.clx/.cel`、`ctrlpan\*.cel` …，
+  每条带 `palette`/`width`/`frames`/`transparent_index`）/ `all`（sprite + palette）。
+  前端 `loadCatalog()` 额外拉 `kind:"ui"` 合并进目录树，让 UI 美术也能在目录浏览里
+  查看与播放帧动画；`kind:"palette"` 拉取**全部 MPQ** 内的 `.pal`（每条带
+  `archive_path`）填入下拉框。
   `sprite.list` 还返回顶层 `archives[]`（recovered.json 内**全部** MPQ 路径）：`main.js`
   用它构建 `allArchives` 并整栈传给 `ui.build` / `scene.build`。不能只从
   `sprites[].archive_path` 推导——像 `devilutionx.mpq` 这样只含 `.clx`/`.pal`、不含

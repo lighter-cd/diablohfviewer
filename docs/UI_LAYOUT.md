@@ -78,10 +78,10 @@ UI 美术跨档案：`DIABDAT.MPQ` 存原版 `.pcx/.cel` + `town.pal`，`devilut
 
 `ctrlpan\*.cel`（`town.pal`，`DIABDAT.MPQ`）：`panel8`(w640 → 640×144)、
 `p8bulbs`(w88 → 88×176，2 帧 88×88 = 血/蓝球)、`panel8bu`(w71)、`p8but2`(w33)、
-`golddrop`(w261)、`spelicon`（**帧宽未恢复 → `needs_width`**）、`talkpanl`、`talkbutt`。
+`golddrop`(w261)、`spelicon`(w56，51 帧 56×56，帧宽按 `SPLICONLENGTH` 恢复)、`talkpanl`、`talkbutt`。
 
 `data\*.cel`（`town.pal`，`DIABDAT.MPQ`）：`textbox2`(w271)、`textslid`(w12, 14 帧)、
-`quest`(w320)、`spellbk`(w320)、`spellbkb`(w76/61)、`spelli2`(w37)、`charbut`（帧宽未恢复）、
+`quest`(w320)、`spellbk`(w320)、`spellbkb`(w76/61)、`spelli2`(w37)、`charbut`(w41，9 帧 41×22)、
 `inv\inv.cel`(w320)、`data\boxleftend/boxmiddle/boxrightend`、`data\hf_logo3` 等。
 
 `.clx` / `.pal`（`devilutionx.mpq`）：`ui_art\diablo.pal`(768B)、
@@ -152,7 +152,21 @@ UI 美术跨档案：`DIABDAT.MPQ` 存原版 `.pcx/.cel` + `town.pal`，`devilut
 
 `decode_status` 枚举：`ok`（真实美术解码并贴入）、`text`（无后端美术，前端画文字/框）、
 `missing`（抽不到，跳过保留框）、`width_unknown`（CEL 缺帧宽，进 `needs_width`，跳过不伪造）、
-`decode_error`（调色板缺失/解码失败）。
+`decode_error`（调色板缺失/解码失败）。`ctrlpan\spelicon.cel` / `data\charbut.cel` 的帧宽
+已恢复（56 / 41 px），故 `control_panel` / `char_panel` 的这两项现在为 `ok`，`needs_width`
+为空。
+
+### 5.1 目录浏览中的 UI 美术（`sprite.list(kind:"ui")`）
+
+界面查看器按整屏合成，看不到单个资源的帧动画。为此 `sprite.list` 新增 `kind:"ui"`，
+把 `ui_layout.h::screens()` 全部屏幕引用的美术去重列出（`ui_art\*.pcx`、`data\*.clx/.cel`、
+`ctrlpan\*.cel` …），每条带 `family:"ui"`、`palette`、`width`、`frames`、`transparent_index`
+与解析后的 `archive_path`。前端 `loadCatalog()` 把它合并进目录树，形成 `ui` 分支；点叶子
+即 `sprite.decode` 逐帧查看。UI 叶子自带权威调色板（PCX 内嵌 / 菜单 CLX 用
+`ui_art\diablo.pal` / 游戏内 CEL·CLX 用 `levels\towndata\town.pal`），解码时按自身
+`palette` 取色、按自身 `width` 解帧，无需手动选调色板；`buildDecodeArgs` 仍把 `allArchives`
+整栈传给 `sprite.decode`，以解析跨档案的 `town.pal`。PCX 解码只产出 1 帧且内嵌调色板可用，
+不再因 `width:"auto"` 查表失败而误抛异常。
 
 ---
 
