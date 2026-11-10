@@ -336,3 +336,7 @@
 ## 2026-11-10 10:42:55
 - 界面布局查看器去掉鼠标悬停命中：左栏新增「元素」下拉框列出当前界面全部元素（含纯文字元素），选中即在 #guiInfo 显示详情并在画面高亮对应矩形；删除 guiHitTest 与 mousemove/mouseleave 监听，缩放切换时按倍率重定位高亮框；同步文档与缓存版本号。
 - 涉及: web/index.html, web/src/main.js, web/styles.css, README.md, web/README.md, docs/ARCHITECTURE.md, docs/PROJECT.md
+
+## 2026-11-10 11:18:47
+- 修复界面布局查看器元素下拉框的加载状态边界：loadGuiScreen 用 superseded() 在 finally 补发在途期间被丢弃的界面切换请求，clearGuiElementState() 在初始化/失败/无档案时清空下拉框与详情避免残留上一屏数据并允许重试，同一屏重载用 preserveIndex 保留选中元素；加 Array.isArray(res.elements) 与元素缺字段防御渲染。
+- 涉及: web/src/main.js, README.md, web/README.md, docs/ARCHITECTURE.md

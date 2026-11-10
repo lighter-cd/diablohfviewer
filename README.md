@@ -126,6 +126,8 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
 - 「显示元素框叠加层」「显示编号角标」「缩放 1×/2×」可调；左栏「元素」**下拉框**列出当前
   界面全部元素，选中即在左栏 `#guiInfo` 显示该元素的类型/矩形/引用资源/解码状态/
   DevilutionX 源码位置，并在画面上高亮对应元素框（不依赖鼠标悬停）。
+- 加载状态：未连接时「元素」下拉框也显示占位项；加载失败会清空元素状态并允许重试；在途期间
+  切换界面会自动补发，同一屏重载保留已选元素，不会残留上一屏数据。
 - UI 美术跨 MPQ：`DIABDAT.MPQ` 存原版 `.pcx/.cel` 与 `levels\towndata\town.pal`，
   `devilutionx.mpq` 存 `ui_art\diablo.pal` 与 `.clx`；前端把 `sprite.list` 收集到的
   `allArchives` 全栈传给 `ui.build`。逐资源调色板分工与全部 18 屏转录表见

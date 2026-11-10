@@ -180,6 +180,10 @@ PNG 与一层文字 canvas 叠放（复用场景查看器的 `sceneDrawPng` + CS
   列出当前界面 `ui.build.elements` 的**全部元素**（含纯文字元素），选中后 `selectGuiElement`
   在左栏 `#guiInfo` 显示类型 / 矩形 / 引用资源 / 调色板 / 解码状态 / DevilutionX 源码位置，
   并在图上画高亮框（`#guiSelectBox`）。缩放切换时 `refreshGuiSelection` 重新按倍率定位高亮框。
+  加载状态：初始化即放入占位项（未连接 / 无 MPQ 时下拉框不空白）；`ui.build` 失败或缺档案时
+  `clearGuiElementState()` 清空下拉框 / 详情 / 高亮并允许重试，不残留上一屏数据；在途加载期间
+  切换界面由 `superseded()` 在 `finally` 重新发起，不丢请求；同一屏重载（编号角标开关 / 手动
+  加载）由 `preserveIndex` 保留已选元素。`res.elements` 只接受数组，各元素缺字段时做防御渲染。
 
 UI 美术跨档案：`DIABDAT.MPQ` 存原版 `.pcx/.cel` 与 `levels\towndata\town.pal`，
 `devilutionx.mpq` 存 `ui_art\diablo.pal` 与 `.clx`；前端把 `sprite.list` 收集到的

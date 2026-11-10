@@ -1603,6 +1603,7 @@ const guiState = {
   catalog: [],        // ui.list screens
   elements: [],       // ui.build elements for the current screen
   selectedIndex: -1,  // dropdown-selected element (re-highlighted on zoom)
+  screenId: "",       // screen whose elements are currently shown
   zoom: 2,
   loaded: false,
   loading: false,
@@ -1715,12 +1716,21 @@ async function loadGuiCatalog() {
 }
 
 async function loadGuiScreen() {
-  if (guiState.loading) return;
   const id = $("guiSel").value || "mainmenu";
+  // Preserve the selected element only when reloading the SAME screen (number
+  // tags toggle / manual reload); a genuine screen switch starts unselected.
+  const preserveIndex = (id === guiState.screenId) ? guiState.selectedIndex : -1;
+  if (guiState.loading) {
+    // A newer request arrives while a build is in flight: don't run a second
+    // concurrent build. `superseded()` in `finally` detects the selection
+    // change and re-issues the load for the current screen.
+    return;
+  }
   hideError();
   setMeta(`加载界面 ${id} …`);
   $("guiLoadBtn").disabled = true;
   guiState.loading = true;
+  const superseded = () => ($("guiSel").value || "mainmenu") !== id;
   try {
     const args = { id, overlay: true, label_numbers: !!$("guiNumberToggle").checked,
                    out: "out/ui" };
@@ -1732,17 +1742,25 @@ async function loadGuiScreen() {
     if (primary) args.archive = primary;
     if (allArchives && allArchives.length) args.archives = allArchives.slice();
     if (!args.archive) {
+      clearGuiElementState();
       showError("未连接或未发现 MPQ 档案：请在上方填入 MPQ 路径");
+      setMeta("界面加载失败", true);
       return;
     }
     const res = await client.callTool("ui.build", args);
     if (!res || !res.image_base64) throw new Error("ui.build 未返回图像");
+    if (superseded()) return; // newer screen requested; re-issued in `finally`
     await sceneDrawPng($("guiBase"), res.image_base64);
     await sceneDrawPng($("guiOverlay"), res.overlay_base64 || "");
-    guiState.elements = res.elements || [];
-    populateGuiElementSelect();
+    if (superseded()) return;
+    // Only accept an array; keep entries as-is so dropdown numbering still
+    // matches the backend overlay number tags (malformed entries are handled
+    // defensively when rendered).
+    guiState.elements = Array.isArray(res.elements) ? res.elements : [];
+    populateGuiElementSelect(preserveIndex);
     drawGuiText($("guiText"), guiState.elements);
     $("guiOverlay").hidden = !res.overlay_base64 || !$("guiOverlayToggle").checked;
+    guiState.screenId = id;
     guiState.loaded = true;
     applyGuiTransform();
     const pals = (res.palettes || []).map((p) => p.name.split(/[\\/]/).pop()).join(", ") || "embedded";
@@ -1750,11 +1768,15 @@ async function loadGuiScreen() {
             `美术解码 ok=${res.art_ok_count} 缺=${res.art_missing_count} 错=${res.art_error_count}  ` +
             `调色板 [${pals}]  透明像素 ${res.transparent_pixel_count}`);
   } catch (e) {
+    clearGuiElementState();
     showError("ui.build 失败: " + (e.message || e));
     setMeta("界面加载失败", true);
   } finally {
     guiState.loading = false;
     $("guiLoadBtn").disabled = false;
+    // If the screen selection moved on during the in-flight build, build the
+    // current screen now instead of leaving the UI on a stale screen.
+    if (superseded()) loadGuiScreen();
   }
 }
 
@@ -1766,26 +1788,48 @@ async function showGuiView() {
   }
 }
 
+// Reset the element dropdown / detail pane / highlight box to the empty state.
+// Called on init and on any failed or aborted build, so stale per-screen data
+// from a previous screen never lingers when a load does not succeed.
+function clearGuiElementState() {
+  guiState.elements = [];
+  guiState.selectedIndex = -1;
+  guiState.screenId = "";
+  guiState.loaded = false;
+  populateGuiElementSelect();
+}
+
 // Populate the element dropdown from the current screen's ui.build elements.
 // ALL elements are listed (including text-only ones with no backend art), so
 // users can inspect any element without having to hover its (possibly tiny or
-// overlapping) rectangle on the canvas.
-function populateGuiElementSelect() {
+// overlapping) rectangle on the canvas. `preserveIndex` restores a selection
+// when reloading the SAME screen (number-tag toggle / manual reload).
+function populateGuiElementSelect(preserveIndex = -1) {
   const sel = $("guiElementSel");
   sel.innerHTML = "";
   const ph = document.createElement("option");
   ph.value = "";
   ph.textContent = "— 选择元素 —";
   sel.appendChild(ph);
+  // Keep entries as-is (no filtering) so the 1..N numbering still matches the
+  // backend overlay number tags; just render defensively if a field is missing.
   guiState.elements.forEach((el, i) => {
     const o = document.createElement("option");
     o.value = String(i);
-    o.textContent = `${i + 1}. ${el.label || el.id}  [${el.type}]`;
+    const label = (el && (el.label || el.id)) || `元素 ${i + 1}`;
+    const type = (el && el.type) || "?";
+    o.textContent = `${i + 1}. ${label}  [${type}]`;
     sel.appendChild(o);
   });
   sel.value = "";
   guiState.selectedIndex = -1;
   showGuiElementDetail(null);
+  if (Number.isInteger(preserveIndex) && preserveIndex >= 0 &&
+      preserveIndex < guiState.elements.length && guiState.elements[preserveIndex]) {
+    sel.value = String(preserveIndex);
+    guiState.selectedIndex = preserveIndex;
+    showGuiElementDetail(guiState.elements[preserveIndex]);
+  }
 }
 
 // Show details + highlight for the dropdown-selected element (or clear them).
@@ -1806,7 +1850,7 @@ function refreshGuiSelection() {
 function showGuiElementDetail(el) {
   const box = $("guiSelectBox");
   if (!el) { box.hidden = true; $("guiInfo").innerHTML = GUI_INFO_PROMPT; return; }
-  const r = el.rect || [0, 0, 0, 0];
+  const r = Array.isArray(el.rect) ? el.rect : [0, 0, 0, 0];
   const z = guiState.zoom;
   box.style.left = `${r[0] * z}px`;
   box.style.top = `${r[1] * z}px`;
@@ -1815,12 +1859,12 @@ function showGuiElementDetail(el) {
   box.hidden = false;
   const row = (k, v) => `<div class="gi-row"><span class="gi-key">${k}</span><span class="gi-val">${v}</span></div>`;
   const a = el.art;
-  let html = `<div class="gi-title">${el.label || el.id}</div>`;
-  html += row("id", el.id) + row("类型", el.type) + row("矩形", `[${r.join(", ")}]`);
+  let html = `<div class="gi-title">${el.label || el.id || "元素"}</div>`;
+  html += row("id", el.id || "-") + row("类型", el.type || "-") + row("矩形", `[${r.join(", ")}]`);
   if (el.panel) html += row("分区", `${el.panel} ${JSON.stringify(el.panel_rect)}`);
-  html += row("z", el.z);
-  if (a) html += row("美术", `${a.name}<br>${a.format} · w=${a.width} · frame ${a.frame}/${a.frames}`) +
-                 row("调色板", a.palette) + row("解码", el.decode_status || "-");
+  html += row("z", el.z ?? "-");
+  if (a) html += row("美术", `${a.name || "-"}<br>${a.format || "-"} · w=${a.width ?? "-"} · frame ${a.frame ?? "-"}/${a.frames ?? "-"}`) +
+                 row("调色板", a.palette || "-") + row("解码", el.decode_status || "-");
   if (el.grid) html += row("网格", `${el.grid.cols}×${el.grid.rows} · cell ${el.grid.cell} · step ${el.grid.step}`);
   if (el.text) html += row("文字", guiExampleText(el.text)) +
                        row("字号/色", `${el.font_size} / ${el.color || "默认"} / ${el.align || "left"}`);
@@ -1831,6 +1875,9 @@ function showGuiElementDetail(el) {
 }
 
 function wireGuiControls() {
+  // Initialise the element dropdown with its placeholder even before any
+  // screen has loaded (no archives / not connected yet -> still shows a hint).
+  clearGuiElementState();
   $("guiLoadBtn").addEventListener("click", () => loadGuiScreen());
   $("guiSel").addEventListener("change", () => loadGuiScreen());
   $("guiElementSel").addEventListener("change", (e) => {
