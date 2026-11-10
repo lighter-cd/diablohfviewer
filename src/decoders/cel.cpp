@@ -22,10 +22,16 @@ static uint8_t GetCelTransparentWidth(uint8_t control)
     return static_cast<uint8_t>(-static_cast<int8_t>(control));
 }
 
-std::vector<uint8_t> celToClx(const uint8_t* data, size_t size, uint16_t frameWidth)
+// Shared implementation. When `perFrame` is null every frame uses `uniform`;
+// otherwise `(*perFrame)[globalFrame]` supplies each frame's own width. The
+// latter is required by `data\inv\objcurs*.cel` (inventory icons), whose 179 /
+// 61 frames have different widths (28px for 1x1 items, 56px for 2x2, ...).
+static std::vector<uint8_t> celToClxImpl(
+    const uint8_t* data, size_t size, uint16_t uniform,
+    const std::vector<uint16_t>* perFrame)
 {
     // Same class of hardening as cl2ToClx: every offset comes from the file and
-    // is untrusted. A wrong `frameWidth` (or truncated CEL) used to make `src`
+    // is untrusted. A wrong frame width (or truncated CEL) used to make `src`
     // run past `srcEnd` and crash in *src++ / AppendClxPixelsOrFillRun (SIGSEGV).
     auto inRange = [size](size_t off, size_t n) -> bool {
         return off <= size && n <= size - off;
@@ -65,6 +71,7 @@ std::vector<uint8_t> celToClx(const uint8_t* data, size_t size, uint16_t frameWi
         out.resize(maybeNumFrames);
     }
 
+    uint32_t globalFrame = 0; // frame index across all groups
     for (uint32_t group = 0; group < numGroups; ++group) {
         uint32_t numFrames;
         if (numGroups == 1) {
@@ -94,6 +101,18 @@ std::vector<uint8_t> celToClx(const uint8_t* data, size_t size, uint16_t frameWi
 
         size_t srcEndRel = frameOff(1);
         for (uint32_t frame = 1; frame <= numFrames; ++frame) {
+            uint16_t frameWidth;
+            if (perFrame != nullptr) {
+                if (globalFrame >= perFrame->size())
+                    fail("per-frame width table too short");
+                frameWidth = (*perFrame)[globalFrame];
+                if (frameWidth == 0)
+                    fail("per-frame width is zero");
+            } else {
+                frameWidth = uniform;
+            }
+            ++globalFrame;
+
             const size_t srcBeginRel = srcEndRel;
             srcEndRel = frameOff(frame + 1);
             if (srcEndRel < srcBeginRel)
@@ -156,6 +175,19 @@ std::vector<uint8_t> celToClx(const uint8_t* data, size_t size, uint16_t frameWi
     }
 
     return out;
+}
+
+std::vector<uint8_t> celToClx(const uint8_t* data, size_t size, uint16_t frameWidth)
+{
+    return celToClxImpl(data, size, frameWidth, nullptr);
+}
+
+std::vector<uint8_t> celToClx(const uint8_t* data, size_t size,
+                              const std::vector<uint16_t>& frameWidths)
+{
+    if (frameWidths.empty())
+        throw std::runtime_error("invalid CEL: empty per-frame width table");
+    return celToClxImpl(data, size, 0, &frameWidths);
 }
 
 } // namespace decoders

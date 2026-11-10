@@ -488,6 +488,19 @@ DiabloHFConverter/
       `error.data.error` 取真实原因以便定位。回归：`testSpriteWidth`（含 duricons /
       mapztown 常量）、`testSpriteList`（width==96）、`testSpriteDecodeItems`（真实 MPQ
       auto 解码）。
+- [x] 补录 `data\inv` 并扩展 `sprite.decode` 逐帧宽度（2026-11-11）：澄清 `items\*.cel`
+      是**物品掉落地面的动画**，界面物品栏图标在 `data\inv\`（原字典完全未收录该目录）。
+      按项目约定在 `diablo1-harvest.txt` 补 5 个 `.cel` 候选名并重跑 `recover_phase0.exe`
+      重建 `recovered.json`（+7 条：DIABDAT 的 `objcurs.cel`+`inv*.cel`×3、hellfire 的
+      `objcurs2.cel`、spawn 的 `objcurs.cel`+`inv.cel`）。`objcurs.cel`(179 帧) /
+      `objcurs2.cel`(61 帧) **逐帧变宽**，单一 `width` 解码必崩；新增
+      `src/decoders/inv_widths.h`（转录 DevilutionX `objcurs*-widths.txt` 的 179/61 值）、
+      `celToClx` 逐帧宽度重载，以及 `sprite.decode` 的 `widths` 数组参数与
+      `width:"auto"` 按名自动解析两条路径；`classifySprite` 新建 `inv` 家族
+      （`class=cursors`/`panels`、面板 `width=320`、图标 `width=0` 触发 auto）。
+      面板 320×352、图标逐帧宽度 33/28/56 全量验证通过；三套测试新增
+      `testInvWidthsTable`/`testCelToClxPerFrameWidths`/`testSpriteListInvFamily`/
+      `testSpriteDecodeInv` 全绿。
 
 ### 特效叠加层（alpha 合成）
 - 通用叠加子系统：在任一浏览模式下选中基础精灵后，右侧「特效叠加层」面板（默认折叠，点「展开」）可把

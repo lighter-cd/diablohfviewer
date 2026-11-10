@@ -80,8 +80,8 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
 | `mpq.recover` | 用字典 `dict_path` 恢复真实文件名 |
 | `mpq.dump` | 前 N 字节十六进制预览 |
 | `palette.load` | 加载 `.pal` 调色板为 RGBA（`src/decoders/palette.cpp`） |
-| `sprite.decode` | 解码 `.clx` / `.cel` / `.cl2` / `.pcx` 精灵为 RGBA 帧；`.cl2`/`.cel` 传 `width` 整数或 `"auto"` 自动按路径查表。可选 `archives`（额外 MPQ 路径数组）：精灵/调色板可来自与 `archive` 不同的 MPQ，用于跨档案解析调色板。**损坏/截断的 CL2/CEL 或错误 `width` 会返回错误而非崩溃**（`src/tools/sprite_tools.cpp`、`src/decoders/cl2.cpp`、`src/decoders/cel.cpp`） |
-| `sprite.list` | 枚举 `recovered.json` 中真实存在的精灵名（按 family/class/type 分类并带自动帧宽），供前端建目录树。`kind` 可选 `sprite`（默认 CL2/CEL）/ `palette`（仅 `.pal`）/ `ui`（静态转录的界面布局美术：`ui_art\*.pcx`、`data\*.clx/.cel`、`ctrlpan\*.cel` …，每条带 `palette`/`width`/`frames`，供目录浏览查看 UI 元素及帧动画）/ `all`（sprite+palette）。另返回 `archives`（`recovered.json` 里**全部** MPQ 路径，含无 CL2/CEL 精灵的 `devilutionx.mpq`），前端把它整栈传给 `ui.build` / `scene.build` 以解析 `.clx` 界面美术与 `ui_art\diablo.pal`（`src/tools/sprite_tools.cpp`、`src/tools/ui_layout.h`） |
+| `sprite.decode` | 解码 `.clx` / `.cel` / `.cl2` / `.pcx` 精灵为 RGBA 帧；`.cl2`/`.cel` 传 `width` 整数或 `"auto"` 自动按路径查表。新增可选 **`widths`（逐帧宽度整数数组）**：用于 `data\inv\objcurs*.cel` 这类每帧宽度不同的图标 CEL，优先于 `width`；`width:"auto"` 也会按文件名自动套用内置逐帧宽度表（`src/decoders/inv_widths.h`，转录 DevilutionX `objcurs-widths.txt` 179 值 / `objcurs2-widths.txt` 61 值），无需前端传大数组。可选 `archives`（额外 MPQ 路径数组）：精灵/调色板可来自与 `archive` 不同的 MPQ，用于跨档案解析调色板。**损坏/截断的 CL2/CEL、错误 `width` 或过短 `widths` 会返回错误而非崩溃**（`src/tools/sprite_tools.cpp`、`src/decoders/cl2.cpp`、`src/decoders/cel.cpp`、`src/decoders/inv_widths.h`） |
+| `sprite.list` | 枚举 `recovered.json` 中真实存在的精灵名（按 family/class/type 分类并带自动帧宽），供前端建目录树。家族含 `plrgfx`/`monsters`/`missiles`/`items`/`objects`/`towners`，以及 **`inv`**（`data\inv\*`：物品栏光标图标 `objcurs.cel`/`objcurs2.cel` 逐帧变宽、`width=0` 交给 `sprite.decode` 的 `width:"auto"` 自动解析；物品栏背景 `inv*.cel` 固定 `width=320`）。`kind` 可选 `sprite`（默认 CL2/CEL）/ `palette`（仅 `.pal`）/ `ui`（静态转录的界面布局美术：`ui_art\*.pcx`、`data\*.clx/.cel`、`ctrlpan\*.cel` …，每条带 `palette`/`width`/`frames`，供目录浏览查看 UI 元素及帧动画）/ `all`（sprite+palette）。另返回 `archives`（`recovered.json` 里**全部** MPQ 路径，含无 CL2/CEL 精灵的 `devilutionx.mpq`），前端把它整栈传给 `ui.build` / `scene.build` 以解析 `.clx` 界面美术与 `ui_art\diablo.pal`（`src/tools/sprite_tools.cpp`、`src/tools/ui_layout.h`） |
 | `spell.list` | 从 DevilutionX 数据表（`spelldat` / `misdat` / `missile_sprites` / `monstdat`）合成**玩家技能与怪物远程攻击的全阶段视觉目录**：每个条目按 施法 → 投射 → 命中 → debuff 四阶段组织；`sprite` 层给出编号 `missiles\{name}{N}.cl2` 文件清单 + 显式 `width`（编号文件**不能**用 `width:"auto"`），`trn` 层给出目标 debuff 的调色板重映射；另附 `impact_catalog` 候选命中特效。每条还带 `name_zh`（中文名，取自 `Translations/zh_TW.po`→`zh_CN.po` 的 `msgctxt "spell"`，无翻译则回退英文名）、`description`（按已解析阶段链 + 玩家法力/智力消耗合成的中文说明），以及**法术级别参数**：`level`（`spelldat.bookLevel`，法术等级/阶）、`staff_level`、`mana_cost`、`mana_multiplier`（每升 1 级训练减少的法力）、`min_mana`、`staff_min/staff_max`，与 `mana_by_level`（按 `GetManaAmount` 公式算出的 1..bookLevel 各级基础法力 `{level, mana}`，含 `min_mana` 下限，未乘职业系数）；另含 `visual_by_level`（玩家 1..bookLevel / 怪物 1..16 各级**视觉参数**，逐法术从 DevilutionX handler 转录：持续时间 `duration_ticks`/`duration_sec`、弹速 `speed`、范围 `range_tiles`/`radius_tiles`、弹射物数 `count` 及法术特有字段如 `segments`/`wall_length_tiles`，含角色/地下城层依赖的项标 `_note`；无级别视觉缩放的法术为空）。**怪物攻击侧**除 `GetMissileType()` 的 14 类远程 AI 外，还覆盖**在 AI 函数里直接 `AddMissile` 的形态**（Counselor 按智力发 Firebolt/ChargedBolt/LightningControl/Fireball + 近身双层 Flash、Familiar 闪电、Gloom 冲撞、Mega 近身地狱火），每个形态单独一条并有 `variant` / `condition` 字段（`id` 为 `AI` 或 `AI.variant`）；`unique_monstdat` 的唯一怪会额外叠加，故 Hork Demon（HorkSpawn）、Zhar / Lazarus（按智力 3 归入 Counselor.Fireball）、Red Vex / Black Jade（LazarusSuccubus）均按真实 AI 归属。另含 **`abilities[]` 引擎级怪物特殊能力**：`Blink` 受重击瞬移、`AcidPuddle` 酸怪死亡留池、`Hidden` 潜行系隐身，每条带 `monsters` / `trigger` / `source_ref`（Diablo 1 没有 D2 式 Thunderstorm / Waller / Vortex / Shielding 词缀）。另含 **`traps[]` 陷阱法术** 10 条：墙上机关陷阱（箭矢 / 火焰弹 / 闪电，按有效层数出现）、带陷阱宝箱（箭矢 / 火焰箭 / 新星，地狱火另有火焰之环 / 偷药水 / 吸法力）、地狱火喷火口与火焰拉杆，每条带 `objects`（宿主 `OBJ_*`）/ `trigger` / `source_ref`。当前为 51 技能 / 25 怪物攻击 / 3 特殊能力 / 10 陷阱。可用 `source` / `id` 过滤（`src/tools/sprite_tools.cpp`、`src/tools/spell_tables.h`、`src/tools/spell_visual_model.h`） |
 | `map.build` | 解码 Diablo 1 / Hellfire 关卡（TIL / MIN / DUN / SOL / level CEL）并渲染完整等距地图 PNG + ≤400px 预览 PNG + 每格碰撞/光照/透明标志 sidecar JSON 到 `out/maps/`，返回摘要与 base64 预览。必填 `archive` + `cel`/`til`/`min`/`sol`，以及 `dun`（档案内名）**或 `dun_path`（本地 `.dun`，用于 DevilutionX 调试版导出的动态地牢）**；可选 `palette`（默认 `levels/l1data/l1_2.pal`；**Cathedral 在游戏里由 `LoadRndLvlPal` 随机选 `l1_1..l1_4.pal` 之一，`gendata/cut2.pal` 是过场调色板，不要用于地牢**）、`archives`（额外 MPQ 搜索栈）、`micro_len`（10 原版 / 12 地狱火）、`blocks`（10 / 16）、`out`。当前为 FullyLit 渲染（逐像素光照为运行时效果，延后）。L1 示例：`levels/l1data/l1.cel`/`l1.til`/`l1.min`/`l1.sol` + `levels/l1data/rnd2.dun`；动态地图见 `docs/MAP_GENERATION.md`（`src/tools/map_tools.cpp`、`src/decoders/level_*.cpp`） |
 | `scene.list` | 列出可复原的**完整场景**（Tristram 城镇 + L1/L2/L3/L4 预设），返回 id/title/layout/网格尺寸/默认环境光，无需 MPQ（`src/tools/scene_tools.cpp`） |
@@ -160,8 +160,8 @@ g++ -I src -std=c++17 out/unit_tests.cpp \
     -static-libgcc -static-libstdc++ \
     -o out/unit_tests.exe && out/unit_tests.exe
 ```
-覆盖：CLX 解码、CEL→CLX / CL2→CLX 往返、**CL2/CEL 畸形输入与错误 `width` 拒绝（不崩溃）**、**`spell_tables.h` 纯 join（TSV/CRLF、编号文件生成、AI→导弹、阶段派生）**、PCX 解码、调色板加载、base64 编解码往返、**`testDeflateRoundTrip`（`compressZlib`↔`decompressZlib` 回环 + 5 组代表数据 + length 3–258 × distance 全 30 码边界 15 万+ 组合，覆盖 RFC 1951 额外位）**、**PNG write round-trip（IDAT 用 `decompressZlib` 解压校验）**；以及**关卡/场景解码器**（`loadTil` / `loadMin` / `loadDun` / `loadSol` 解析、`buildMicroGrid` 0-based 微索引/kNoMicro 拼装、Square/Triangle 的 level CEL 重编码与 RGBA 帧解码、强制三角形解码、调色板 4 字节步长回归、`renderMap` 两遍绘制 + 不透明背景 + 0 透明像素 + 空格预填 + frame()==0 守卫、**dLight 光照表（Normal/Hell/Soft、falloff/cone、`buildLightMap` 环境光/点光源/越界光源）与 renderMap 逐格光照着色**、**8 方向 A* 寻路（开放网格/墙体/斜角/Solid 目标/maxSteps/边界）**、`buildTownScene` 4 sector/预填、`buildDungeonScene` Dirt 预填、`sceneProjection`、`encodePNG`）；以及 **`testDungeonGen` 动态地牢生成器**（LCG 逐步算术、`GenerateRnd`/state、DUN tile 层解析、按层任务默认值、同 seed 确定性/不同 seed 差异、楼梯/地板结构、缺失 set-piece 报错，并对 DevilutionX 的 14 个 Cathedral fixture（Diablo + Hellfire）做 40×40 全格 0 差异 oracle 校验；fixture 目录可用 `DHFC_DRLG_FIXTURES` 指定，缺失时 SKIP）。
-源码路径：`src/decoders/*.cpp`、`src/tools/base64.h`、`src/tools/spell_tables.h`；测试脚本 `out/unit_tests.cpp`。
+覆盖：CLX 解码、CEL→CLX / CL2→CLX 往返、**CL2/CEL 畸形输入与错误 `width` 拒绝（不崩溃）**、**`testCelToClxPerFrameWidths`（逐帧宽度 CEL 解出不同帧宽、单宽/短数组/空数组干净拒绝）、`testInvWidthsTable`（179/61 帧宽表按名解析与大小写归一）**、**`spell_tables.h` 纯 join（TSV/CRLF、编号文件生成、AI→导弹、阶段派生）**、PCX 解码、调色板加载、base64 编解码往返、**`testDeflateRoundTrip`（`compressZlib`↔`decompressZlib` 回环 + 5 组代表数据 + length 3–258 × distance 全 30 码边界 15 万+ 组合，覆盖 RFC 1951 额外位）**、**PNG write round-trip（IDAT 用 `decompressZlib` 解压校验）**；以及**关卡/场景解码器**（`loadTil` / `loadMin` / `loadDun` / `loadSol` 解析、`buildMicroGrid` 0-based 微索引/kNoMicro 拼装、Square/Triangle 的 level CEL 重编码与 RGBA 帧解码、强制三角形解码、调色板 4 字节步长回归、`renderMap` 两遍绘制 + 不透明背景 + 0 透明像素 + 空格预填 + frame()==0 守卫、**dLight 光照表（Normal/Hell/Soft、falloff/cone、`buildLightMap` 环境光/点光源/越界光源）与 renderMap 逐格光照着色**、**8 方向 A* 寻路（开放网格/墙体/斜角/Solid 目标/maxSteps/边界）**、`buildTownScene` 4 sector/预填、`buildDungeonScene` Dirt 预填、`sceneProjection`、`encodePNG`）；以及 **`testDungeonGen` 动态地牢生成器**（LCG 逐步算术、`GenerateRnd`/state、DUN tile 层解析、按层任务默认值、同 seed 确定性/不同 seed 差异、楼梯/地板结构、缺失 set-piece 报错，并对 DevilutionX 的 14 个 Cathedral fixture（Diablo + Hellfire）做 40×40 全格 0 差异 oracle 校验；fixture 目录可用 `DHFC_DRLG_FIXTURES` 指定，缺失时 SKIP）。
+源码路径：`src/decoders/*.cpp`、`src/decoders/inv_widths.h`、`src/tools/base64.h`、`src/tools/spell_tables.h`；测试脚本 `out/unit_tests.cpp`。
 
 ### 2. Registry + JSON-RPC（纯逻辑，无需 MPQ）
 
@@ -200,8 +200,11 @@ g++ -I 3rdparty/StormLib/src -I 3rdparty -I src -std=c++17 \
 覆盖：`engine::Archive` 的 `normalizePath`/`open`/`list`/`verify`/`querySize`/
 `extract`/`extractToFile`，以及 `mpq.list`/`mpq.verify`/`mpq.extract`/`mpq.dump`/
 `mpq.recover`（含用内置字典 `mpq-info/dict/diablo1-harvest.txt` 的端到端恢复）；
-`sprite.list` 目录合成（过滤无 MPQ 文件的幽灵条目、cow 带真实宽度）、`sprite.decode`
-跨 MPQ 搜索、**截断 CL2 返回干净错误而非崩溃**、`cow.cel` 的 `width:"auto"` 解码，以及
+`sprite.list` 目录合成（过滤无 MPQ 文件的幽灵条目、cow 带真实宽度、`data\inv` 新建 `inv`
+家族：图标 `width=0` / 面板 `width=320`）、`sprite.decode` 跨 MPQ 搜索、**截断 CL2 返回干净
+错误而非崩溃**、`cow.cel` 的 `width:"auto"` 解码、**`data\inv\objcurs.cel` 逐帧宽度 `width:"auto"`
+与显式 `widths[]` 双路径解码（179 帧、帧宽 28/56 并存）、`objcurs2.cel` 61 帧、`inv.cel`
+320×352 单帧**，以及
 **`spell.list` 全阶段目录**（51 技能 / 25 怪物攻击 / 3 特殊能力 / 10 陷阱法术、Fireball 四阶段、Stone Curse TRN、
 Fire Wall 双文件、Flash 双层、Torchant→Fireball、default→Arrow，以及 Counselor 四弹按智力分流 +
 近身 Flash、Familiar 闪电、Gloom 冲撞、Mega 地狱火等 AI 内直接发弹的形态）；以及
@@ -219,8 +222,8 @@ micro 257–260 → frames 594–605，并验证组装 PNG。**`testLevelGenerat
 并验证同 seed 确定性；另测 L1 `quests:"none"`。
 源码路径：`src/engine/archive.cpp`、`src/tools/mpq_tools.cpp`、`src/tools/sprite_tools.cpp`、
 `src/tools/spell_tables.h`、`src/decoders/cl2.cpp`、`src/decoders/cel.cpp`、
-`src/decoders/sprite_width.cpp`、`src/decoders/level_*.cpp`、`src/decoders/dungeon_gen*.cpp`；
-测试脚本 `out/integration_tests.cpp`。
+`src/decoders/sprite_width.cpp`、`src/decoders/inv_widths.h`、`src/decoders/level_*.cpp`、
+`src/decoders/dungeon_gen*.cpp`；测试脚本 `out/integration_tests.cpp`。
 
 > 每轮改动后请完整运行以上三个套件，确保全绿。
 
@@ -244,9 +247,10 @@ out/recover_phase0.exe [devilutionx_root] [mpq_root]
   `mpq_root = D:/work/xt/diablo/DevilutionX-Hell Fire`（均可用参数覆盖）。
 - 源码路径：`mpq-info/recover_phase0.cpp`；产出：`mpq-info/dict/recovered.json`
   （汇总）与 `mpq-info/dict/recovered/<档案>.txt`（每行 `name<TAB>size`）。
-- 当前恢复 **2,080** 个真实文件名（DIABDAT 1224 / hfmonk 291 / spawn 315 /
-  hellfire 171 / devilutionx 63 / …），其中 TRN 调色板约 115 个。覆盖
-  plrgfx/monsters/missiles/items/objects/towners 及 TRN 调色板等运行时拼接族。
+- 当前恢复 **2,087** 个真实文件名（DIABDAT 1228 / hfmonk 291 / spawn 317 /
+  hellfire 172 / devilutionx 63 / …），其中 TRN 调色板约 115 个。覆盖
+  plrgfx/monsters/missiles/items/objects/towners/**inv**（`data\inv\*` 物品栏图标与面板）
+  及 TRN 调色板等运行时拼接族；`.cel` 候选名登记在 `diablo1-harvest.txt`。
   - 各家族的命名公式、DevilutionX 数据源与已验证扩展名见 `docs/RUNTIME_FILENAME_RULES.md`。
 
 - **批量提取已验证文件**：`recover_phase0` 产出的 2,080 个名（见 `recovered.json` /
@@ -280,7 +284,10 @@ out/recover_phase0.exe [devilutionx_root] [mpq_root]
 > 怪物/导弹/物品/物件/NPC 各有对应宽度）。把 `<width>` 写成 `auto` 即可让工具按
 > 精灵路径自动查表取宽，无需手填；物品（CEL）由 DevilutionX 引擎常量自动取宽
 > （掉落动画统一 `ItemAnimWidth=96`、`items\duricons.cel` 32、`items\map\mapztown.cel` 640），
-> 也可手填数字。调色板用任意 256 色 `.pal` 即可出形，选对游戏调色板则颜色正确。
+> 也可手填数字。另有 **逐帧变宽** 的精灵：`data\inv\objcurs.cel`（179 帧，图标宽 28/56/32…）
+> 与 `data\inv\objcurs2.cel`（61 帧），单一 `width` 无法解码；`width:"auto"` 自动套用内置
+> 逐帧宽度表，或显式传 `widths:[33,32,32,…,56]`。物品栏背景 `data\inv\inv*.cel` 仍是
+> 单帧、固定 `width=320`。调色板用任意 256 色 `.pal` 即可出形，选对游戏调色板则颜色正确。
 
 ```bash
 g++ -I 3rdparty -I 3rdparty/StormLib/src -I src -std=c++17 -static \
@@ -302,15 +309,18 @@ out/render_sprite.exe \
     out/render/warrior_attack.png 0
 ```
 
-- 源码路径：`mpq-info/render_sprite.cpp` + `src/decoders/png.cpp` + `src/decoders/deflate.cpp`；
-  PNG 编码器与 DEFLATE 压缩器含于单元测试（`writePNG` → 回读校验 round-trip、
-  `testDeflateRoundTrip` 的 compress↔decompress 穷举回环）。
-- 自动查表覆盖 6 类精灵：`plrgfx`（按 `sprites.tsv` 的 `stand`/`walk`/`attack`(含 `bow`)/`swHit`/`lightning`/`fire`/`magic`/`death`/`block` 列）、`monsters`（按 `monstdat.tsv` 的 `width`）、`missiles`（按 `missile_sprites.tsv` 的 `width`）、`objects`（按 `objdat.tsv` 的 `animWidth`）、`towners`（按 `towners.tsv` 的 `animWidth`），以及 `items`（无 TSV，按 DevilutionX `LoadCel` 编译期宽度：掉落动画统一 `ItemAnimWidth=96`（`items.h:185`）、`duricons`=32（`control_panel.cpp:406`）、`map\mapztown`=640（`doom.cpp:25`））。
+- 源码路径：`mpq-info/render_sprite.cpp` + `src/decoders/png.cpp` + `src/decoders/deflate.cpp`
+  + `src/decoders/inv_widths.h`（逐帧宽度表，header-only）；PNG 编码器与 DEFLATE 压缩器含于
+  单元测试（`writePNG` → 回读校验 round-trip、`testDeflateRoundTrip` 的 compress↔decompress
+  穷举回环）；`testCelToClxPerFrameWidths` / `testInvWidthsTable` 覆盖逐帧宽度解码与表查询。
+- 自动查表覆盖 6 类精灵：`plrgfx`（按 `sprites.tsv` 的 `stand`/`walk`/`attack`(含 `bow`)/`swHit`/`lightning`/`fire`/`magic`/`death`/`block` 列）、`monsters`（按 `monstdat.tsv` 的 `width`）、`missiles`（按 `missile_sprites.tsv` 的 `width`）、`objects`（按 `objdat.tsv` 的 `animWidth`）、`towners`（按 `towners.tsv` 的 `animWidth`），以及 `items`（无 TSV，按 DevilutionX `LoadCel` 编译期宽度：掉落动画统一 `ItemAnimWidth=96`（`items.h:185`）、`duricons`=32（`control_panel.cpp:406`）、`map\mapztown`=640（`doom.cpp:25`））。`data\inv` 另成一类：`objcurs.cel`/`objcurs2.cel` 逐帧变宽，由 `src/decoders/inv_widths.h` 的内置表按名解析（转录 DevilutionX `cursor.cpp:445-451` 所用的 `objcurs-widths.txt`/`objcurs2-widths.txt`）；`inv*.cel` 为单帧固定宽 320。
 - 已验证：`plrgfx\warrior\wlu\wluas.cl2` 自动查表取宽 96 渲染为 96×96 战士立姿精灵（含盾牌），
   80 帧（8 方向 × 10）均可解码无错位；怪物 `monsters\acid\acida.cl2`（宽 128）、导弹
   `missiles\arrows.cl2`（宽 96）、物件 `objects\armstand.cel`（宽 96）、NPC `towners\drunk\twndrunk.cel`
   （宽 96）均经自动查表渲染成功；`items` 下全部 45 个 CEL（含 `items\armor2.cel` 宽 96、
-  `items\duricons.cel` 宽 32、`items\map\mapztown.cel` 宽 640）经 `width:"auto"` 全量解码通过。
+  `items\duricons.cel` 宽 32、`items\map\mapztown.cel` 宽 640）经 `width:"auto"` 全量解码通过；
+  `data\inv\objcurs.cel`（179 帧，逐帧宽 33/32/28/56）、`data\inv\objcurs2.cel`（61 帧）、
+  `data\inv\inv*.cel`（1 帧 320×352）均解码通过。
 
 ### 6. 关卡地图与完整场景（阶段 4/5）
 

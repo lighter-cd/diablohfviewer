@@ -33,7 +33,10 @@ python -m http.server 8000        # 或： npx serve .
   另有 `ui` 分支（`sprite.list(kind:"ui")`），列出界面布局查看器用到的全部 UI 美术
   （`ui_art\*.pcx` / `data\*.clx·.cel` / `ctrlpan\*.cel` 等），点开即可看这些元素及其
   帧动画；每个 UI 叶子自带 `palette` / `width` / `frames`，解码时自动按自身调色板取色，
-  无需手动在下拉框选调色板。
+  无需手动在下拉框选调色板。另有 `inv` 分支（`data\inv\*`）：`cursors` 类为**物品栏光标
+  图标**（`objcurs.cel` 179 帧 / `objcurs2.cel` 61 帧，逐帧宽度不同），`panels` 类为
+  物品栏背景（`inv*.cel`，单帧 320×352）。注意 `items` 分支是物品**掉落地面**的动画，
+  不是背包里的图标；背包图标在 `inv` 分支。
 - **角色查看器**：见下方独立章节。
 - **怪物 / NPC 查看器**：见下方独立章节。怪物/NPC 没有 MPQ listfile，目录由后端按
   DevilutionX 数据表（`monstdat.tsv` / `towners.tsv`）**合成**（`sprite.list(family:"monsters"/"towners")`）。
@@ -225,6 +228,10 @@ web/
 - `width:"auto"` 由后端按精灵路径自动查 DevilutionX 数据表取帧宽；`items` 类 CEL 无数据表，
   改按 DevilutionX `LoadCel` 编译期宽度解析（掉落动画 96 / `duricons` 32 / `map\mapztown` 640），
   故目录树里每个 `items` 叶子都能直接解码，不再需要手填数字宽度。
+- `inv` 分支的图标 CEL 是**逐帧变宽**的：`sprite.list` 给 `cursors` 叶子 `width=0`，
+  前端据此发 `width:"auto"`，后端按名套用内置逐帧宽度表（`src/decoders/inv_widths.h`）
+  解码 179/61 帧；也支持显式传 `widths:[…]`（`buildDecodeArgs` 会透传）。`panels` 叶子
+  带 `width=320`（单帧背景）。`sprite.list` 不在条目里塞 `widths` 大数组，避免 WS 载荷膨胀。
 - `sprite.list` 支持 `kind`：`sprite`（默认，CL2/CEL）/ `palette`（仅 `.pal`）/
   `ui`（界面布局引用的美术：`ui_art\*.pcx`、`data\*.clx/.cel`、`ctrlpan\*.cel` …，
   每条带 `palette`/`width`/`frames`/`transparent_index`）/ `all`（sprite + palette）。

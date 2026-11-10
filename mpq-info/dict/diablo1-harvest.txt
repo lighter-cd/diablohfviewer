@@ -14,6 +14,11 @@ data\healthbox.clx
 data\hintbox.clx
 data\hintboxbackground.clx
 data\hinticons.clx
+data\inv\inv.cel
+data\inv\inv_rog.cel
+data\inv\inv_sor.cel
+data\inv\objcurs.cel
+data\inv\objcurs2.cel
 data\inv\objcurs.clx
 data\inv\objcurs2.clx
 data\inv\objcurs2-widths.txt

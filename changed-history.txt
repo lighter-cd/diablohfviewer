@@ -356,3 +356,7 @@
 ## 2026-11-11 02:12:06
 - 修复目录浏览模式下 items 类全部 CEL 解码失败：autoWidth 对 items 返回 -1 使 sprite.list 报 width=0，前端退化 width:"auto" 后 sprite.decode 抛 "cel requires a positive integer 'width'"，再被 jsonrpc 包成无信息量的 "tool execution failed"；按 DevilutionX LoadCel 编译期宽度补齐（掉落动画 ItemAnimWidth=96 / duricons=32 / map\mapztown=640），45 个 items CEL 全量 width:"auto" 解码通过；client.js 改从 error.data.error 展示真实原因；补回归单测、同步文档并刷新前端缓存版本号。
 - 涉及: src/decoders/sprite_width.cpp, web/src/client.js, web/src/main.js, web/src/level.js, web/index.html, web/level.html, out/unit_tests.cpp, out/integration_tests.cpp, README.md, web/README.md, docs/ARCHITECTURE.md, docs/PROJECT.md
+
+## 2026-11-11 06:09:40
+- 补录 data\inv 并扩展 sprite.decode 支持逐帧宽度：澄清 items\*.cel 是地面掉落动画、物品栏图标在 data\inv（字典原本完全未收录）；按项目约定在 diablo1-harvest.txt 补 5 个 .cel 候选名并重跑 recover_phase0 重建 recovered.json（+7 条）；新增 inv_widths.h 转录 DevilutionX objcurs/objcurs2 逐帧宽度表（179/61 值）、celToClx 逐帧宽度重载、sprite.decode 的 widths 参数与 width:"auto" 自动解析、classifySprite 新建 inv 家族（面板 320 / 图标 0 触发 auto）；前端透传 widths 并刷新缓存版本号；三套测试全绿、全部 data\inv 资源端到端解码通过，同步文档。
+- 涉及: mpq-info/dict/diablo1-harvest.txt, src/decoders/inv_widths.h, src/decoders/cel.cpp, src/decoders/cel.h, src/decoders/sprite_width.h, src/tools/sprite_tools.cpp, web/src/main.js, web/src/level.js, web/index.html, web/level.html, out/unit_tests.cpp, out/integration_tests.cpp, README.md, web/README.md, docs/ARCHITECTURE.md, docs/PROJECT.md, docs/RUNTIME_FILENAME_RULES.md

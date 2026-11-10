@@ -43,6 +43,7 @@
 #include "mcp/jsonrpc.h"
 #include "decoders/level.h"
 #include "decoders/palette.h"
+#include "decoders/inv_widths.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -806,6 +807,146 @@ static void testSpriteDecodeItems() {
         CHECK(dec["frames"][0].value("width", 0) == 96,
               "items armor2 frame width == 96");
     printf("sprite_tools (items decode): %s\n", allOk ? "PASS" : "FAIL");
+}
+
+// data\inv\* must be enumerated as its own "inv" family. No MPQ is needed:
+// sprite.list only reads the dictionary. Panel backgrounds carry width 320,
+// cursor icons carry width 0 (their widths are per-frame, resolved by
+// sprite.decode's built-in table when the frontend sends width:"auto").
+static void testSpriteListInvFamily() {
+    ToolRegistry reg;
+    tools::registerSpriteTools(reg);
+
+    std::string dictPath = "out/_it_inv_dict.json";
+    {
+        std::ofstream d(dictPath);
+        d << "{ \"archives\": [ { \"name\": \"DIABDAT.MPQ\", "
+             "\"path\": \"D:/fixtures/DIABDAT.MPQ\", \"recovered\": [ ";
+        d << "{ \"name\": \"data\\\\inv\\\\objcurs.cel\", \"size\": 209584 }, ";
+        d << "{ \"name\": \"data\\\\inv\\\\inv.cel\", \"size\": 113708 }, ";
+        d << "{ \"name\": \"data\\\\inv\\\\inv_rog.cel\", \"size\": 113708 }, ";
+        d << "{ \"name\": \"items\\\\armor2.cel\", \"size\": 100 } ";
+        d << "] }, { \"name\": \"hellfire.mpq\", "
+             "\"path\": \"D:/fixtures/hellfire.mpq\", \"recovered\": [ ";
+        d << "{ \"name\": \"data\\\\inv\\\\objcurs2.cel\", \"size\": 57840 } ";
+        d << "] } ] }";
+    }
+    auto resp = handleRequest(reg, json{
+        {"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/call"},
+        {"params", json{{"name", "sprite.list"},
+                        {"arguments", json{{"dict", dictPath}, {"family", "inv"}}}}}});
+    CHECK(resp.has_value(), "inv: sprite.list returns a response");
+    json lst = resp ? resp->value("result", json::object()) : json::object();
+    json sprites = lst.value("sprites", json::array());
+    CHECK(sprites.size() == 4, "inv: sprite.list enumerates 4 data\\inv sprites");
+    int nCursors = 0, nPanels = 0;
+    for (auto& s : sprites) {
+        CHECK(s.value("family", "") == "inv", "inv: family == inv");
+        CHECK(s.value("type", "") == "cel", "inv: type == cel");
+        CHECK(!s.contains("widths"), "inv: no bulky widths[] on catalog entries");
+        const std::string cls = s.value("class", "");
+        if (cls == "cursors") {
+            ++nCursors;
+            CHECK(s.value("width", -1) == 0, "inv: cursor entry width == 0 (auto per-frame)");
+        } else if (cls == "panels") {
+            ++nPanels;
+            CHECK(s.value("width", -1) == 320, "inv: panel entry width == 320");
+        }
+    }
+    CHECK(nCursors == 2, "inv: 2 cursor icon entries");
+    CHECK(nPanels == 2, "inv: 2 panel background entries");
+    std::remove(dictPath.c_str());
+    printf("sprite_tools (inv catalog): %s\n", allOk ? "PASS" : "FAIL");
+}
+
+// data\inv\objcurs*.cel inventory ICONS have a different width per frame.
+// sprite.decode must decode them via width:"auto" (built-in table) or an
+// explicit widths[] array, while a single width is still rejected cleanly.
+static void testSpriteDecodeInv() {
+    const std::string base = "/d/work/xt/diablo/DevilutionX-Hell Fire/DIABDAT.MPQ";
+    const std::string hf = "/d/work/xt/diablo/DevilutionX-Hell Fire/hellfire.mpq";
+    const std::string pal = "gendata\\cut2.pal";
+    {
+        std::ifstream a(engine::Archive::normalizePath(base));
+        std::ifstream b(engine::Archive::normalizePath(hf));
+        if (!a.good() || !b.good()) {
+            printf("  (skipped inv decode; DIABDAT/hellfire MPQ fixture missing)\n");
+            printf("sprite_tools (inv decode): %s\n", allOk ? "PASS" : "FAIL");
+            return;
+        }
+    }
+
+    ToolRegistry reg;
+    tools::registerMpqTools(reg);
+    tools::registerSpriteTools(reg);
+    auto call = [&](const json& args) -> json {
+        auto resp = handleRequest(reg, json{
+            {"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/call"},
+            {"params", json{{"name", "sprite.decode"}, {"arguments", args}}}});
+        return resp ? *resp : json::object();
+    };
+    const json stack = json::array({base, hf});
+
+    // 1) width:"auto" resolves the built-in 179-value table.
+    json autoResp = call(json{{"archive", base}, {"archives", stack},
+                              {"name", "data\\inv\\objcurs.cel"},
+                              {"width", "auto"}, {"palette_name", pal}});
+    CHECK(!autoResp.contains("error"), "inv: objcurs width:auto has no JSON-RPC error");
+    json dec = autoResp.value("result", json::object());
+    CHECK(dec.value("format", std::string()) == "cel", "inv: objcurs decodes as cel");
+    CHECK(dec.value("frame_count", 0) == 179, "inv: objcurs frame_count == 179");
+    if (dec.contains("frames") && dec["frames"].is_array() && !dec["frames"].empty()) {
+        CHECK(dec["frames"][0].value("width", 0) == 33,
+              "inv: objcurs frame 0 width == 33");
+        bool has28 = false, has56 = false;
+        for (auto& f : dec["frames"]) {
+            const int w = f.value("width", 0);
+            if (w == 28) has28 = true;
+            if (w == 56) has56 = true;
+        }
+        CHECK(has28 && has56, "inv: objcurs frames have varying widths (28 and 56)");
+        CHECK(!dec["frames"][0].value("rgba_base64", std::string()).empty(),
+              "inv: objcurs frame has RGBA");
+    }
+
+    // 2) Explicit widths[] array (same table) also decodes.
+    json ws = json::array();
+    for (uint16_t w : decoders::inv_widths::kObjcursWidths) ws.push_back(w);
+    json expl = call(json{{"archive", base}, {"archives", stack},
+                          {"name", "data\\inv\\objcurs.cel"},
+                          {"widths", ws}, {"palette_name", pal}, {"frame", 0}});
+    CHECK(!expl.contains("error"), "inv: objcurs explicit widths[] has no error");
+    CHECK(expl.value("result", json::object()).value("frame_count", 0) == 179,
+          "inv: objcurs explicit widths[] frame_count == 179");
+
+    // 3) A single uniform width is still rejected (clean error, no crash).
+    json bad = call(json{{"archive", base}, {"archives", stack},
+                         {"name", "data\\inv\\objcurs.cel"},
+                         {"width", 28}, {"palette_name", pal}, {"frame", 0}});
+    CHECK(bad.is_object() && (bad.contains("result") || bad.contains("error")),
+          "inv: objcurs wrong width returns a response (no crash)");
+    CHECK(bad.contains("error"), "inv: objcurs single width 28 is rejected");
+
+    // 4) Hellfire's extra icon sheet (61 frames) resolves by its own name.
+    json a2 = call(json{{"archive", hf}, {"archives", stack},
+                        {"name", "data\\inv\\objcurs2.cel"},
+                        {"width", "auto"}, {"palette_name", pal}, {"frame", 0}});
+    CHECK(!a2.contains("error"), "inv: objcurs2 width:auto has no error");
+    CHECK(a2.value("result", json::object()).value("frame_count", 0) == 61,
+          "inv: objcurs2 frame_count == 61");
+
+    // 5) Panel backgrounds are ordinary single-width CELs (320x352).
+    json panel = call(json{{"archive", base}, {"archives", stack},
+                           {"name", "data\\inv\\inv.cel"},
+                           {"width", 320}, {"palette_name", pal}, {"frame", 0}});
+    CHECK(!panel.contains("error"), "inv: inv.cel width 320 has no error");
+    json pd = panel.value("result", json::object());
+    CHECK(pd.value("frame_count", 0) == 1, "inv: inv.cel frame_count == 1");
+    if (pd.contains("frames") && pd["frames"].is_array() && !pd["frames"].empty()) {
+        CHECK(pd["frames"][0].value("width", 0) == 320, "inv: inv.cel width == 320");
+        CHECK(pd["frames"][0].value("height", 0) == 352, "inv: inv.cel height == 352");
+    }
+    printf("sprite_tools (inv decode): %s\n", allOk ? "PASS" : "FAIL");
 }
 
 // spell.list: stage-ordered spell / monster-attack catalog synthesized from the
@@ -1727,6 +1868,7 @@ int main() {
     testNormalize();
     testSpriteList();
     testSpriteListSynthesis();
+    testSpriteListInvFamily();
 
     std::string mpq = "/d/work/xt/diablo/DevilutionX-Hell Fire/devilutionx.mpq";
     if (const char* e = std::getenv("DHFC_TEST_MPQ"))
@@ -1753,6 +1895,7 @@ int main() {
     testSpriteListCatalogFixes();
     testSpriteDecodeCow();
     testSpriteDecodeItems();
+    testSpriteDecodeInv();
     testSpellListSynthesis();
     testLevelMap(mpq);
     testSceneTools(mpq);

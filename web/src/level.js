@@ -4,7 +4,7 @@
 // base64 PNGs (assembly / micro pieces / CEL frames) onto canvases. The
 // backend does all MPQ/TIL/MIN/CEL work; this page never reads files.
 
-import { McpClient } from "./client.js?v=20261111a";
+import { McpClient } from "./client.js?v=20261111b";
 
 const $ = (id) => document.getElementById(id);
 const client = new McpClient();

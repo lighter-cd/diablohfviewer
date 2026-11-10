@@ -150,7 +150,7 @@ numFrames == 1 ->  missiles\{name}.cl2        （无数字后缀；{name}1.cl2 �
 
 ---
 
-## 6. items — 物品掉落 / 背包精灵
+## 6. items — 物品掉落地面的动画（非背包图标）
 
 **公式**（`Source/items.cpp:2428`，`InitItemGFX`）：
 
@@ -165,6 +165,36 @@ items\{ItemDropNames[i]}.cel
 - 通过 `LoadCel` 加载 ⇒ 扩展名 `.cel`。
 
 - **生成函数**：`genItems()`（内嵌 44 常量数组 + 2 个 HUD 精灵）。
+- **已验证扩展名**：`.cel`。
+- 注意：`items\*.cel` 是**物品掉落在地上时的翻转动画**（`InitItemGFX` → `itemanims[]`，
+  `ItemAnimWidth=96`），**不是**界面物品栏里显示的图标；后者在 `data\inv\`（见 §6a）。
+
+---
+
+## 6a. data\inv — 界面物品栏图标与面板
+
+**来源**（`Source/cursor.cpp:445-451` / `Source/inv.cpp:1181`）：
+
+```text
+data\inv\objcurs.cel      # 原版物品栏 / 光标图标，179 帧，逐帧变宽
+data\inv\objcurs2.cel     # Hellfire 追加图标，61 帧，逐帧变宽
+data\inv\inv.cel          # 物品栏背景（Warrior / Barbarian）
+data\inv\inv_rog.cel      # 物品栏背景（Rogue / Bard）
+data\inv\inv_sor.cel      # 物品栏背景（Sorcerer / Monk）
+```
+
+- 图标 CEL 由 `GetInvItemSprite(cursId)`（`cursor.cpp:464`）按 `ICURS_*` 索引取帧，
+  用于背包格子、鼠标拿起物品、快捷栏等；`items.h:185` 的 `ItemAnimWidth=96` **不适用于此**。
+- **逐帧变宽**：每帧宽度不同（1×1 物品 28px、2×2 物品 56px，另有 32/33/23 等），
+  CEL 文件本身不存宽度。DevilutionX 用 `LoadCel(..., ReadWidths("data\inv\objcurs-widths.txt").data())`
+  传**宽度数组**（`assets/data/inv/objcurs-widths.txt` 179 值、
+  `mods/hf/data/inv/objcurs2-widths.txt` 61 值）；本项目转录到 `src/decoders/inv_widths.h`。
+- 面板 `inv*.cel` 为单帧、固定宽 320（`SidePanelSize`，`control/control.hpp:38`）。
+- **所在 MPQ**（`mpq.recover` 实测）：`objcurs.cel` + `inv*.cel` 在 `DIABDAT.MPQ`
+  （`spawn.mpq` 另有 `objcurs.cel` / `inv.cel`），`objcurs2.cel` 在 `hellfire.mpq`。
+  `.clx` / `*-widths.txt` 是 DevilutionX 现代档资产，不在经典 MPQ 内。
+- **字典**：经典 `.cel` 名登记在 `mpq-info/dict/diablo1-harvest.txt`；
+  `sprite.list` 归为 `inv` 家族（`class=cursors`/`panels`）。
 - **已验证扩展名**：`.cel`。
 
 ---

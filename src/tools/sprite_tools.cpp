@@ -15,6 +15,7 @@
 #include "decoders/cl2.h"
 #include "decoders/pcx.h"
 #include "decoders/sprite_width.h"
+#include "decoders/inv_widths.h"
 #include "tools/ui_layout.h"
 
 #include <filesystem>
@@ -239,16 +240,31 @@ mcp::ToolResult toolSpriteDecode(const mcp::json& params)
     std::vector<decoders::DecodedFrame> frames;
     std::vector<uint8_t> embeddedPal;
 
-    // Resolve width for CL2/CEL. Supports an explicit integer or the string
-    // "auto" (look up from DevilutionX data tables by the sprite path).
+    // Resolve width for CL2/CEL. Supports:
+    //   - "widths": [..]   explicit per-frame widths (CEL only; overrides width)
+    //   - "width":  N      a single integer width
+    //   - "width":  "auto" look up from DevilutionX tables by sprite path; for
+    //                      data\inv\objcurs*.cel this resolves to the built-in
+    //                      per-frame width table (their frames vary in width).
     int spriteWidth = 0;
     bool useAutoWidth = false;
+    std::vector<uint16_t> frameWidths;
     // devRoot is needed both for autoWidth and for monster direction count, so
     // declare it at function scope and (re)assign it here.
     std::filesystem::path devRoot =
         (params.contains("devilutionx_root") && params["devilutionx_root"].is_string())
             ? std::filesystem::path(params["devilutionx_root"].get<std::string>())
             : std::filesystem::path("D:/work/xt/diablo/DevilutionX");
+    if (params.contains("widths")) {
+        const auto& ws = params["widths"];
+        if (!ws.is_array() || ws.empty())
+            throw std::invalid_argument("'widths' must be a non-empty array of positive integers");
+        for (const auto& w : ws) {
+            if (!w.is_number_integer() || w.get<int>() <= 0 || w.get<int>() > 65535)
+                throw std::invalid_argument("'widths' entries must be positive integers <= 65535");
+            frameWidths.push_back(static_cast<uint16_t>(w.get<int>()));
+        }
+    }
     if (params.contains("width")) {
         const auto& w = params["width"];
         if (w.is_string())
@@ -256,13 +272,19 @@ mcp::ToolResult toolSpriteDecode(const mcp::json& params)
         else if (w.is_number_integer())
             spriteWidth = w.get<int>();
     }
-    if (useAutoWidth) {
-        std::string dbg;
-        spriteWidth = decoders::sprite_width::autoWidth(name, devRoot, dbg);
-        // Only CL2/CEL truly require a resolved width; PCX/CLX are
-        // self-describing (PCX header, CLX frame table), so a failed lookup is
-        // harmless there. The per-format checks below still enforce a positive
-        // width for CL2/CEL, so don't throw here for formats that don't need it.
+    if (useAutoWidth && frameWidths.empty()) {
+        // Inventory cursor CELs have a per-frame width table, not a single one.
+        auto table = decoders::inv_widths::invWidthsForName(name);
+        if (!table.empty()) {
+            frameWidths = table.toVector();
+        } else {
+            std::string dbg;
+            spriteWidth = decoders::sprite_width::autoWidth(name, devRoot, dbg);
+            // Only CL2/CEL truly require a resolved width; PCX/CLX are
+            // self-describing (PCX header, CLX frame table), so a failed lookup
+            // is harmless there. The per-format checks below still enforce a
+            // positive width for CL2/CEL.
+        }
     }
 
     if (endsWith(lower, ".clx")) {
@@ -270,14 +292,20 @@ mcp::ToolResult toolSpriteDecode(const mcp::json& params)
         clxBytes = buf;
     } else if (endsWith(lower, ".cl2")) {
         format = "cl2";
+        if (!frameWidths.empty())
+            throw std::runtime_error("per-frame 'widths' is only supported for .cel sprites");
         if (spriteWidth <= 0)
             throw std::runtime_error("cl2 requires a positive integer 'width' or width:\"auto\"");
         clxBytes = decoders::cl2ToClx(buf.data(), buf.size(), static_cast<uint16_t>(spriteWidth));
     } else if (endsWith(lower, ".cel")) {
         format = "cel";
-        if (spriteWidth <= 0)
-            throw std::runtime_error("cel requires a positive integer 'width' or width:\"auto\"");
-        clxBytes = decoders::celToClx(buf.data(), buf.size(), static_cast<uint16_t>(spriteWidth));
+        if (!frameWidths.empty()) {
+            clxBytes = decoders::celToClx(buf.data(), buf.size(), frameWidths);
+        } else {
+            if (spriteWidth <= 0)
+                throw std::runtime_error("cel requires a positive integer 'width' or width:\"auto\"");
+            clxBytes = decoders::celToClx(buf.data(), buf.size(), static_cast<uint16_t>(spriteWidth));
+        }
     } else if (endsWith(lower, ".pcx")) {
         format = "pcx";
         decoders::DecodedFrame fr;
@@ -389,10 +417,12 @@ mcp::ToolResult toolSpriteDecode(const mcp::json& params)
 // is something we enumerate: CL2 / CEL sprites, or .pal palette files. Used by
 // sprite.list (the `kind` filter decides which of these to emit).
 struct SpriteInfo {
-    std::string family; // plrgfx / monsters / missiles / items / objects / towners / palette
+    // plrgfx / monsters / missiles / items / objects / towners / inv / palette
+    std::string family;
     std::string cls;    // class path, assetsSuffix, missile/item/object name, etc.
     std::string type;   // 2-char player type code (as/at/...), or monster L letter
     bool        sprite = false;
+    int         fixedWidth = 0; // single known width for families without a TSV
 };
 
 static SpriteInfo classifySprite(const std::string& name, bool& isSpriteExt) {
@@ -471,6 +501,18 @@ static SpriteInfo classifySprite(const std::string& name, bool& isSpriteExt) {
     } else if ((idx = findTok("towners")) >= 0) {
         r.family = "towners";
         r.cls = stripExt(joinAfter(idx));
+        r.sprite = true;
+    } else if (comps.size() >= 3 && comps[0] == "data" && comps[1] == "inv") {
+        // data\inv\* : inventory cursor ICONS (objcurs*.cel, one width per
+        // frame, resolved by decoders/inv_widths.h) and per-class inventory
+        // panel backgrounds (inv*.cel, fixed width 320 = SidePanelSize.width,
+        // DevilutionX control/control.hpp:38).
+        r.family = "inv";
+        const std::string stem = stripExt(comps.back());
+        const bool isCursor = (stem.rfind("objcurs", 0) == 0);
+        r.cls = isCursor ? "cursors" : "panels";
+        r.type = "cel";
+        r.fixedWidth = isCursor ? 0 : 320;
         r.sprite = true;
     }
     return r;
@@ -787,9 +829,17 @@ mcp::ToolResult toolSpriteList(const mcp::json& params)
                     continue;
                 int w = 0;
                 if (!isPal) {
-                    std::string dbg;
-                    int aw = decoders::sprite_width::autoWidth(name, devRoot, dbg);
-                    if (aw > 0) w = aw;
+                    if (si.family == "inv") {
+                        // Panels are single-frame width 320; cursor CELs are
+                        // per-frame (no single width) so width 0 makes the
+                        // frontend send width:"auto", which resolves the
+                        // built-in table in sprite.decode.
+                        w = si.fixedWidth;
+                    } else {
+                        std::string dbg;
+                        int aw = decoders::sprite_width::autoWidth(name, devRoot, dbg);
+                        if (aw > 0) w = aw;
+                    }
                 }
                 sprites.push_back(mcp::json{
                     { "name", name },
@@ -1037,8 +1087,11 @@ void registerSpriteTools(ToolRegistry& reg)
                               { "description", "in-archive sprite name, e.g. data\\health.clx" } } },
                       { "palette_name", json{ { "type", "string" } } },
                       { "palette_b64", json{ { "type", "string" } } },
-                      { "width", json{ { "type", "string" },
+                      { "width", json{ { "type", json::array({"integer", "string"}) },
                                         { "description", "required for .cel/.cl2; an integer (e.g. 96) or the string \"auto\" to look up from DevilutionX data tables by sprite path" } } },
+                      { "widths", json{ { "type", "array" },
+                                         { "items", json{ { "type", "integer" } } },
+                                         { "description", "optional per-frame widths for .cel sprites whose frames differ in width (e.g. data\\inv\\objcurs.cel, 179 frames). Overrides 'width'. With width:\"auto\" the built-in table for data\\inv\\objcurs*.cel is used automatically" } } },
                       { "devilutionx_root", json{ { "type", "string" },
                                                    { "description", "DevilutionX source root for width:\"auto\" (default D:/work/xt/diablo/DevilutionX)" } } },
                       { "apply_trn", json{ { "type", "boolean" },
@@ -1061,7 +1114,10 @@ void registerSpriteTools(ToolRegistry& reg)
         "same art the GUI layout viewer composites (with frame info for playback). "
         "kind='all' returns sprites + palettes together (no UI art). The frontend builds "
         "its catalog tree from this and then calls sprite.decode(name, width:\"auto\") "
-        "per leaf. Also returns 'archives': EVERY MPQ path from recovered.json "
+        "per leaf. The 'inv' family holds data\\inv\\* inventory cursor icons "
+        "(objcurs*.cel: frames have different widths, resolved automatically by "
+        "sprite.decode from a built-in table) and inventory panel backgrounds "
+        "(inv*.cel: single width 320). Also returns 'archives': EVERY MPQ path from recovered.json "
         "(including archives that hold no CL2/CEL sprites, e.g. devilutionx.mpq with "
         "its .clx UI art and ui_art\\diablo.pal) -- pass this full stack as 'archives' "
         "to ui.build / scene.build so cross-archive art resolves.",
@@ -1075,7 +1131,7 @@ void registerSpriteTools(ToolRegistry& reg)
                               { "description", "DevilutionX source root for width auto-resolve (default D:/work/xt/diablo/DevilutionX)" } } },
                       { "family",
                         json{ { "type", "string" },
-                              { "description", "filter by family: plrgfx / monsters / missiles / items / objects / towners (empty = all)" } } },
+                              { "description", "filter by family: plrgfx / monsters / missiles / items / objects / towners / inv / ui / palette (empty = all)" } } },
                       { "class",
                         json{ { "type", "string" },
                               { "description", "filter by class (classPath, assetsSuffix, or sprite name; empty = all)" } } },

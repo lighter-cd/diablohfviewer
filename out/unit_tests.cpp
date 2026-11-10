@@ -30,6 +30,7 @@
 #include "decoders/png.h"
 #include "decoders/deflate.h"
 #include "decoders/sprite_width.h"
+#include "decoders/inv_widths.h"
 #include "decoders/level.h"
 #include "decoders/level_light.h"
 #include "decoders/level_path.h"
@@ -210,6 +211,94 @@ static void testCelRejectsMalformed()
     expectThrow(pastEof, 4, "frame offset past EOF rejected");
 
     printf("CEL malformed-input: %s\n", allOk ? "PASS" : "FAIL");
+}
+
+// ---------------------------------------------------------------------------
+// decoders/inv_widths.h: built-in per-frame width tables for data\inv\objcurs*.cel
+// ---------------------------------------------------------------------------
+static void testInvWidthsTable()
+{
+    using decoders::inv_widths::invWidthsForName;
+    auto t1 = invWidthsForName("data\\inv\\objcurs.cel");
+    auto t2 = invWidthsForName("DATA\\INV\\OBJCURS2.CEL"); // case-insensitive basename
+    auto t3 = invWidthsForName("data\\inv\\objcurs2.cel");
+    auto t4 = invWidthsForName("data\\inv\\inv.cel");       // panel: single width
+    auto t5 = invWidthsForName("items\\armor2.cel");        // unrelated family
+
+    if (t1.count != 179 || t2.count != 61 || t3.count != 61) {
+        printf("  inv widths: FAIL (counts %zu/%zu/%zu)\n",
+               t1.count, t2.count, t3.count);
+        allOk = false;
+    }
+    if (t1.empty() || t1.data[0] != 33 || t1.data[178] != 56) {
+        printf("  inv widths: FAIL (objcurs first/last values)\n");
+        allOk = false;
+    }
+    if (!t4.empty() || !t5.empty()) {
+        printf("  inv widths: FAIL (panel/unrelated name must not resolve)\n");
+        allOk = false;
+    }
+    if (t1.toVector().size() != t1.count || t3.toVector().size() != t3.count) {
+        printf("  inv widths: FAIL (toVector size)\n");
+        allOk = false;
+    }
+    printf("inv_widths: %s\n", allOk ? "PASS" : "FAIL");
+}
+
+// ---------------------------------------------------------------------------
+// decoders: celToClx per-frame width overload (data\inv\objcurs*.cel icons).
+// ---------------------------------------------------------------------------
+static void testCelToClxPerFrameWidths()
+{
+    uint8_t pal[256 * 3];
+    for (int i = 0; i < 256 * 3; ++i) pal[i] = static_cast<uint8_t>(i);
+    auto w32 = [](std::vector<uint8_t>& b, size_t o, uint32_t v) { WriteLE32(&b[o], v); };
+    auto w16 = [](std::vector<uint8_t>& b, size_t o, uint16_t v) { WriteLE16(&b[o], v); };
+
+    // Two frames with DIFFERENT widths (4 and 3). Frame offset table:
+    //   [0]=2 frames, [4]=16 (frame1 start), [8]=31 (frame2 start),
+    //   [12]=45 (EOF; also the singleGroup probe).
+    // Each frame has a 10-byte CEL header (first uint16 == 10) + one RLE row.
+    std::vector<uint8_t> cb(45);
+    w32(cb, 0, 2); w32(cb, 4, 16); w32(cb, 8, 31); w32(cb, 12, 45);
+    w16(cb, 16, 10);
+    cb[26] = 0x04; cb[27] = 10; cb[28] = 20; cb[29] = 30; cb[30] = 40;
+    w16(cb, 31, 10);
+    cb[41] = 0x03; cb[42] = 50; cb[43] = 60; cb[44] = 70;
+
+    auto clx = celToClx(cb.data(), cb.size(), std::vector<uint16_t>{4, 3});
+    auto fr = decodeClx(clx, std::vector<uint8_t>(pal, pal + 256 * 3));
+    if (fr.size() != 2) {
+        printf("  cel per-frame widths: FAIL (frames=%zu)\n", fr.size());
+        allOk = false;
+    } else if (fr[0].width != 4 || fr[1].width != 3 ||
+               fr[0].height != 1 || fr[1].height != 1) {
+        printf("  cel per-frame widths: FAIL (dims %ux%u / %ux%u)\n",
+               fr[0].width, fr[0].height, fr[1].width, fr[1].height);
+        allOk = false;
+    }
+
+    // The SAME bytes with a single uniform width must be rejected cleanly:
+    // frame 2 is 3 wide, so width 4 overruns its frame boundary.
+    auto expectThrow = [&](const std::vector<uint16_t>& ws, uint16_t uniform,
+                           const char* label) {
+        bool threw = false;
+        try {
+            if (uniform != 0) (void)celToClx(cb.data(), cb.size(), uniform);
+            else (void)celToClx(cb.data(), cb.size(), ws);
+        } catch (const std::runtime_error&) {
+            threw = true;
+        }
+        if (!threw) {
+            printf("  %s: FAIL (no exception)\n", label);
+            allOk = false;
+        }
+    };
+    expectThrow({}, 4, "uniform width rejected for per-frame CEL");
+    expectThrow(std::vector<uint16_t>{4}, 0, "short per-frame width table rejected");
+    expectThrow(std::vector<uint16_t>{}, 0, "empty per-frame width table rejected");
+
+    printf("CEL per-frame widths: %s\n", allOk ? "PASS" : "FAIL");
 }
 
 // ---------------------------------------------------------------------------
@@ -2147,6 +2236,8 @@ int main()
     testClxDecode();
     testCelRoundTrip();
     testCelRejectsMalformed();
+    testCelToClxPerFrameWidths();
+    testInvWidthsTable();
     testCl2RoundTrip();
     testCl2RejectsMalformed();
     testPcxDecode();

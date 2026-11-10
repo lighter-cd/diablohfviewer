@@ -21,4 +21,11 @@ namespace decoders {
 // Returns a CLX byte buffer. `frameWidth` is the width of every frame.
 std::vector<uint8_t> celToClx(const uint8_t* data, size_t size, uint16_t frameWidth);
 
+// Per-frame variant: `frameWidths[i]` is the width of frame i (global frame
+// index across all groups). Needed by `data\inv\objcurs*.cel`, whose inventory
+// icon frames have different widths. Throws std::runtime_error if the table is
+// empty or shorter than the CEL's frame count.
+std::vector<uint8_t> celToClx(const uint8_t* data, size_t size,
+                              const std::vector<uint16_t>& frameWidths);
+
 } // namespace decoders

@@ -17,9 +17,9 @@
 // Player CL2 frames are stored direction-major: 8 directions x N frames, so
 // frameIndex = dir * framesPerDir + frameInDir (framesPerDir = total/8).
 
-import { McpClient } from "./client.js?v=20261111a";
-import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js?v=20261111a";
-import { drawFrame, drawComposite, drawScene } from "./viewer.js?v=20261111a";
+import { McpClient } from "./client.js?v=20261111b";
+import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js?v=20261111b";
+import { drawFrame, drawComposite, drawScene } from "./viewer.js?v=20261111b";
 
 const $ = (id) => document.getElementById(id);
 
@@ -727,6 +727,13 @@ function buildDecodeArgs(sprite, nameOverride, opts = {}) {
           : (sprite && sprite.width ? sprite.width : "auto"),
     palette_name: palette,
   };
+  // Per-frame widths for CELs whose frames differ in width (data\inv\objcurs*.cel
+  // inventory icons). sprite.list does not ship the 179/61-wide arrays (too big
+  // for the WS payload); the backend resolves them from a built-in table when
+  // width:"auto" is sent. This passthrough covers direct calls / overlay layers.
+  const widths = opts.widths !== undefined ? opts.widths
+               : (sprite && Array.isArray(sprite.widths) ? sprite.widths : undefined);
+  if (widths !== undefined) args.widths = widths;
   // An explicit TRN (combat debuff tint on the target) wins over the global
   // toggle. Otherwise the toggle uses the class TRN or a chosen preset.
   if (opts.trn) {

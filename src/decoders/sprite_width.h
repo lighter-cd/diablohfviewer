@@ -13,8 +13,11 @@
 //   missiles  -> assets/txtdata/missiles/missile_sprites.tsv (column "width")
 //   objects   -> assets/txtdata/objects/objdat.tsv           (column "animWidth")
 //   towners   -> assets/txtdata/towners/towners.tsv           (column "animWidth")
+//   items     -> DevilutionX LoadCel constants (ItemAnimWidth=96, duricons=32,
+//                map\mapztown=640); no TSV, but still resolved automatically.
 //
-// items (CEL) have no width table and still require a manual width.
+// `data\inv\objcurs*.cel` inventory ICONS are different: each frame has its own
+// width, so they are handled by decoders/inv_widths.h, not autoWidth().
 //
 // The type-code -> column mapping is taken verbatim from DevilutionX:
 //   Source/player.cpp:2098-2142 (type code) and :1479-1502 (graphic -> column),
