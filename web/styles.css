@@ -88,6 +88,10 @@ main { display: flex; height: calc(100vh - 52px); }
   display: flex; flex-wrap: wrap; gap: 14px; align-items: center;
   padding-bottom: 10px; border-bottom: 1px solid #3a3a42;
 }
+/* author `display:flex` overrides the UA `[hidden]{display:none}`; this explicit
+   rule lets the mode toggle actually hide the shared sprite control bar in the
+   GUI layout viewer (and any other mode that doesn't use it). */
+.controls[hidden] { display: none; }
 .controls label { display: flex; align-items: center; gap: 6px; }
 .controls input[type="text"], .controls input:not([type="range"]) {
   background: #15151a; color: #e6e6e6; border: 1px solid #3a3a42;
