@@ -85,8 +85,8 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
 | `spell.list` | 从 DevilutionX 数据表（`spelldat` / `misdat` / `missile_sprites` / `monstdat`）合成**玩家技能与怪物远程攻击的全阶段视觉目录**：每个条目按 施法 → 投射 → 命中 → debuff 四阶段组织；`sprite` 层给出编号 `missiles\{name}{N}.cl2` 文件清单 + 显式 `width`（编号文件**不能**用 `width:"auto"`），`trn` 层给出目标 debuff 的调色板重映射；另附 `impact_catalog` 候选命中特效。每条还带 `name_zh`（中文名，取自 `Translations/zh_TW.po`→`zh_CN.po` 的 `msgctxt "spell"`，无翻译则回退英文名）、`description`（按已解析阶段链 + 玩家法力/智力消耗合成的中文说明），以及**法术级别参数**：`level`（`spelldat.bookLevel`，法术等级/阶）、`staff_level`、`mana_cost`、`mana_multiplier`（每升 1 级训练减少的法力）、`min_mana`、`staff_min/staff_max`，与 `mana_by_level`（按 `GetManaAmount` 公式算出的 1..bookLevel 各级基础法力 `{level, mana}`，含 `min_mana` 下限，未乘职业系数）；另含 `visual_by_level`（玩家 1..bookLevel / 怪物 1..16 各级**视觉参数**，逐法术从 DevilutionX handler 转录：持续时间 `duration_ticks`/`duration_sec`、弹速 `speed`、范围 `range_tiles`/`radius_tiles`、弹射物数 `count` 及法术特有字段如 `segments`/`wall_length_tiles`，含角色/地下城层依赖的项标 `_note`；无级别视觉缩放的法术为空）。**怪物攻击侧**除 `GetMissileType()` 的 14 类远程 AI 外，还覆盖**在 AI 函数里直接 `AddMissile` 的形态**（Counselor 按智力发 Firebolt/ChargedBolt/LightningControl/Fireball + 近身双层 Flash、Familiar 闪电、Gloom 冲撞、Mega 近身地狱火），每个形态单独一条并有 `variant` / `condition` 字段（`id` 为 `AI` 或 `AI.variant`）；`unique_monstdat` 的唯一怪会额外叠加，故 Hork Demon（HorkSpawn）、Zhar / Lazarus（按智力 3 归入 Counselor.Fireball）、Red Vex / Black Jade（LazarusSuccubus）均按真实 AI 归属。另含 **`abilities[]` 引擎级怪物特殊能力**：`Blink` 受重击瞬移、`AcidPuddle` 酸怪死亡留池、`Hidden` 潜行系隐身，每条带 `monsters` / `trigger` / `source_ref`（Diablo 1 没有 D2 式 Thunderstorm / Waller / Vortex / Shielding 词缀）。另含 **`traps[]` 陷阱法术** 10 条：墙上机关陷阱（箭矢 / 火焰弹 / 闪电，按有效层数出现）、带陷阱宝箱（箭矢 / 火焰箭 / 新星，地狱火另有火焰之环 / 偷药水 / 吸法力）、地狱火喷火口与火焰拉杆，每条带 `objects`（宿主 `OBJ_*`）/ `trigger` / `source_ref`。当前为 51 技能 / 25 怪物攻击 / 3 特殊能力 / 10 陷阱。可用 `source` / `id` 过滤（`src/tools/sprite_tools.cpp`、`src/tools/spell_tables.h`、`src/tools/spell_visual_model.h`） |
 | `map.build` | 解码 Diablo 1 / Hellfire 关卡（TIL / MIN / DUN / SOL / level CEL）并渲染完整等距地图 PNG + ≤400px 预览 PNG + 每格碰撞/光照/透明标志 sidecar JSON 到 `out/maps/`，返回摘要与 base64 预览。必填 `archive` + `cel`/`til`/`min`/`sol`，以及 `dun`（档案内名）**或 `dun_path`（本地 `.dun`，用于 DevilutionX 调试版导出的动态地牢）**；可选 `palette`（默认 `levels/l1data/l1_2.pal`；**Cathedral 在游戏里由 `LoadRndLvlPal` 随机选 `l1_1..l1_4.pal` 之一，`gendata/cut2.pal` 是过场调色板，不要用于地牢**）、`archives`（额外 MPQ 搜索栈）、`micro_len`（10 原版 / 12 地狱火）、`blocks`（10 / 16）、`out`。当前为 FullyLit 渲染（逐像素光照为运行时效果，延后）。L1 示例：`levels/l1data/l1.cel`/`l1.til`/`l1.min`/`l1.sol` + `levels/l1data/rnd2.dun`；动态地图见 `docs/MAP_GENERATION.md`（`src/tools/map_tools.cpp`、`src/decoders/level_*.cpp`） |
 | `scene.list` | 列出可复原的**完整场景**（Tristram 城镇 + L1/L2/L3/L4 预设），返回 id/title/layout/网格尺寸/默认环境光，无需 MPQ（`src/tools/scene_tools.cpp`） |
-| `scene.build` | 复原完整关卡场景：忠实 DevilutionX 两遍绘制（地板菱形 + 墙体）+ 不透明背景 + 空格预填，**0 透明像素、无黑块**。必填 `id` + `archive`，可选 `archives`（MPQ 搜索栈）、`out`（默认 `out/scenes`）、`preview_max_width`（默认 1000）、**`lighting`**（默认 false = FullyLit；true 时按 `ambient` + `lights` 应用 DevilutionX `LightTables` 暗部着色）、`ambient`（0..15，默认城镇 0 / 地牢 15）、`lights`（`{x,y,radius,offset_x,offset_y}` 微瓦片坐标数组）、`auto_light`（无显式光源时在场景中心加 radius-15 火把，默认 true）。返回 `image_base64`/`overlay_base64`（对齐的 SOL 叠加层）+ `preview_width/height` + `meta`（每格 `solid`/`transparent`/`block_light`/`block_missile`/**`walkable`**/`special`/`special_count` + 可选 `light` + `transparent_pixel_count`）；原生 PNG 落盘。场景：`tristram`、`l1_rnd2`、`l1_skngdo`、`l2_blind`、`l3_anvil`、`l4_diab1`（`src/tools/scene_tools.cpp`、`src/decoders/level_scene.cpp`）。地牢预设的 DUN 0 值格按 DevilutionX `LoadDungeonBase → PlaceDunTiles(floorId)` 铺成**可走 Floor**（L1=13/L2=3/L3=7/L4=6，不再是实心 Dirt 墙）；L1/L2 的门与拱门按 `InitDungeonPieces()` 标 `dSpecial` 并从 `levels/l1data/l1s.cel` / `levels/l2data/l2s.cel` 叠加 64px 精灵（Caves/Hell 的 `Pass3()` 无此步，故不加载）。`scene.build` 磁盘缓存 key 已升 `v2` 并纳入 `floorMegaTile`/`specialCel`/`specialTable`，改组装参数会自动失效旧图 |
-| `scene.path` | 在已解码场景的 SOL 碰撞网格上做 **8 方向 A\*** 寻路（忠实 `Source/engine/path.cpp`：直行 100 / 斜行 101，斜向不额外限制转角；目标是 Solid 时仍可到达，同引擎 `FindPath` 行为）。必填 `id` + `archive` + `from`/`to`（`{x,y}` 微瓦片坐标），可选 `max_steps`（默认 1024）、`preview_max_width`（与 `scene.build` 对齐）。返回 `found`/`cost`/`steps`/`walkable_count` + `path[]`（每格 `x/y`、原生 `screen_x/screen_y`、预览 `preview_x/preview_y`）（`src/decoders/level_path.cpp`、`src/tools/scene_tools.cpp`） |
+| `scene.build` | 复原完整关卡场景：忠实 DevilutionX 两遍绘制（地板菱形 + 墙体）+ 不透明背景 + 空格预填，**0 透明像素、无黑块**。必填 `id` + `archive`，可选 `archives`（MPQ 搜索栈）、`out`（默认 `out/scenes`）、`preview_max_width`（默认 1000）、**`lighting`**（默认 false = FullyLit；true 时按 `ambient` + `lights` 应用 DevilutionX `LightTables` 暗部着色）、`ambient`（0..15，默认城镇 0 / 地牢 15）、`lights`（`{x,y,radius,offset_x,offset_y}` 微瓦片坐标数组）、`auto_light`（无显式光源时在场景中心加 radius-15 火把，默认 true）。返回 `image_base64`/`overlay_base64`（对齐的 SOL 叠加层）+ `preview_width/height` + `meta`（每格 `solid`/`transparent`/`block_light`/`block_missile`/**`walkable`**/`special`/`special_count` + 可选 `light` + `transparent_pixel_count`）；原生 PNG 落盘。场景：`tristram`、`l1_rnd2`、`l1_skngdo`、`l2_blind`、`l3_anvil`、`l4_diab1`（`src/tools/scene_tools.cpp`、`src/decoders/level_scene.cpp`）。地牢预设的 DUN 0 值格按 DevilutionX `LoadDungeonBase → PlaceDunTiles(floorId)` 铺成**可走 Floor**（L1=13/L2=3/L3=7/L4=6，不再是实心 Dirt 墙）；L1/L2 的门与拱门按 `InitDungeonPieces()` 标 `dSpecial` 并从 `levels/l1data/l1s.cel` / `levels/l2data/l2s.cel` 叠加 64px 精灵（Caves/Hell 的 `Pass3()` 无此步，故不加载）。**`dirt_border`（默认 false）**：地牢预设默认按 `.dun` bbox 裁成 `dunW*2 × dunH*2`（`l1_rnd2` = 22×22），房间完整可见；设为 true 则恢复 DevilutionX `DRLG_LPass3` 的 32 微格 Dirt 边框 + (16,16) DUN 偏移（54×54），用于忠实复原完整 `dPiece`——该边框是 Solid 实心土块、比房间地板高，会遮挡房间，故默认关闭。`scene.path` 支持同名参数以保持 from/to 坐标对齐。`scene.build` 磁盘缓存 key 已升 `v3` 并纳入 `dirt_border` 等组装参数 |
+| `scene.path` | 在已解码场景的 SOL 碰撞网格上做 **8 方向 A\*** 寻路（忠实 `Source/engine/path.cpp`：直行 100 / 斜行 101，斜向不额外限制转角；目标是 Solid 时仍可到达，同引擎 `FindPath` 行为）。必填 `id` + `archive` + `from`/`to`（`{x,y}` 微瓦片坐标），可选 `max_steps`（默认 1024）、`preview_max_width`（与 `scene.build` 预览缩放对齐）、**`dirt_border`**（默认 false，需与 `scene.build` 一致，否则网格/投影坐标相差 16 微格）。返回 `found`/`cost`/`steps`/`walkable_count` + `path[]`（每格 `x/y`、原生 `screen_x/screen_y`、预览 `preview_x/preview_y`）（`src/decoders/level_path.cpp`、`src/tools/scene_tools.cpp`） |
 | `level.inspect` | **关卡原始 tile 查看器**：给定 `archive` + `cel`/`til`/`min`/`sol`/`palette` + `blocks`/`micro_len` + `megatile`（1-based）或 `micros[]`，返回该 megatile 的 4 个 micro piece、每个 MIN block 的 `TileType`/`frame`/原始 `data`、所有引用到的 CEL 帧 PNG（base64）以及这些 micro 拼出的等距透明底预览 `assembly`。用于核对 `FillTile(60,70,71)` 这类地图对象（Tristram 水池 = megatile 71 → pieces 257–260 → town.cel frames 594–605）（`src/tools/level_tools.cpp`） |
 | `level.generate` | **原生动态地牢生成（Cathedral L1–L4）**：按 `seed` 调 `DungeonSeeds[level]`，用 DevilutionX `drlg_l1.cpp` 的逐函数移植（同一 Borland LCG、同一 RNG 调用顺序）生成 40×40 megatile 地图；可选放置 Butcher / Skeleton King / Ogden's Sign 任务 set-piece（从 `archive`/`archives` 读取 `rnd6.dun`/`skngdo.dun`/`banner2.dun`）。必填 `archive` + `level` + `seed`，可选 `original_cathedral`（true=Diablo 原版，false=Hellfire）、`quests`（`vanilla`/`none`/`all`）、`out`（默认 `out/gen`）。写出 ExportDun 兼容的 `<level>-<seed>.dun`（可用 `map.build` 的 `dun_path` 渲染），返回 `tiles`（40 行 hex）、`floor_count`、`stairs_up_count`/`stairs_down_count`。已通过 DevilutionX 14 个 Cathedral 测试 fixture 的 0 差异校验（`src/decoders/dungeon_gen*.{h,cpp}`、`src/tools/level_tools.cpp`） |
 | `ui.list` | 列出 **18 个可查看的 Diablo 1 / Hellfire 界面**（主菜单 / 标题 / 制作群 / 英雄·难度选择 / OK·YesNo / 设置 / 底部控制面板含血蓝球 / 角色·物品栏·法术书·任务日志 / 文本·网格商店 / 大·小对话框及其 CLX 变体）。**纯静态目录，无需 MPQ**。返回每屏 id/title/category/canvas/元素数/文字数/资源数/`needs_width`/源码位置；可选 `category` 过滤（`menu`/`hud`/`panel`/`store`/`dialog`）（`src/tools/ui_layout.h`、`src/tools/ui_tools.cpp`） |
@@ -214,8 +214,9 @@ Fire Wall 双文件、Flash 双层、Torchant→Fireball、default→Arrow，以
 **`testSceneTools` 场景全链路**：`scene.list` / `scene.build` / `scene.path` 从真实 MPQ 复原
 Tristram 城镇，断言 96×96 网格、**0 透明像素**、base64 PNG 合法、叠加层/每格标志/`walkable`
 数组长度；`scene.path` 返回起止格与原生/预览坐标；`scene.build(l1_rnd2, lighting:true)` 断言
-环境光 15、中心火把点亮、`meta.light` 尺寸；`scene.build(l4_diab1)` 断言 44×44、microLen 12、
-0 透明像素与 CEL 帧数。`testLevelInspect` 用 `level.inspect` 检查 Tristram megatile 71 →
+环境光 15、中心火把点亮、`meta.light` 尺寸、22×22 裁剪网格；`scene.build(l4_diab1)` 断言
+12×12（裁剪 bbox）、microLen 12、0 透明像素与 CEL 帧数；`dirt_border:true` 断言恢复
+54×54 网格且 `scene.path` 网格一致。`testLevelInspect` 用 `level.inspect` 检查 Tristram megatile 71 →
 micro 257–260 → frames 594–605，并验证组装 PNG。**`testLevelGenerate`** 用
 `level.generate` 从 MPQ 原生生成 Cathedral L2（seed 1383137027）：断言 40×40、40 行 hex、
 写出 54404 字节 ExportDun 兼容 `.dun`、`loadDun` 识别 40×40/1600 tile/transparency 层，
@@ -423,6 +424,13 @@ out/render_sprite.exe \
              "lighting":true,
              "auto_light":true,
              "preview_max_width":1000}}}
+{"jsonrpc":"2.0","id":4,"method":"tools/call",
+ "params":{"name":"scene.build",
+           "arguments":{
+             "id":"l1_rnd2",
+             "archive":"D:/work/xt/diablo/DevilutionX-Hell Fire/DIABDAT.MPQ",
+             "dirt_border":true,
+             "preview_max_width":1000}}}
 ```
 
 `scene.build` 返回 `image_base64`（≤1000px 预览 PNG）、`overlay_base64`（同尺寸 SOL 叠加层
@@ -469,8 +477,11 @@ sidecar JSON 写到 `out/scenes/`。原生大图只落盘，WS 只传降采样�
 
 **前端场景查看器**：浏览器打开 `web/`（见 README §运行 与 `web/README.md`），切到
 第 5 种「场景查看器」→ 选场景 → 加载，可缩放（1–8×）/ 拖拽平移 / 切换 SOL 叠加层 /
-夜景提亮 / **光照（dLight 暗部 + 中心火把）** / 复位。场景目录：`tristram`（城镇，96×96）、
-`l1_rnd2`、`l1_skngdo`（L1）、`l2_blind`（L2）、`l3_anvil`（L3）、`l4_diab1`（L4，12/16 瓦片）。
+夜景提亮 / **光照（dLight 暗部 + 中心火把）** / **绘制 Dirt 边框**（默认不勾选）/ 复位。
+场景目录：`tristram`（城镇，96×96）、`l1_rnd2`（22×22）、`l1_skngdo`（14×14）、
+`l2_blind`（22×22）、`l3_anvil`（18×18）、`l4_diab1`（12×12，12/16 瓦片）。
+地牢预设默认按 `.dun` bbox 裁剪，房间完整可见；勾选「绘制 Dirt 边框」会恢复 32 微格
+Dirt 边框（各轴 +32）以忠实复原完整 `dPiece`，但该实心土块会遮挡房间，一般保持关闭。
 「提亮（夜景）」**默认勾选**：Tristram 夜景均值亮度仅 13、67% 像素 <24，不提亮观感近似
 空图；CSS 用 `brightness(1.7) contrast(0.85) saturate(1.1)` 抬暗部、菱形背景仍近黑。
 预览 PNG 由 `src/decoders/deflate.cpp` 压缩，`scene.build(tristram)` 约 343 KB base64，

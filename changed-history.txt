@@ -402,3 +402,6 @@
 ## 2026-11-12 05:41:23
 - 修复场景查看器固定房间地图的门/通道图块渲染错误：对照 DevilutionX LoadDungeonBase→PlaceDunTiles(floorId) 把 DUN 0 值格铺成各层可走 Floor（此前被跳过、画成 Dirt 实心墙），按 InitDungeonPieces 标 dSpecial 并从 l1s.cel/l2s.cel 叠加 64px 拱门与门框，scene.build 缓存 key 升 v2 并纳入组装参数；单测/core/集成测试全绿，scene.build(l1_rnd2) 32/32 通道格可走、special_count 36、0 透明像素。
 - 涉及: src/decoders/level_scene.cpp, src/decoders/level_scene.h, src/tools/scene_tools.cpp, tests/unit_tests.cpp, tests/integration_tests.cpp, README.md, docs/ARCHITECTURE.md, docs/PROJECT.md, web/README.md
+## 2026-11-12 06:18:04
+- 地牢预设场景默认按 .dun bbox 裁剪（Dirt 边框是实心土块、会遮住房间）：buildDungeonScene 网格改为 dunW*2×dunH*2、DUN@0,0，sceneGridDims/catalog 同步；新增 scene.build/scene.path 的 dirt_border 选项（默认 false），开启后恢复 32 微格 Dirt 边框 + (16,16) 偏移以忠实复原完整 dPiece，两工具同参数保证 path 坐标对齐；缓存 key 升 v3 并纳入开关；前端场景查看器新增同名复选框（默认不勾选）。三套测试全绿，scene.build(l1_rnd2) 默认 22×22 / dirt_border:true 54×54，两者 walkable 387、special 36、0 透明像素一致。
+- 涉及: src/decoders/level_scene.cpp, src/decoders/level_scene.h, src/tools/scene_tools.cpp, tests/unit_tests.cpp, tests/integration_tests.cpp, web/index.html, web/src/main.js, README.md, docs/ARCHITECTURE.md, docs/PROJECT.md, web/README.md

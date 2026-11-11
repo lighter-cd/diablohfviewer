@@ -1469,7 +1469,7 @@ static void testLevelScene()
                g.micro[j + 12] == 7 && g.micro[j + 13] == 8,
            "buildTownScene applies sector offsets correctly");
 
-    // Dungeon: Dirt megatile prefill + DUN overlay at (16,16).
+    // Dungeon: cropped to the .dun bbox by default, DUN overlay at (0,0).
     decoders::SceneSpec dspec;
     dspec.prefillMegaTile = 1; // -> mega[0] = (1,2,3,4)
     dspec.gridW = 40; dspec.gridH = 40;
@@ -1478,14 +1478,23 @@ static void testLevelScene()
     WriteLE16(&dunBuf[4], 2); // megatile 2 -> mega[1]
     auto dun = decoders::loadDun(dunBuf);
     auto dg = decoders::buildDungeonScene(dspec, mega, dun);
-    lvlChk(dg.gw == 34 && dg.gh == 34,
-           "buildDungeonScene sizes grid to dun dims + 32-micro border");
-    lvlChk(dg.micro[0] == 1 && dg.micro[1] == 2 &&
-               dg.micro[dg.gw] == 3 && dg.micro[dg.gw + 1] == 4,
-           "buildDungeonScene prefills with Dirt megatile micros");
-    const size_t ov = static_cast<size_t>(16) * dg.gw + 16;
-    lvlChk(dg.micro[ov] == 5 && dg.micro[ov + 1] == 6,
-           "buildDungeonScene overlays DUN at (16,16)");
+    lvlChk(dg.gw == 2 && dg.gh == 2,
+           "buildDungeonScene crops grid to .dun bbox by default");
+    lvlChk(dg.micro[0] == 5 && dg.micro[1] == 6 &&
+               dg.micro[dg.gw] == 7 && dg.micro[dg.gw + 1] == 8,
+           "buildDungeonScene overlays DUN at (0,0) when cropped");
+    const size_t ov = 0;
+
+    // dirt_border:true restores the 32-micro Dirt border + (16,16) offset.
+    auto bg = decoders::buildDungeonScene(dspec, mega, dun, true);
+    lvlChk(bg.gw == 34 && bg.gh == 34,
+           "buildDungeonScene dirt_border restores 32-micro border");
+    lvlChk(bg.micro[0] == 1 && bg.micro[1] == 2 &&
+               bg.micro[bg.gw] == 3 && bg.micro[bg.gw + 1] == 4,
+           "buildDungeonScene dirt_border prefills border with Dirt megatile");
+    const size_t bov = static_cast<size_t>(16) * bg.gw + 16;
+    lvlChk(bg.micro[bov] == 5 && bg.micro[bov + 1] == 6,
+           "buildDungeonScene dirt_border overlays DUN at (16,16)");
 
     // DevilutionX LoadDungeonBase -> PlaceDunTiles(dunData, {0,0}, floorId):
     // a zero DUN cell becomes the Floor megatile, NOT the Dirt prefill.
@@ -1526,6 +1535,8 @@ static void testLevelScene()
     lvlChk(l4 && l4->microLen == 12 && l4->blocks == 16 && l4->ambientLight == 15 &&
                l4->lightStyle == 1,
            "L4 preset uses 12/16 blocks, dark ambient and hell lighting");
+    lvlChk(l4 && l4->gridW == 12 && l4->gridH == 12,
+           "sceneCatalog dungeon grid cropped to .dun bbox");
     const decoders::SceneSpec* town = decoders::findScene("tristram");
     lvlChk(town && town->ambientLight == 0, "Tristram uses fully-lit ambient 0");
     lvlChk(decoders::findScene("nope") == nullptr, "findScene rejects unknown id");
@@ -1539,8 +1550,8 @@ static void testLevelScene()
     lvlChk(po.width == 193 && po.height == 224,
            "sceneProjection non-square bounds");
     auto dims = decoders::sceneGridDims(cat[1]);
-    lvlChk(dims.first == 54 && dims.second == 54,
-           "sceneGridDims matches dungeon DUN-derived grid");
+    lvlChk(dims.first == 22 && dims.second == 22,
+           "sceneGridDims reports cropped dungeon .dun bbox");
     printf("level.scene: %s\n", allOk ? "PASS" : "FAIL");
 }
 

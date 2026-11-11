@@ -160,26 +160,32 @@ SceneGrid buildTownScene(const SceneSpec& spec,
 
 SceneGrid buildDungeonScene(const SceneSpec& spec,
                             const std::vector<MegaTile>& megatiles,
-                            const DunFile& dun)
+                            const DunFile& dun,
+                            bool dirtBorder)
 {
     SceneGrid g;
-    // Size to the .dun preset plus a 16-megatile (32 micro) Dirt border, so
-    // the scene is a complete room rather than a mostly-empty 112x112 plain.
-    // sceneGridDims() mirrors this so scene.list reports the same values.
+    // Crop to the .dun bounding box by default: every cell is the preset room.
+    // The Dirt border is a SOLID tile that renders above the room floor and
+    // hid the room in a full-scene view. dirtBorder=true restores the 32-micro
+    // DRLG_LPass3 prefill + (16,16) offset for faithful dPiece reproduction.
+    // sceneGridDims() reports the default (cropped) dims.
+    const int border = dirtBorder ? 32 : 0;
+    const int off = dirtBorder ? 16 : 0;
     if (dun.width && dun.height) {
-        g.gw = static_cast<int>(dun.width) * 2 + 32;
-        g.gh = static_cast<int>(dun.height) * 2 + 32;
+        g.gw = static_cast<int>(dun.width) * 2 + border;
+        g.gh = static_cast<int>(dun.height) * 2 + border;
     } else {
         const auto dims = sceneGridDims(spec);
-        g.gw = dims.first;
-        g.gh = dims.second;
+        g.gw = dims.first + border;
+        g.gh = dims.second + border;
     }
     const size_t cells = static_cast<size_t>(g.gw) * g.gh;
     g.megaId.assign(cells, 0);
     g.special.assign(cells, 0);
 
-    // DRLG_LPass3: prefill every 2x2 block with the "Dirt" megatile's four
-    // micros (megatiles[Dirt-1], Dirt=22 for L1), repeated across the grid.
+    // Fallback prefill (DRLG_LPass3's Dirt megatile): with the bbox crop the
+    // .dun covers every cell, so this only fills words whose TIL megatile
+    // index is out of range (and, with dirtBorder, IS the border itself).
     const size_t dirt = (spec.prefillMegaTile > 0)
                             ? static_cast<size_t>(spec.prefillMegaTile - 1) : 0;
     const MegaTile& dm = (dirt < megatiles.size())
@@ -191,13 +197,13 @@ SceneGrid buildDungeonScene(const SceneSpec& spec,
         }
     }
 
-    // Overlay the .dun tile layer at (16,16) (DRLG_LPass3 offset).
+    // Overlay the .dun tile layer: at (0,0) when cropped, (16,16) with border.
     if (dun.width && dun.height) {
         for (uint16_t j = 0; j < dun.height; ++j) {
             for (uint16_t i = 0; i < dun.width; ++i) {
                 const uint16_t word = dun.tileLayer[static_cast<size_t>(j) * dun.width + i];
-                const int px = 16 + static_cast<int>(i) * 2;
-                const int py = 16 + static_cast<int>(j) * 2;
+                const int px = off + static_cast<int>(i) * 2;
+                const int py = off + static_cast<int>(j) * 2;
                 if (word == 0) {
                     // DevilutionX LoadDungeonBase -> PlaceDunTiles(dunData,
                     // {0,0}, floorId): a zero DUN cell is replaced by the
@@ -354,8 +360,8 @@ const std::vector<SceneSpec>& sceneCatalog()
             s.lightStyle = ds.lightStyle;
             s.dunW = ds.dunW;
             s.dunH = ds.dunH;
-            s.gridW = ds.dunW * 2 + 32;
-            s.gridH = ds.dunH * 2 + 32;
+            s.gridW = ds.dunW * 2;
+            s.gridH = ds.dunH * 2;
             v.push_back(s);
         }
         return v;
@@ -373,8 +379,10 @@ const SceneSpec* findScene(const std::string& id)
 
 std::pair<int, int> sceneGridDims(const SceneSpec& spec)
 {
+    // Default (cropped) dims. scene.build with dirt_border:true adds 32 micro
+    // on each axis; its returned grid_width/height reflect the actual render.
     if (spec.layout == SceneLayout::Dungeon && spec.dunW > 0 && spec.dunH > 0)
-        return { spec.dunW * 2 + 32, spec.dunH * 2 + 32 };
+        return { spec.dunW * 2, spec.dunH * 2 };
     return { spec.gridW, spec.gridH };
 }
 

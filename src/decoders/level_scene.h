@@ -8,10 +8,10 @@
 //     then FillSector() lays four sector .dun files at fixed offsets. A DUN
 //     word of 0 -> micro 218; a word >= 1 -> pMegaTiles[word-1].micro1..4.
 //   * Dungeon: LoadDungeonBase -> PlaceDunTiles() maps a zero DUN cell to the
-//     level's Floor megatile (not Dirt), then DRLG_LPass3() prefills from a
-//     "Dirt" megatile and overlays the DUN tile layer at (16,16).
-//     Pass3() -> InitDungeonPieces() marks arch / door cells in dSpecial so
-//     the level's special CEL supplies their 64px body.
+//     level's Floor megatile (not Dirt); Pass3() -> InitDungeonPieces() marks
+//     arch / door cells in dSpecial so the special CEL supplies their 64px
+//     body. The grid is cropped to the .dun bbox by default (room only);
+//     the optional Dirt border restores DRLG_LPass3's 16-micro prefill.
 //
 // The output SceneGrid.micro holds 0-based micro indices (kNoMicro = outside),
 // matching level_render.cpp's renderMap. SceneGrid.megaId holds 1-based
@@ -85,11 +85,13 @@ SceneGrid buildTownScene(const SceneSpec& spec,
                          const std::vector<MegaTile>& megatiles,
                          const std::vector<std::vector<uint8_t>>& sectorDunBufs);
 
-// Assemble a dungeon grid: prefill every cell with spec.prefillMicro (Dirt),
-// then overlay the .dun tile layer at (16,16) using `megatiles`.
+// Assemble a dungeon grid. By default it is cropped to the .dun bbox so the
+// whole room is visible; `dirtBorder=true` restores DevilutionX's 32-micro
+// DRLG_LPass3 Dirt border (and the (16,16) DUN offset) for a faithful dPiece.
 SceneGrid buildDungeonScene(const SceneSpec& spec,
                             const std::vector<MegaTile>& megatiles,
-                            const DunFile& dun);
+                            const DunFile& dun,
+                            bool dirtBorder = false);
 
 // Built-in scene catalog (Tristram + L1/L2/L3/L4 presets). Static, no MPQ needed.
 const std::vector<SceneSpec>& sceneCatalog();

@@ -738,13 +738,14 @@ DiabloHFConverter/
         `renderMap` 两遍绘制 + 不透明背景 + 0 透明像素 + 空格预填 + frame()==0 守卫、
         **`level_light`（LightTables Normal/Hell/Soft、falloff/cone、`buildLightMap`）与
         `renderMap` 逐格光照着色**、**`level_path` 8 方向 A\*（开放/墙体/斜角/Solid 目标/maxSteps）**、
-        `buildTownScene`（4 sector + 预填 426/218）、`buildDungeonScene`（Dirt 预填 + DUN@16,16）、
-        `sceneProjection`/`sceneGridDims`。
+        `buildTownScene`（4 sector + 预填 426/218）、`buildDungeonScene`（默认裁 .dun bbox +
+        DUN@0,0；`dirt_border` 可恢复 Dirt 预填 + DUN@16,16）、`sceneProjection`/`sceneGridDims`。
       - `tests/integration_tests.cpp`：`testLevelMap` 从 `DIABDAT.MPQ` 抽真实 L1 资源跑通全链路并
         断言 **0 透明像素**；`testSceneTools` 用 `scene.list`/`scene.build`/`scene.path` 复原
         Tristram 城镇，断言 96×96 网格、0 透明像素、base64 PNG 合法、叠加层/每格标志/
         `walkable` 数组、`scene.path` 起止格与原生/预览坐标；`l1_rnd2` + `lighting:true` 断言
-        环境光 15 / 中心火把 / `meta.light` 尺寸；`l4_diab1` 断言 44×44、microLen 12、0 透明像素。
+        环境光 15 / 中心火把 / `meta.light` 尺寸；`l4_diab1` 断言 12×12（裁剪 bbox）、microLen 12、
+        0 透明像素；另断言 `dirt_border:true` 恢复 54×54 且 `scene.path` 网格一致。
   - 构建/运行见仓库根 `README.md` §测试 与 §6（关卡/场景）。
 - [x] **tiles / objects 绘制修正（2026-11-09）**：
       - **Pass 1 只画 `IsFloor` 格子**（`!Solid && !BlockMissile`）；此前对墙体/实心格也强行画地板菱形，
@@ -796,6 +797,15 @@ DiabloHFConverter/
       `scene.build` 缓存 key 升 `v2` 并纳入组装参数，旧缓存自动失效。验收：单测 / core /
       集成测试全绿；`scene.build(l1_rnd2)` 32/32 个 0 值格可走、`special_count=36`、
       `transparent_pixel_count=0`。
+- [x] **地牢预设按 .dun bbox 裁剪 + `dirt_border` 选项（2026-11-12）**：`DRLG_LPass3`
+      用 Dirt（SOL `0x0F`、带 2 层墙块，比 Floor 地板高）预填整个 `dPiece`，整层导出时
+      这片实心土块压住房间、遮住全貌。`buildDungeonScene` 现默认裁到 `.dun` bbox
+      （`dunW*2×dunH*2`，DUN@0,0，房间完整可见），`sceneGridDims` 同步；
+      `scene.build` / `scene.path` 新增 `dirt_border`（默认 false），开启后恢复 32 微格
+      Dirt 边框 + (16,16) 偏移以忠实复原完整 `dPiece`，两工具同参数保证坐标对齐；
+      缓存 key 升 `v3` 并纳入该开关；前端场景查看器新增同名复选框（默认不勾选）。
+      验收：三套测试全绿；`scene.build(l1_rnd2)` 默认 22×22、native 1409×832，
+      `dirt_border:true` 54×54，两者 `walkable=387` / `special=36` / 0 透明像素一致。
 - [x] **动态地图规则与导出/渲染桥接（2026-11-09）**：新增 `docs/MAP_GENERATION.md`，记录
       `DungeonSeeds`/`LevelSeeds`、Borland LCG（`0x015A4E35`+1）、`CreateDungeon` 分派、
       L1–L4 与 Hellfire L5/L6 生成流程、主题/任务/miniset 依赖，以及用 DevilutionX 调试版
@@ -885,11 +895,13 @@ DiabloHFConverter/
 
 **本实现**（`src/decoders/level_scene.cpp` + `src/tools/scene_tools.cpp`）：
 `buildTownScene`（4 sector + 预填 426/218，裁到 96×96 sector bbox 以约束图像）、
-`buildDungeonScene`（Dirt 预填 + DUN@16,16）、`sceneCatalog`（`tristram` + L1/L2/L3/L4
-共 6 个预设）、`loadSceneAssets`（工具侧共享抽取/组装）。`scene.build` 写原生 PNG 到
-`out/scenes/`，整数降采样返回 `image_base64` + 对齐的 `overlay_base64`（网格线 + SOL
-着色）+ 每格标志 `meta`，可选 `lighting` 走 `buildLightMap` + `LightTables`；前端第 5 种
-浏览模式缩放/平移/叠加/光照。
+`buildDungeonScene`（默认裁到 `.dun` bbox `dunW*2×dunH*2` + DUN@0,0；`dirt_border:true`
+才恢复 Dirt 预填 + 32 微格边框 + DUN@16,16，用于忠实复原但实心土块会遮挡房间，故默认
+关闭）、`sceneCatalog`（`tristram` + L1/L2/L3/L4 共 6 个预设）、`loadSceneAssets`（工具侧
+共享抽取/组装）。`scene.build` 写原生 PNG 到 `out/scenes/`，整数降采样返回 `image_base64`
++ 对齐的 `overlay_base64`（网格线 + SOL 着色）+ 每格标志 `meta`，可选 `lighting` 走
+`buildLightMap` + `LightTables`、`dirt_border` 控制边框；`scene.path` 同参数保持投影对齐；
+前端第 5 种浏览模式缩放/平移/叠加/光照/绘制 Dirt 边框。
 
 **修复空图/无法显示（2026-11-09）**：两处根因。(1) PNG `data:` URL 过大且不可解：
 `src/decoders/deflate.cpp` 早期用未压缩 stored DEFLATE 块，`scene.build(tristram)`

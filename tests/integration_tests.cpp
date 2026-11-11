@@ -1572,9 +1572,44 @@ static void testSceneTools(const std::string& mpq) {
               "l1_rnd2 zero DUN cells are walkable Floor, not Dirt walls");
         CHECK(lv.value("special_count", 0) > 0,
               "l1_rnd2 emits dungeon dSpecial overlays (arches/doors)");
+        // Default: cropped to the .dun bbox (11x11 megatiles -> 22x22 micro).
+        CHECK(lv.value("grid_width", 0) == 22 && lv.value("grid_height", 0) == 22,
+              "l1_rnd2 default grid cropped to 22x22 bbox");
+        CHECK(!lv.value("dirt_border", true), "scene.build default has no Dirt border");
         const int lgw = lv.value("grid_width", 0), lgh = lv.value("grid_height", 0);
         CHECK(lv["meta"]["light"].size() == (size_t)(lgw * lgh),
               "scene.build light array sized gw*gh");
+    }
+
+    // dirt_border:true restores the faithful 32-micro Dirt border.
+    json bargs = json{{"id", "l1_rnd2"}, {"archive", archives[0]},
+                      {"archives", stack}, {"preview_max_width", 200},
+                      {"dirt_border", true}};
+    ToolResult bbr = reg.dispatch("scene.build", bargs);
+    CHECK(bbr.ok, "scene.build dirt_border dispatch ok");
+    if (bbr.ok) {
+        CHECK(bbr.value.value("grid_width", 0) == 54 &&
+                  bbr.value.value("grid_height", 0) == 54,
+              "dirt_border restores 54x54 full dPiece");
+        CHECK(bbr.value.value("dirt_border", false),
+              "scene.build reports dirt_border enabled");
+        CHECK(bbr.value.value("special_count", 0) > 0,
+              "dirt_border variant still emits dungeon dSpecial");
+        CHECK(bbr.value.value("transparent_pixel_count", 1) == 0,
+              "dirt_border variant still has 0 transparent pixels");
+    }
+    // scene.path must use the same grid when the border is enabled.
+    json bpargs = json{{"id", "l1_rnd2"}, {"archive", archives[0]},
+                       {"archives", stack},
+                       {"from", json{{"x", 18}, {"y", 18}}},
+                       {"to", json{{"x", 20}, {"y", 18}}},
+                       {"dirt_border", true}, {"preview_max_width", 200}};
+    ToolResult bpr = reg.dispatch("scene.path", bpargs);
+    CHECK(bpr.ok, "scene.path dirt_border dispatch ok");
+    if (bpr.ok) {
+        CHECK(bpr.value.value("grid_width", 0) == 54 &&
+                  bpr.value.value("grid_height", 0) == 54,
+              "scene.path dirt_border grid matches scene.build");
     }
 
     // L4 uses 12 microLen / 16 blocks and the hell light style.
@@ -1583,15 +1618,15 @@ static void testSceneTools(const std::string& mpq) {
     ToolResult l4r = reg.dispatch("scene.build", l4args);
     CHECK(l4r.ok, "scene.build L4 dispatch ok");
     if (l4r.ok) {
-        CHECK(l4r.value.value("grid_width", 0) == 44 &&
-                  l4r.value.value("grid_height", 0) == 44,
-              "L4 diab1 grid 44x44");
+        CHECK(l4r.value.value("grid_width", 0) == 12 &&
+                  l4r.value.value("grid_height", 0) == 12,
+              "L4 diab1 grid cropped to 12x12 bbox");
         CHECK(l4r.value.value("micro_len", 0) == 12, "L4 microLen is 12");
         CHECK(l4r.value.value("transparent_pixel_count", 1) == 0,
               "L4 has 0 transparent pixels");
         CHECK(l4r.value.value("frame_count", 0) > 0, "L4 reencoded CEL frames");
     }
-    printf("scene.* (tristram + lighting + L4 + path): %s\n",
+    printf("scene.* (tristram + lighting + L4 + path + dirt_border): %s\n",
            allOk ? "PASS" : "FAIL");
 }
 

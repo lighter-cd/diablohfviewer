@@ -87,7 +87,8 @@ struct SceneAssets {
 };
 
 SceneAssets loadSceneAssets(const decoders::SceneSpec& spec,
-                            const std::vector<std::string>& archives) {
+                            const std::vector<std::string>& archives,
+                            bool dirtBorder = false) {
     std::vector<uint8_t> celBuf, tilBuf, minBuf, solBuf, palBuf, dunBuf;
     std::vector<std::vector<uint8_t>> sectorBufs;
     auto need = [&](const std::string& n, std::vector<uint8_t>& b) {
@@ -123,7 +124,8 @@ SceneAssets loadSceneAssets(const decoders::SceneSpec& spec,
     if (spec.layout == decoders::SceneLayout::Town)
         out.grid = decoders::buildTownScene(spec, megatiles, sectorBufs);
     else
-        out.grid = decoders::buildDungeonScene(spec, megatiles, decoders::loadDun(dunBuf));
+        out.grid = decoders::buildDungeonScene(
+            spec, megatiles, decoders::loadDun(dunBuf), dirtBorder);
 
     // dSpecial overlays come from a separate CEL (town: towns.cel tree
     // canopies; dungeon L1/L2: l1s.cel / l2s.cel arches and doors), not the
@@ -352,12 +354,14 @@ std::string buildCacheKey(const std::string& id,
                           const std::string& outDir) {
     std::string a;
     for (size_t i = 0; i < archives.size(); ++i) { if (i) a += ";"; a += archives[i]; }
-    // v2: dungeon presets now apply PlaceDunTiles floorId and dSpecial, so the
-    // rendered grid changed. Include the scene-assembly inputs in the key so
-    // catalog/assembly changes invalidate cached PNGs automatically.
-    return "v2|" + id + "|" + a + "|" +
+    // v3: dungeon presets are cropped to the .dun bbox by default; the
+    // optional dirt_border restores the old 32-micro border. Include the
+    // assembly inputs and the switch so catalog changes / toggles invalidate
+    // cached PNGs automatically.
+    return "v3|" + id + "|" + a + "|" +
            std::to_string(spec.floorMegaTile) + "|" + spec.specialCel + "|" +
            std::to_string(static_cast<int>(spec.specialTable)) + "|" +
+           (params.value("dirt_border", false) ? "B1" : "B0") + "|" +
            (params.value("lighting", false) ? "L1" : "L0") + "|" +
            std::to_string(params.value("ambient", spec.ambientLight)) + "|" +
            params.value("lights", mcp::json::array()).dump() + "|" +
@@ -434,7 +438,8 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
     }
 
     mcp::tools::reportProgress(2, "解析场景规格 " + id);
-    SceneAssets assets = loadSceneAssets(*spec, archives);
+    const bool dirtBorder = params.value("dirt_border", false);
+    SceneAssets assets = loadSceneAssets(*spec, archives, dirtBorder);
     mcp::tools::reportProgress(35, "提取 MPQ 资源 / 组装网格");
     const decoders::SceneGrid& grid = assets.grid;
     decoders::MapRenderOptions opts;
@@ -559,6 +564,7 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
     mcp::ToolResult r;
     r.value = mcp::json{
         {"scene_id", id}, {"title", spec->title},
+        {"dirt_border", dirtBorder},
         {"image_path", pngPath}, {"preview_path", previewPath},
         {"overlay_path", overlayPath}, {"meta_path", metaPath},
         // HTTP endpoints served by the mcp-server on the same port as the WS
@@ -612,7 +618,10 @@ mcp::ToolResult toolScenePath(const mcp::json& params) {
     const decoders::PathPoint to = readPoint("to");
     const int maxSteps = std::clamp<int>(params.value("max_steps", 1024), 1, 100000);
 
-    SceneAssets assets = loadSceneAssets(*spec, archives);
+    // Match scene.build: with dirt_border:true the grid gains a 32-micro
+    // border and the DUN offset shifts by 16, so from/to stay aligned.
+    const bool dirtBorder = params.value("dirt_border", false);
+    SceneAssets assets = loadSceneAssets(*spec, archives, dirtBorder);
     const int gw = assets.grid.gw;
     const int gh = assets.grid.gh;
     const decoders::PathResult found = decoders::findPath(
@@ -647,6 +656,7 @@ mcp::ToolResult toolScenePath(const mcp::json& params) {
     mcp::ToolResult r;
     r.value = mcp::json{
         {"scene_id", id}, {"title", spec->title},
+        {"dirt_border", dirtBorder},
         {"found", found.found}, {"cost", found.cost},
         {"steps", found.path.empty() ? 0 : static_cast<int>(found.path.size()) - 1},
         {"grid_width", gw}, {"grid_height", gh},
@@ -703,7 +713,9 @@ void registerSceneTools(ToolRegistry& reg) {
         "metadata JSON to disk and returns a bounded base64 PNG preview plus an "
         "aligned overlay PNG (grid lines + solid/transparent/blockLight tint). "
         "Optional `lighting:true` applies DevilutionX dLight shade tables "
-        "(ambient + `lights`, auto central torch by default).",
+        "(ambient + `lights`, auto central torch by default). Dungeon presets "
+        "are cropped to the .dun bbox by default; `dirt_border:true` restores "
+        "the 32-micro Dirt border for a faithful full dPiece view.",
         json{{"type", "object"},
              {"properties", json{
                  {"id", json{{"type", "string"}, {"description", "scene id from scene.list, e.g. tristram"}}},
@@ -721,6 +733,8 @@ void registerSceneTools(ToolRegistry& reg) {
                                   {"description", "static lights: {x,y,radius,offset_x,offset_y} in MICRO coords"}}},
                  {"auto_light", json{{"type", "boolean"},
                                      {"description", "when lighting and no lights: add a central radius-15 torch (default true)"}}},
+                 {"dirt_border", json{{"type", "boolean"},
+                                       {"description", "dungeon presets: draw DevilutionX's 32-micro Dirt border (faithful dPiece); default false = crop to the .dun bbox so the whole room is visible"}}},
              }},
              {"required", json::array({"id", "archive"})}},
         toolSceneBuild});
@@ -759,6 +773,8 @@ void registerSceneTools(ToolRegistry& reg) {
                                      {"description", "search step budget, default 1024"}}},
                  {"preview_max_width", json{{"type", "integer"},
                                              {"description", "match scene.build preview scale, default 1000"}}},
+                 {"dirt_border", json{{"type", "boolean"},
+                                       {"description", "match scene.build: use the 32-micro Dirt border (default false = cropped bbox)"}}},
              }},
              {"required", json::array({"id", "archive", "from", "to"})}},
         toolScenePath});

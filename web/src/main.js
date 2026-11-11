@@ -1686,6 +1686,9 @@ async function loadScene() {
     }
     args.preview_max_width = 1000;
     args.lighting = !!$("sceneLightToggle").checked;
+    // Dungeon presets are cropped to the .dun bbox by default; the optional
+    // Dirt border restores the faithful full dPiece (and hides the room).
+    args.dirt_border = !!$("sceneDirtBorderToggle").checked;
     // The onProgress callback streams backend $/progress notifications into the
     // loading mask in real time.
     const res = await client.callTool("scene.build", args, pushSceneProgress);
@@ -1763,6 +1766,10 @@ function wireSceneControls() {
   });
   $("sceneLightToggle").addEventListener("change", () => {
     // Rebuild the scene so dLight shading is applied/removed server-side.
+    loadScene();
+  });
+  $("sceneDirtBorderToggle").addEventListener("change", () => {
+    // Rebuild: the border changes grid size / DUN offset server-side.
     loadScene();
   });
   $("sceneFitBtn").addEventListener("click", () => sceneFit());

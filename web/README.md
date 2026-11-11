@@ -303,6 +303,11 @@ web/
 - **光照（dLight）**：勾选后 `loadScene()` 传 `scene.build(lighting:true)`，后端按
   场景环境光（城镇 0、地牢 15）+ 中心 radius-15 火把计算每格光照，用 DevilutionX
   `LightTables` 烘焙调色板暗部；切换复选框会重建场景。
+- **绘制 Dirt 边框**：默认**不勾选**，地牢预设按 `.dun` bbox 裁剪（`l1_rnd2` 为
+  22×22），房间完整可见；勾选后 `loadScene()` 传 `scene.build(dirt_border:true)`，
+  恢复 DevilutionX `DRLG_LPass3` 的 32 微格 Dirt 边框 + (16,16) 偏移以忠实复原完整
+  `dPiece`，但该实心土块比房间地板高、会遮挡房间。切换会重建场景（网格尺寸与
+  `scene.path` 坐标随之变化，两者由同一参数对齐）。
 - **提亮**：Tristram 夜景均值亮度仅 13、67% 像素 <24，不提亮观感近似空图。
   「提亮（夜景）」**默认勾选**，`loadScene()` 每次按开关状态给 `#sceneLayers` 施加
   `.bright` 类（`web/src/main.js`），CSS `web/styles.css` 用
@@ -315,7 +320,8 @@ web/
 `l2_blind`、`l3_anvil`、`l4_diab1`）。地牢预设里 DUN 值为 0 的格按 DevilutionX
 `PlaceDunTiles(floorId)` 铺成可走地板/通道，L1/L2 的门与拱门由 `dSpecial` +
 `l1s/l2s.cel` 叠加还原，因此房间内部是完整地面而非实心墙，SOL/寻路网格与画面一致。
-`scene.path` 可在同一 SOL 网格上做 A* 寻路并返回
+地牢场景默认裁到 `.dun` bbox（房间完整可见），「绘制 Dirt 边框」复选框可恢复完整的
+Dirt 预填边框用于忠实复原（默认关闭，见上）。`scene.path` 可在同一 SOL 网格上做 A* 寻路并返回
 与预览对齐的路径坐标（供后续前端叠加）。原理与资产路径见
 `docs/ARCHITECTURE.md` §9.3 与 `docs/PROJECT.md`。
 

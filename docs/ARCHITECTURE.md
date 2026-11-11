@@ -475,7 +475,8 @@ sidecar JSON（`grid_width/grid_height/micro_len/frame_count` + 四个每格标�
 （0 全亮、15 全黑）；`renderMap` 对每格选择 `LightTables[level]` 烘焙后的 RGBA palette 解码
 瓦片，因此暗部是**调色板索引重映射**而非 RGB 近似。`scene.build` 参数：
 `lighting`（默认 false）、`ambient`（默认城镇 0 / 地牢 15）、`lights[]`
-（`{x,y,radius,offset_x,offset_y}` 微瓦片坐标）、`auto_light`（无光源时中心 radius-15 火把）。
+（`{x,y,radius,offset_x,offset_y}` 微瓦片坐标）、`auto_light`（无光源时中心 radius-15 火把）、
+`dirt_border`（默认 false，地牢裁到 `.dun` bbox；true 恢复 32 微格 Dirt 边框 + (16,16) 偏移）。
 `meta.light` 输出逐格级别；`light_lit_count` 为 level 0 格数。
 
 **寻路（`level_path.cpp` + `scene.path`，2026-11-09）**：在 SOL `Solid` 网格上做 8 方向 A*：
@@ -483,7 +484,8 @@ sidecar JSON（`grid_width/grid_height/micro_len/frame_count` + 四个每格标�
 对斜向返回 true），目标格允许 Solid（同 `FindPath` 对 destination 的放宽）。`scene.path`
 输入微瓦片 `from`/`to`，返回 `found`/`cost`/`steps`/`walkable_count` 与 `path[]`（每格
 `x/y`、原生 `screen_x/screen_y`、按 `preview_max_width` 换算的 `preview_x/preview_y`），
-坐标与 `scene.build` 的 `SceneProjection` 完全一致，可直接叠图。
+坐标与 `scene.build` 的 `SceneProjection` 完全一致，可直接叠图；`dirt_border` 必须与
+`scene.build` 取值相同，否则网格尺寸与 DUN 偏移相差 16 微格。
 
 **动态地图**：L1–L4 / L5–L6 是运行时按 `DungeonSeeds[level]` 生成的，MPQ 中没有整层 `.dun`。
 规则、LCG、各生成器流程与 DevilutionX 调试版 `dev.level.exportDun()` 工作流见
@@ -523,11 +525,12 @@ g++ 构建/运行命令见 `README.md` §测试。
 
 ```
 scene.list  ─► 静态目录（tristram / l1_rnd2 / l1_skngdo / l2_blind / l3_anvil / l4_diab1）
-scene.build {id,archive,archives?,out?,preview_max_width?=1000,lighting?,ambient?,lights?,auto_light?}
+scene.build {id,archive,archives?,out?,preview_max_width?=1000,lighting?,ambient?,lights?,auto_light?,dirt_border?=false}
    ├─ 抽取: town.{cel,til,min,sol,pal} + sector1s..4s.dun（城镇）
    │        或 lN.{cel,til,min,sol} + *.dun + lN palette（地牢 L1..L4）
    ├─ 组装: buildTownScene（预填 426 + 4 sector, DUN word0→218, 96×96）
-   │        或 buildDungeonScene（L1..L4 prefill 22/12/8/30 + DUN@16,16；
+   │        或 buildDungeonScene（默认裁到 .dun bbox：dunW*2×dunH*2, DUN@0,0；
+   │          dirt_border:true → +32 微格 Dirt 边框 + DUN@16,16；
    │          DUN word0→Floor 13/3/7/6；Pass3→InitDungeonPieces 标 dSpecial + l1s/l2s CEL）
    ├─ 光照: buildLightMap(ambient + lights) → LightTables 烘焙每格 palette（可选）
    ├─ 渲染: buildFrameTypes → reencodeLevelCel → renderMap(两遍, 不透明背景, prefill, dLight)
@@ -535,8 +538,8 @@ scene.build {id,archive,archives?,out?,preview_max_width?=1000,lighting?,ambient
    └─ 产出: encodePNG 原生/预览/叠加 → 文件 + base64；
             meta{solid[],transparent[],block_light[],block_missile[],walkable[],light[]?,transparent_pixel_count}
 
-scene.path {id,archive,archives?,from:{x,y},to:{x,y},max_steps?=1024,preview_max_width?=1000}
-   └─ loadSceneAssets → SOL solid[] → findPath(A*,100/101) → path[]{x,y,screen_*,preview_*}
+scene.path {id,archive,archives?,from:{x,y},to:{x,y},max_steps?=1024,preview_max_width?=1000,dirt_border?=false}
+   └─ loadSceneAssets（同 dirt_border 组装）→ SOL solid[] → findPath(A*,100/101) → path[]{x,y,screen_*,preview_*}
 ```
 
 - 原生 PNG 只落盘（城镇 96×96 网格约 6145×3296），**WS 只传整数降采样后的
@@ -553,6 +556,11 @@ scene.path {id,archive,archives?,from:{x,y},to:{x,y},max_steps?=1024,preview_max
   **地牢 DUN 值为 0 的格**按 `LoadDungeonBase → PlaceDunTiles(dunData,{0,0},floorId)`
   铺成本层 Floor megatile（L1=13 / L2=3 / L3=7 / L4=6），而非保留 Dirt 预填——
   这些格是房间的可走地板/通道；修复前被画成实心墙（`walkable=0`）。
+  **裁剪与 Dirt 边框**：`DRLG_LPass3` 会用 Dirt 兆瓦片预填整个 `dPiece[112][112]`，
+  但 Dirt 的 4 个 micro 在 `l1.sol` 里 SOL=`0x0F`（Solid+BlockLight+BlockMissile）、
+  `l1.min` 里还带 2 层墙块，画出来比 Floor 地板高；整层导出时这片实心土块会把房间
+  压在下面、遮住全貌。因此 `scene.build` 默认把地牢网格裁到 `.dun` bbox（房间完整可见），
+  `dirt_border:true` 才恢复 32 微格边框 + (16,16) 偏移，供忠实复原 `dPiece` 用。
   Tristram 另外应用非任务态 `FillTile`（水井/喷泉、传送入口）。地牢 DUN object layer
   （`AddL1Objs` 门物件）与 `dTransVal`/`TransList` 透明遮挡尚未实现。
 - **tile 纵向翻转修复（2026-11-09）**：`DecodeLeft/RightTriangle` 与
