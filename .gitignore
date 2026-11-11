@@ -19,16 +19,26 @@ Makefile
 # 3rdparty/StormLib 已是 submodule，其 build/ 由 build-stormlib.sh 生成、重新运行即可重建。
 3rdparty/StormLib/build/
 
+# ---------- 测试目录 tests/（源码与 JSON 夹具入库） ----------
+# 三套测试源码（*.cpp）与手工 JSON-RPC 夹具/响应快照在 tests/ 下入库，
+# 仅忽略测试编译出的可执行件与运行临时产物（见 tests/*.cpp 内硬编码路径）。
+tests/*.exe
+tests/__png_test.png
+tests/_it_*
+tests/gen_test/
+tests/ui/
+
 # ---------- 运行产物 out/（构建/运行生成物，不入库） ----------
-# 手写单元自测源码 out/decode_test.cpp（.cpp，不被下列模式匹配）保持入库；
-# 手写 JSON 夹具/结果也保留，仅忽略真正由编译/解码产生的产物。
-# 编译出的测试可执行件（decode_test.exe 等）
+# 测试套件源码与 JSON 夹具已迁至 tests/；out/ 只承载运行产物，全部忽略。
+# 编译出的辅助工具可执行件
 out/*.exe
 # 解码出的精灵图片
 out/*.png
 out/*.bmp
 # base64 / 预览等运行输出文本
 out/*.txt
+# 测试运行临时产物（_it_*.json/.bin 等，覆盖 out/ 侧遗留与运行时残留）
+out/_it_*
 # 从 mpq 中提取出的文件（.dun/.til/.min/.cel/.sol/.pal 等）
 out/*.dun
 out/*.til

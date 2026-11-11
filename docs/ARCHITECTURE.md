@@ -377,12 +377,12 @@ cmake --build . --target mcp-server
      `synthesizeTowners` 从 `TOWN_COW` 行取 `animWidth=128` 填入硬编码 cow，
      `autoWidth` 增加 `TOWN_COW` 回退使 `cow.cel` 的 `width:"auto"` 可解码。
    - **单元验证**（三套件，均 PASS，见 `README.md` §测试）：
-     - `out/unit_tests.cpp`：CLX 解码、CEL→CLX / CL2→CLX 往返、**CL2/CEL 畸形输入与错误
+     - `tests/unit_tests.cpp`：CLX 解码、CEL→CLX / CL2→CLX 往返、**CL2/CEL 畸形输入与错误
        width 拒绝**（`testCl2RejectsMalformed` / `testCelRejectsMalformed`）、PCX 内嵌调色板、
        调色板加载、base64 编解码（无需 MPQ）。
-     - `out/core_tests.cpp`：`ToolRegistry` 注册/重名/分发/异常/`list`，`handleRequest`
+     - `tests/core_tests.cpp`：`ToolRegistry` 注册/重名/分发/异常/`list`，`handleRequest`
        的 `tools/list`/`tools/call` 与各错误码（无需 MPQ）。
-     - `out/integration_tests.cpp`：`engine::Archive` 全链路（open/list/verify/querySize/
+     - `tests/integration_tests.cpp`：`engine::Archive` 全链路（open/list/verify/querySize/
        extract/extractToFile）+ `mpq.list`/`mpq.verify`/`mpq.extract`/`mpq.dump`/`mpq.recover`
        （需真实 MPQ，见 `DHFC_TEST_MPQ`；缺失则 SKIP）。
    - **端到端验证**：`palette.load` 对 `devilutionx.mpq` 的 `gendata\cut2.pal` 返回 256 色
@@ -492,8 +492,17 @@ sidecar JSON（`grid_width/grid_height/micro_len/frame_count` + 四个每格标�
 输出 ExportDun 兼容 `.dun`，与 DevilutionX 14 个 Cathedral fixture 逐格 0 差异；
 Catacombs/Caves/Hell/Crypt 仍待移植。
 
+**测试目录**（2026-11-12 调整）：三套测试源码（`tests/unit_tests.cpp` /
+`tests/core_tests.cpp` / `tests/integration_tests.cpp`）与 21 个手工 JSON-RPC 请求模板、
+响应快照统一置于 `tests/`；`out/` 只承载 mcp-server 与 `mpq-info/` 辅助工具的运行产物。
+测试内硬编码的运行临时产物路径（`tests/__png_test.png`、`tests/_it_*`、
+`tests/gen_test/`、`tests/ui/`）及编译出的 `tests/*.exe` 均由 `.gitignore` 忽略。
+经实证这 21 个 JSON 夹具不被任何测试 `.cpp` 读取，仅用于手工向 stdio/WS 复现请求与留存
+响应基准；`out/` 侧同名遗留产物亦由 `out/_it_*` 兜底忽略。三套 g++ 构建/运行命令见
+`README.md` §测试。
+
 **测试**（见 `README.md` §测试 / §6）：
-- `out/unit_tests.cpp`：TIL/MIN/DUN/SOL、`buildMicroGrid` 0-based、Square/Triangle CEL、
+- `tests/unit_tests.cpp`：TIL/MIN/DUN/SOL、`buildMicroGrid` 0-based、Square/Triangle CEL、
   强制三角形、`encodePNG`、`renderMap` 两遍绘制 + 不透明背景 + 0 透明像素 + 空格预填 +
   frame()==0 守卫、**`level_light` 光照表/falloff/cone/buildLightMap 与逐格着色**、
   **`level_path` A\*（墙体/斜角/Solid 目标/maxSteps）**、`buildTownScene`/`buildDungeonScene`、
@@ -502,7 +511,7 @@ Catacombs/Caves/Hell/Crypt 仍待移植。
   PNG write round-trip 改用 `decompressZlib` 解压 IDAT、**`testDungeonGen`**（LCG/GenerateRnd、
   DUN 解析、任务默认值、确定性/结构、缺失 set-piece 报错 + 14 个 DevilutionX Cathedral
   fixture 的 40×40 全格 0 差异 oracle；fixture 缺失时 SKIP）。
-- `out/integration_tests.cpp`：`testLevelMap`（真实 L1，断言 0 透明像素）、
+- `tests/integration_tests.cpp`：`testLevelMap`（真实 L1，断言 0 透明像素）、
   `testLevelGenerate`（`level.generate` 从 MPQ 生成 Cathedral L2，断言 40×40 hex /
   54404 字节 ExportDun 文件 / `loadDun` 识别 / 同 seed 确定性）、
   `testSceneTools`（真实 Tristram，断言 0 透明像素 + PNG/叠加层/标志/`walkable` 数组 +
@@ -792,7 +801,7 @@ Archive 输入框——点选精灵即可直接解码，无需用户手填路径
 ### 11.1 分层（两个 header-only 纯模块 + 一个工具编排层）
 
 仿 `spell_tables.h` 的做法，把纯数据与纯像素逻辑做成 header-only，令
-`out/unit_tests.cpp` 直接 `#include` 即可全量单测（**unit 的 g++ 命令不需要加任何 .cpp**）：
+`tests/unit_tests.cpp` 直接 `#include` 即可全量单测（**unit 的 g++ 命令不需要加任何 .cpp**）：
 
 - `src/tools/ui_layout.h`（namespace `ui_layout`）：`Rect/ArtRef/Element/Panel/Screen`
   结构 + `screens()` 静态目录（18 屏）+ `findScreen/validateScreen/uniqueArtRefs/

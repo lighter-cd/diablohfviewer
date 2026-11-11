@@ -391,3 +391,7 @@
 ## 2026-11-12 03:35:46
 - 按约定先提交此前累积未入库改动（mcp-server 的 JSON-RPC/WS 进度透传、registry 进度槽、scene_tools 场景缓存哈希命名空间化，web 前端场景查看器，项目规范 CODEBUDDY.md 与 TODO），本轮排除 out/ 未纳入暂存；out/ 下 24 个已跟踪文件未改动，测试套件迁移尚未开始。
 - 涉及: changed-history.txt, src/mcp/jsonrpc.h, src/mcp/jsonrpc.cpp, src/mcp/transport_ws.cpp, src/tools/registry.h, src/tools/registry.cpp, src/tools/scene_tools.cpp, web/index.html, web/src/client.js, web/src/main.js, web/styles.css, CODEBUDDY.md, TODO
+
+## 2026-11-12 03:49:58
+- 测试套件迁出 out/：新建 tests/ 并用 git mv 迁入三套测试源码（unit/core/integration_tests.cpp）与 21 个手工 JSON-RPC 夹具/响应快照，out/ 从此 0 个已跟踪文件；三套 .cpp 内硬编码的 out/ 运行临时产物路径同步改为 tests/（__png_test.png、_it_*、gen_test、ui），.gitignore 新增 tests/ 运行产物忽略段并补 out/_it_* 兜底，README/docs/src 注释共 20+ 处引用同步更新；迁移前后三套测试均 ALL PASS。经实证 21 个 JSON 夹具不被任何测试 .cpp 读取，仅作手工复现请求与响应基准。out/ 未删、未整目录忽略，留待测试后再定。
+- 涉及: tests/(24 文件), .gitignore, README.md, docs/ARCHITECTURE.md, docs/PROJECT.md, src/tools/spell_tables.h, src/tools/ui_layout.h, src/tools/ui_render.h, changed-history.txt

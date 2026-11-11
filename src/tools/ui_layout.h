@@ -2,7 +2,7 @@
 //
 // Stage 5 (goal 4): Diablo 1 / Hellfire GUI LAYOUT catalog — header-only, pure
 // data + pure queries (no nlohmann/json, no engine, no decoders). This lets
-// out/unit_tests.cpp exercise the whole catalog by simply #include-ing it.
+// tests/unit_tests.cpp exercise the whole catalog by simply #include-ing it.
 //
 // The catalog is a faithful transcription of DevilutionX's UI layout constants
 // (Source/DiabloUI/*, Source/control/*, Source/inv.cpp, Source/panels/*,

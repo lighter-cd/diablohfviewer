@@ -3,7 +3,7 @@
 // Stage 5 (goal 4): tiny, dependency-free RGBA raster helpers used to composite
 // a DiabloUI screen's real decoded art into a 640x480 canvas and to rasterize
 // the element-rectangle OVERLAY (boxes + number tags). Header-only, pure pixels
-// (no nlohmann/json, no engine, no decoders) so out/unit_tests.cpp can test it
+// (no nlohmann/json, no engine, no decoders) so tests/unit_tests.cpp can test it
 // by #include-ing it directly.
 //
 // Deliberately does NOT reuse scene_tools.cpp's private putPixel/line helpers:

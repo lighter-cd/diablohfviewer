@@ -142,14 +142,14 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
 
 ## 测试
 
-后端各单元均配合单元测试，分三个套件，全部在 `out/` 下，用 MinGW-w64 的 `g++` 直接构建运行。
+后端各单元均配合单元测试，分三个套件，测试源码与手工 JSON 夹具全部在 `tests/` 下，用 MinGW-w64 的 `g++` 直接构建运行（编译出的 `tests/*.exe` 与测试运行临时产物均不入库）。
 （注意：`GLOB_RECURSE` 用于 CMake 的 `mcp-server`；新增 `src/**/*.cpp` 后需重跑一次
 `cmake -S . -B build-mcp` 才会被纳入构建。测试用 g++ 单文件直接编译，把新增源文件加进命令即可。）
 
 ### 1. 解码器 + base64（无需 MPQ / StormLib）
 
 ```bash
-g++ -I src -std=c++17 out/unit_tests.cpp \
+g++ -I src -std=c++17 tests/unit_tests.cpp \
     src/decoders/clx.cpp src/decoders/cel.cpp src/decoders/cl2.cpp \
     src/decoders/pcx.cpp src/decoders/palette.cpp src/decoders/png.cpp \
     src/decoders/deflate.cpp \
@@ -158,21 +158,21 @@ g++ -I src -std=c++17 out/unit_tests.cpp \
     src/decoders/level_scene.cpp src/decoders/level_light.cpp src/decoders/level_path.cpp \
     src/decoders/dungeon_gen.cpp src/decoders/dungeon_gen_l1.cpp \
     -static-libgcc -static-libstdc++ \
-    -o out/unit_tests.exe && out/unit_tests.exe
+    -o tests/unit_tests.exe && tests/unit_tests.exe
 ```
 覆盖：CLX 解码、CEL→CLX / CL2→CLX 往返、**CL2/CEL 畸形输入与错误 `width` 拒绝（不崩溃）**、**`testCelToClxPerFrameWidths`（逐帧宽度 CEL 解出不同帧宽、单宽/短数组/空数组干净拒绝）、`testInvWidthsTable`（179/61 帧宽表按名解析与大小写归一）**、**`spell_tables.h` 纯 join（TSV/CRLF、编号文件生成、AI→导弹、阶段派生）**、PCX 解码、调色板加载、base64 编解码往返、**`testDeflateRoundTrip`（`compressZlib`↔`decompressZlib` 回环 + 5 组代表数据 + length 3–258 × distance 全 30 码边界 15 万+ 组合，覆盖 RFC 1951 额外位）**、**PNG write round-trip（IDAT 用 `decompressZlib` 解压校验）**；以及**关卡/场景解码器**（`loadTil` / `loadMin` / `loadDun` / `loadSol` 解析、`buildMicroGrid` 0-based 微索引/kNoMicro 拼装、Square/Triangle 的 level CEL 重编码与 RGBA 帧解码、强制三角形解码、调色板 4 字节步长回归、`renderMap` 两遍绘制 + 不透明背景 + 0 透明像素 + 空格预填 + frame()==0 守卫、**dLight 光照表（Normal/Hell/Soft、falloff/cone、`buildLightMap` 环境光/点光源/越界光源）与 renderMap 逐格光照着色**、**8 方向 A* 寻路（开放网格/墙体/斜角/Solid 目标/maxSteps/边界）**、`buildTownScene` 4 sector/预填、`buildDungeonScene` Dirt 预填、`sceneProjection`、`encodePNG`）；以及 **`testDungeonGen` 动态地牢生成器**（LCG 逐步算术、`GenerateRnd`/state、DUN tile 层解析、按层任务默认值、同 seed 确定性/不同 seed 差异、楼梯/地板结构、缺失 set-piece 报错，并对 DevilutionX 的 14 个 Cathedral fixture（Diablo + Hellfire）做 40×40 全格 0 差异 oracle 校验；fixture 目录可用 `DHFC_DRLG_FIXTURES` 指定，缺失时 SKIP）。
-源码路径：`src/decoders/*.cpp`、`src/decoders/inv_widths.h`、`src/tools/base64.h`、`src/tools/spell_tables.h`；测试脚本 `out/unit_tests.cpp`。
+源码路径：`src/decoders/*.cpp`、`src/decoders/inv_widths.h`、`src/tools/base64.h`、`src/tools/spell_tables.h`；测试脚本 `tests/unit_tests.cpp`。
 
 ### 2. Registry + JSON-RPC（纯逻辑，无需 MPQ）
 
 ```bash
-g++ -I 3rdparty -I src -std=c++17 out/core_tests.cpp \
+g++ -I 3rdparty -I src -std=c++17 tests/core_tests.cpp \
     src/tools/registry.cpp src/mcp/jsonrpc.cpp \
-    -o out/core_tests.exe && out/core_tests.exe
+    -o tests/core_tests.exe && tests/core_tests.exe
 ```
 覆盖：`ToolRegistry` 注册/重名/分发/异常捕获/`list`，以及 `handleRequest` 的
 `tools/list`、`tools/call` 与各错误码（-32600 / -32601 / -32602 / -32000）。
-源码路径：`src/tools/registry.cpp`、`src/mcp/jsonrpc.cpp`；测试脚本 `out/core_tests.cpp`。
+源码路径：`src/tools/registry.cpp`、`src/mcp/jsonrpc.cpp`；测试脚本 `tests/core_tests.cpp`。
 
 ### 3. Engine + mpq_tools（需要真实 MPQ）
 
@@ -182,7 +182,7 @@ MPQ 路径取环境变量 `DHFC_TEST_MPQ`，缺省为本地 DevilutionX 安装�
 
 ```bash
 g++ -I 3rdparty/StormLib/src -I 3rdparty -I src -std=c++17 \
-    out/integration_tests.cpp \
+    tests/integration_tests.cpp \
     src/engine/archive.cpp src/tools/registry.cpp \
     src/tools/mpq_tools.cpp src/tools/sprite_tools.cpp src/tools/scene_tools.cpp \
     src/tools/level_tools.cpp src/tools/ui_tools.cpp \
@@ -195,7 +195,7 @@ g++ -I 3rdparty/StormLib/src -I 3rdparty -I src -std=c++17 \
     src/mcp/jsonrpc.cpp \
     3rdparty/StormLib/build/libStormLib.a \
     -lws2_32 -lwininet -static-libgcc -static-libstdc++ \
-    -o out/integration_tests.exe && out/integration_tests.exe
+    -o tests/integration_tests.exe && tests/integration_tests.exe
 ```
 覆盖：`engine::Archive` 的 `normalizePath`/`open`/`list`/`verify`/`querySize`/
 `extract`/`extractToFile`，以及 `mpq.list`/`mpq.verify`/`mpq.extract`/`mpq.dump`/
@@ -223,7 +223,7 @@ micro 257–260 → frames 594–605，并验证组装 PNG。**`testLevelGenerat
 源码路径：`src/engine/archive.cpp`、`src/tools/mpq_tools.cpp`、`src/tools/sprite_tools.cpp`、
 `src/tools/spell_tables.h`、`src/decoders/cl2.cpp`、`src/decoders/cel.cpp`、
 `src/decoders/sprite_width.cpp`、`src/decoders/inv_widths.h`、`src/decoders/level_*.cpp`、
-`src/decoders/dungeon_gen*.cpp`；测试脚本 `out/integration_tests.cpp`。
+`src/decoders/dungeon_gen*.cpp`；测试脚本 `tests/integration_tests.cpp`。
 
 > 每轮改动后请完整运行以上三个套件，确保全绿。
 
@@ -334,8 +334,8 @@ out/render_sprite.exe \
 > 彻底消除查看器把透明区压黑造成的「黑块 / 不完整」。详见 `docs/PROJECT.md`
 > 「游戏场景如何组织」与 `docs/ARCHITECTURE.md` §9.2/§9.3。
 
-**测试**：关卡/场景单测在 §1 的 `out/unit_tests.cpp`，真实全链路集成测试在 §3 的
-`out/integration_tests.cpp::testLevelMap`（L1 `rnd2.dun`）与 `::testSceneTools`
+**测试**：关卡/场景单测在 §1 的 `tests/unit_tests.cpp`，真实全链路集成测试在 §3 的
+`tests/integration_tests.cpp::testLevelMap`（L1 `rnd2.dun`）与 `::testSceneTools`
 （Tristram 城镇），均断言 **0 透明像素**。套件直接编入 `src/decoders/level_*.cpp` 与
 `src/tools/scene_tools.cpp`；`mcp-server`（CMake `GLOB_RECURSE src/*.cpp`）新增源文件后
 重跑一次 `cmake -S . -B build-mcp` 再 `cmake --build build-mcp --target mcp-server` 即可全绿。
@@ -503,7 +503,7 @@ http://localhost:8000/level.html
   `src/decoders/level.h` / `level_decode.cpp` / `level_cel.cpp` / `level_render.cpp` /
   `level_scene.cpp` / `level_light.cpp` / `level_path.cpp`、`src/decoders/png.cpp` /
   `deflate.cpp`、`web/index.html` / `src/main.js` / `styles.css`；
-  测试脚本 `out/unit_tests.cpp`、`out/integration_tests.cpp`；管线与已踩坑详见
+  测试脚本 `tests/unit_tests.cpp`、`tests/integration_tests.cpp`；管线与已踩坑详见
   `docs/ARCHITECTURE.md` §9.2/§9.3、§10.5。
 
 ## 开发文档

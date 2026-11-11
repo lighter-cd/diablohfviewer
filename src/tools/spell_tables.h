@@ -3,7 +3,7 @@
 // Header-only, dependency-free (no nlohmann/json) helpers that join the
 // DevilutionX data tables into a "spell / monster attack -> visual stages"
 // catalog. sprite_tools.cpp turns the returned structs into JSON for the
-// `spell.list` MCP tool; out/unit_tests.cpp unit-tests the pure functions here
+// `spell.list` MCP tool; tests/unit_tests.cpp unit-tests the pure functions here
 // without needing any MPQ or TSV files on disk.
 
 #pragma once

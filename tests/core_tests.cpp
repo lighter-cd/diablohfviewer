@@ -4,9 +4,9 @@
 // src/mcp/jsonrpc.cpp directly and need no MPQ archive or StormLib linkage.
 //
 // Build & run (MinGW-w64, from repo root):
-//   g++ -I 3rdparty -I src -std=c++17 out/core_tests.cpp \
+//   g++ -I 3rdparty -I src -std=c++17 tests/core_tests.cpp \
 //       src/tools/registry.cpp src/mcp/jsonrpc.cpp \
-//       -o out/core_tests.exe && out/core_tests.exe
+//       -o tests/core_tests.exe && tests/core_tests.exe
 //
 // Exit code 0 = all pass, 1 = at least one failure.
 

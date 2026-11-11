@@ -8,7 +8,7 @@
 //   - tools/base64: RFC4648 encode/decode round trip
 //
 // Build & run (MinGW-w64, from repo root):
-//   g++ -I src -std=c++17 out/unit_tests.cpp \
+//   g++ -I src -std=c++17 tests/unit_tests.cpp \
 //       src/decoders/clx.cpp src/decoders/cel.cpp src/decoders/cl2.cpp \
 //       src/decoders/pcx.cpp src/decoders/palette.cpp src/decoders/png.cpp \
 //       src/decoders/deflate.cpp \
@@ -17,7 +17,7 @@
 //       src/decoders/level_render.cpp src/decoders/level_scene.cpp \
 //       src/decoders/level_light.cpp src/decoders/level_path.cpp \
 //       -static-libgcc -static-libstdc++ \
-//       -o out/unit_tests.exe && out/unit_tests.exe
+//       -o tests/unit_tests.exe && tests/unit_tests.exe
 //
 // Exit code 0 = all pass, 1 = at least one failure.
 
@@ -569,7 +569,7 @@ static void testPngWrite()
             rgba[o + 3] = 255;
         }
 
-    const char* path = "out/__png_test.png";
+    const char* path = "tests/__png_test.png";
     if (!writePNG(path, W, H, rgba)) { printf("PNG write: FAIL (writePNG false)\n"); allOk = false; return; }
 
     std::ifstream f(path, std::ios::binary);

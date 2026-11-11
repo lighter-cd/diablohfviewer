@@ -14,7 +14,7 @@
 //
 // Build & run (MinGW-w64, from repo root):
 //   g++ -I 3rdparty/StormLib/src -I 3rdparty -I src -std=c++17 \
-//       out/integration_tests.cpp \
+//       tests/integration_tests.cpp \
 //       src/engine/archive.cpp src/tools/registry.cpp \
 //       src/tools/mpq_tools.cpp src/tools/sprite_tools.cpp src/tools/ui_tools.cpp \
 //       src/tools/scene_tools.cpp \
@@ -26,7 +26,7 @@
 //       src/mcp/jsonrpc.cpp \
 //       3rdparty/StormLib/build/libStormLib.a \
 //       -lws2_32 -lwininet -static-libgcc -static-libstdc++ \
-//       -o out/integration_tests.exe && out/integration_tests.exe
+//       -o tests/integration_tests.exe && tests/integration_tests.exe
 //
 
 // Exit code 0 = all pass (or skip), 1 = at least one failure.
@@ -112,7 +112,7 @@ static void testEngineArchive(const std::string& mpq) {
     CHECK(a.extract(firstName, buf), "extract(known) succeeds");
     CHECK(buf.size() == (size_t)qsz, "extracted buffer size == querySize");
 
-    std::string tmpPath = "out/_it_extract_tmp.bin";
+    std::string tmpPath = "tests/_it_extract_tmp.bin";
     CHECK(a.extractToFile(firstName, tmpPath), "extractToFile succeeds");
     {
         std::ifstream f(tmpPath, std::ios::binary | std::ios::ate);
@@ -190,7 +190,7 @@ static void testMpqTools(const std::string& mpq) {
     // mpq.recover with a self-generated dict: one real name + one bogus name.
     // This makes the assertion exact and removes any dependency on the bundled
     // dictionary file or the current working directory.
-    std::string dictPath = "out/_it_recover_dict.txt";
+    std::string dictPath = "tests/_it_recover_dict.txt";
     {
         std::ofstream d(dictPath);
         d << firstName << "\n";
@@ -244,7 +244,7 @@ static void testSpriteList() {
         return (*resp)["result"];
     };
 
-    std::string dictPath = "out/_it_sprite_dict.json";
+    std::string dictPath = "tests/_it_sprite_dict.json";
     {
         std::ofstream d(dictPath);
         d << "{ \"archives\": [ { \"name\": \"DIABDAT.MPQ\", \"path\": \"D:/fixtures/DIABDAT.MPQ\", \"recovered\": [ ";
@@ -817,7 +817,7 @@ static void testSpriteListInvFamily() {
     ToolRegistry reg;
     tools::registerSpriteTools(reg);
 
-    std::string dictPath = "out/_it_inv_dict.json";
+    std::string dictPath = "tests/_it_inv_dict.json";
     {
         std::ofstream d(dictPath);
         d << "{ \"archives\": [ { \"name\": \"DIABDAT.MPQ\", "
@@ -867,7 +867,7 @@ static void testSpriteListLevelFamily() {
     ToolRegistry reg;
     tools::registerSpriteTools(reg);
 
-    std::string dictPath = "out/_it_level_dict.json";
+    std::string dictPath = "tests/_it_level_dict.json";
     {
         std::ofstream d(dictPath);
         d << "{ \"archives\": [ { \"name\": \"DIABDAT.MPQ\", "
@@ -1614,7 +1614,7 @@ static void testLevelGenerate(const std::string& mpq) {
         return;
     }
 
-    const char* outDir = "out/gen_test";
+    const char* outDir = "tests/gen_test";
     ToolRegistry reg;
     tools::registerMpqTools(reg);
     tools::registerLevelTools(reg);
@@ -1817,7 +1817,7 @@ static void testUiTools(const std::string& mpq) {
 
     // ui.build(mainmenu): PCX embedded palette, 0 transparent pixels, valid PNG.
     json bargs = json{{"id", "mainmenu"}, {"archive", archives[0]},
-                      {"archives", stack}, {"out", "out/ui"}};
+                      {"archives", stack}, {"out", "tests/ui"}};
     ToolResult br = reg.dispatch("ui.build", bargs);
     CHECK(br.ok, "ui.build(mainmenu) dispatch ok");
     if (!br.ok) {
@@ -1851,18 +1851,18 @@ static void testUiTools(const std::string& mpq) {
     }
     CHECK(statusValid, "ui.build every element has a valid decode_status");
     {
-        std::ifstream f("out/ui/mainmenu.png");
-        CHECK(f.good(), "ui.build writes out/ui/mainmenu.png");
+        std::ifstream f("tests/ui/mainmenu.png");
+        CHECK(f.good(), "ui.build writes tests/ui/mainmenu.png");
     }
     {
-        std::ifstream f("out/ui/mainmenu.json");
-        CHECK(f.good(), "ui.build writes out/ui/mainmenu.json sidecar");
+        std::ifstream f("tests/ui/mainmenu.json");
+        CHECK(f.good(), "ui.build writes tests/ui/mainmenu.json sidecar");
     }
 
     // ui.build(control_panel): cross-archive palette (town.pal in DIABDAT,
     // diablo.pal in devilutionx.mpq) + CEL width from catalog + 2 orb frames.
     json cargs = json{{"id", "control_panel"}, {"archive", archives[0]},
-                      {"archives", stack}, {"out", "out/ui"}};
+                      {"archives", stack}, {"out", "tests/ui"}};
     ToolResult cr = reg.dispatch("ui.build", cargs);
     CHECK(cr.ok, "ui.build(control_panel) dispatch ok");
     if (cr.ok) {
@@ -1903,7 +1903,7 @@ static void testUiTools(const std::string& mpq) {
     // We cannot easily remove diablo.pal, but we CAN pass an explicit wrong
     // palette name -> all CEL/CLX decode_error, tool still ok (skip_missing).
     json wargs = json{{"id", "control_panel"}, {"archive", archives[0]},
-                      {"archives", stack}, {"out", "out/ui"},
+                      {"archives", stack}, {"out", "tests/ui"},
                       {"palette", "__no_such_palette__.pal"}};
     ToolResult wr = reg.dispatch("ui.build", wargs);
     CHECK(wr.ok, "ui.build with missing palette still ok (skip_missing_art)");

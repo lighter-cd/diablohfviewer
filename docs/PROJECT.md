@@ -252,6 +252,7 @@ DiabloHFConverter/
 │       └── recovered.json       # 汇总清单（可由 mpq.recover 重建）
 ├── build-mcp/           # CMake 构建目录（mcp-server.exe 产物）
 ├── CMakeLists.txt       # MinGW 构建（StormLib + 静态运行时 + ws2_32/wininet）
+├── tests/               # 三套测试源码（*.cpp）+ 手工 JSON-RPC 夹具/响应快照（入库）
 └── out/                 # 产出的 PNG/JSON/文本（运行产物，不入库）
 ```
 
@@ -390,7 +391,7 @@ DiabloHFConverter/
     `towners.tsv`(`animWidth`) 取宽；`items`(CEL) 无宽度表，仍需手填。`towners/animals/cow.cel`
     是 `towners.cpp` 硬编码特例，不在 TSV 中，自动查表会回退到手动宽度。
   - 调色板用任意 256 色 `.pal` 即可出形，选对游戏调色板则颜色正确。
-  - 单测：`out/unit_tests.cpp` 含 CLX/CEL/CL2 round-trip、**CL2/CEL 畸形输入与错误 `width`
+  - 单测：`tests/unit_tests.cpp` 含 CLX/CEL/CL2 round-trip、**CL2/CEL 畸形输入与错误 `width`
     拒绝**、PCX、palette、**PNG write round-trip**；构建与运行见仓库根 `README.md` §1
     （解码器单测）与 §5（精灵渲染）。
   - [x] 修复 CL2 解码器越界崩溃（2026-11-08）：`src/decoders/cl2.cpp` 对所有文件偏移做边界
@@ -732,14 +733,14 @@ DiabloHFConverter/
       base64 预览；已注册到 Tool Registry（stdio + WS 双传输复用）。2026-11-09 同步改用修正后的
       两遍渲染 + 不透明背景 + 空格预填。
 - [x] **单元/集成测试**：
-      - `out/unit_tests.cpp`：TIL/MIN/DUN/SOL 解析、`buildMicroGrid` 0-based/kNoMicro 拼装、
+      - `tests/unit_tests.cpp`：TIL/MIN/DUN/SOL 解析、`buildMicroGrid` 0-based/kNoMicro 拼装、
         Square/Triangle CEL 重编码与解码、强制三角形解码、`encodePNG`、
         `renderMap` 两遍绘制 + 不透明背景 + 0 透明像素 + 空格预填 + frame()==0 守卫、
         **`level_light`（LightTables Normal/Hell/Soft、falloff/cone、`buildLightMap`）与
         `renderMap` 逐格光照着色**、**`level_path` 8 方向 A\*（开放/墙体/斜角/Solid 目标/maxSteps）**、
         `buildTownScene`（4 sector + 预填 426/218）、`buildDungeonScene`（Dirt 预填 + DUN@16,16）、
         `sceneProjection`/`sceneGridDims`。
-      - `out/integration_tests.cpp`：`testLevelMap` 从 `DIABDAT.MPQ` 抽真实 L1 资源跑通全链路并
+      - `tests/integration_tests.cpp`：`testLevelMap` 从 `DIABDAT.MPQ` 抽真实 L1 资源跑通全链路并
         断言 **0 透明像素**；`testSceneTools` 用 `scene.list`/`scene.build`/`scene.path` 复原
         Tristram 城镇，断言 96×96 网格、0 透明像素、base64 PNG 合法、叠加层/每格标志/
         `walkable` 数组、`scene.path` 起止格与原生/预览坐标；`l1_rnd2` + `lighting:true` 断言
