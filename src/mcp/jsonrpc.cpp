@@ -22,7 +22,8 @@ json okResponse(const json& id, json result) {
 
 } // namespace
 
-std::optional<json> handleRequest(const ToolRegistry& reg, const json& req) {
+std::optional<json> handleRequest(const ToolRegistry& reg, const json& req,
+                                  const ProgressFn& progress) {
     if (!req.is_object())
         return errorResponse(nullptr, -32600, "invalid request object");
 
@@ -47,7 +48,7 @@ std::optional<json> handleRequest(const ToolRegistry& reg, const json& req) {
         if (!args.is_object())
             args = json::object();
 
-        ToolResult tr = reg.dispatch(name, args);
+        ToolResult tr = reg.dispatch(name, args, progress);
         if (tr.ok)
             return okResponse(id, std::move(tr.value));
         return errorResponse(id, -32000, "tool execution failed", std::move(tr.value));

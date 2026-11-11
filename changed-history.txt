@@ -371,3 +371,23 @@
 ## 2026-11-11 09:20:00
 - 场景查看器仿界面布局查看器：原 #stageControls（调色板/TRN/方向/帧/缩放/播放条）仅在 gui 模式隐藏，场景模式下仍残留且对场景无效；改动：setMode 中 $("stageControls").hidden = scene || gui，场景模式一并隐藏；loadScene 成功后将场景摘要（标题/原始尺寸/预览尺寸/网格/缩放/透明像素/Solid/光照）写入 #currentName（顶部"当前资源"），并 setMeta("") 清空底部状态栏避免重复，与 gui.build 一致。index.html 缓存戳 20261111d→e。
 - 涉及: web/src/main.js, web/index.html, changed-history.txt
+
+## 2026-11-11 23:05:00
+- 场景查看器改用原生尺寸图（方案2 HTTP 文件端点）：此前前端只通过 WS 收到的 base64 拿到缩放预览图（最大宽 1000px），原生全尺寸 PNG 虽已落盘 out/scenes/ 但前端无法访问。改动：mcp-server 同一监听端口同时服务 WS 与纯 HTTP GET——handleClient 先读请求头，无 Upgrade: websocket 则走静态文件服务 /scenes/<id>.png（映射到 out/scenes/，禁目录穿越、仅 png/json），若有 Upgrade 则照常 WS 握手；scene.build 新增生成原生尺寸 overlay（buildOverlay step=1）并落盘 <id>_overlay_native.png，回传 image_url/preview_url/overlay_url（相对路径 /scenes/...）；前端新增 sceneHttpOrigin()（由 wsUrl 派生 http://host:port）与 sceneDrawUrl()，loadScene 优先用 URL 加载原生 base+overlay（二者均原生尺寸、像素对齐），失败时回退 base64 预览。实测 /scenes/tristram.png 返回 200 原生 9.1MB image/png、tristram_overlay_native.png 200、tristram.json 200 application/json、穿越与缺失均 404。index.html 缓存戳 20261111e→f。
+- 涉及: src/mcp/transport_ws.cpp, src/tools/scene_tools.cpp, web/src/main.js, web/index.html, changed-history.txt
+
+## 2026-11-12 00:30:00
+- 场景查看器交互改进（自动加载 + 计算进度蒙版 + 缺省居中）：去除"加载场景"按钮，选择场景下拉框 change 与切换光照 checkbox change 后均立即 loadScene()；后端新增进度回调通道——registry 增加线程局部 ProgressFn 槽与 mcp::tools::reportProgress，dispatch 调用期间注入、jsonrpc/transport 透传，WS 层把进度作为无 id 的 $/progress 通知帧实时推送；scene.build 在解析/提取/渲染/编码/落盘/完成各阶段上报百分比与阶段名；前端 client.js 路由 $/progress 通知到 callTool 的 onProgress 回调，main.js 新增全屏蒙版 #sceneLoadingMask（spinner + 进度条 + 阶段文字，z-index 9999 屏蔽其他界面），loadScene 开始时显示、结束时隐藏，实时刷新进度；sceneFit 取消 Math.max(0,...) 限制允许负 pan，使地图中心默认落在视口中心而非左上角。index.html 加蒙版 DOM、去按钮，缓存戳 20261111f→g（client.js 导入也同步 g）。
+- 涉及: src/tools/registry.h, src/tools/registry.cpp, src/mcp/jsonrpc.h, src/mcp/jsonrpc.cpp, src/mcp/transport_ws.cpp, src/tools/scene_tools.cpp, web/src/client.js, web/src/main.js, web/index.html, web/styles.css, changed-history.txt
+
+## 2026-11-12 01:40:00
+- 场景查看器缓存复用与无缺省选择 + 子 1x 缩放：澄清后端差异仅"是否启用光照"一个参数，故缓存键已含该标志，有/无光照各存一份结果（Tristram 城镇无特殊性，无光照=全亮、有光照=中心火把亮/其它按 ambient 全黑，二者确为不同图）。改动：scene.build 在写盘前先按参数签名（id+档案栈+光照标志+ambient+lights+auto_light+maxW+outDir）比对 out/scenes/<id>.key，命中且 PNG 仍在则直接回读 <.result.json> 并以"复用缓存"100% 结束（实测相同参数第 2 次 43ms 完成 vs 首次 19.5s）；新增 scene.clearCache 工具（删除 out/scenes 下全部常规文件，含 .key/.result.json），前端"清除地图缓存"按钮调用后若有选中场景则强制重建。前端：sceneSel 初始为空选项"（未选择场景）"、不再默认选中 tristram，showSceneView 不自动加载（未选时仅提示），切回场景页时已选才重建；缩放由滑块改为下拉（0.25/0.5/1/2/3/4/6/8×），新增 sceneSetZoom 在改倍率时按视口中心锁定同一地图点（不再弹回左上角），滚轮在档位列表内步进。index.html 缓存戳 20261112a（main.js/client.js 导入同步）。
+- 涉及: src/tools/scene_tools.cpp, web/src/main.js, web/index.html, changed-history.txt
+
+## 2026-11-12 02:10:00
+- 修复场景缓存：有/无光照两份结果此前并未真正"各存一份"。原实现所有变体共用同一文件名 tristram.png/.key/.result.json，构建另一光照态时会覆盖已存的，磁盘上永远只剩最后构建的那一份，切回时仍要重算（实测 19.5s）。修正：用 buildCacheKey 的 FNV-1a 64 位哈希（16 hex）作文件名后缀，使每种参数组合（含光照标志 L0/L1）的 PNG/key/result/overlay 各自命名空间化、并存于 out/scenes/（如 tristram_904eb0b0c922e5e4.* 与 tristram_eb3d204c5d054fc7.*）；只构建被请求的那一份，切换光照时再补另一份，切回直接命中缓存。实测顺序：OFF 构建(19.5s)→ON 构建(19.5s)→切回 OFF 命中(7ms)→切回 ON 命中(8ms)。前端仅消费后端回传的 image_url/overlay_url，文件名变化对前端透明。
+- 涉及: src/tools/scene_tools.cpp, changed-history.txt
+
+## 2026-11-12 03:35:46
+- 按约定先提交此前累积未入库改动（mcp-server 的 JSON-RPC/WS 进度透传、registry 进度槽、scene_tools 场景缓存哈希命名空间化，web 前端场景查看器，项目规范 CODEBUDDY.md 与 TODO），本轮排除 out/ 未纳入暂存；out/ 下 24 个已跟踪文件未改动，测试套件迁移尚未开始。
+- 涉及: changed-history.txt, src/mcp/jsonrpc.h, src/mcp/jsonrpc.cpp, src/mcp/transport_ws.cpp, src/tools/registry.h, src/tools/registry.cpp, src/tools/scene_tools.cpp, web/index.html, web/src/client.js, web/src/main.js, web/styles.css, CODEBUDDY.md, TODO

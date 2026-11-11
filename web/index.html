@@ -160,22 +160,31 @@
       <div class="char-bar">场景查看器（scene.list / scene.build · 完整等距关卡）</div>
       <div class="char-controls">
         <label>场景
-          <select id="sceneSel"></select>
+          <select id="sceneSel"><option value="">（未选择场景）</option></select>
         </label>
         <label>MPQ 路径（可选，覆盖目录里的主档案）
           <input id="sceneArchive" type="text" placeholder="留空则用目录中的档案栈" />
         </label>
-        <button id="sceneLoadBtn" type="button">加载场景</button>
         <label>缩放
-          <input id="sceneZoom" type="range" min="1" max="8" step="1" value="2" />
-          <span id="sceneZoomNo">2×</span>
+          <select id="sceneZoom">
+            <option value="0.25">0.25×</option>
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+            <option value="2">2×</option>
+            <option value="3">3×</option>
+            <option value="4">4×</option>
+            <option value="6">6×</option>
+            <option value="8">8×</option>
+          </select>
+          <span id="sceneZoomNo">1×</span>
         </label>
         <label class="scene-check"><input type="checkbox" id="sceneOverlayToggle" checked /> 显示叠加层（网格 / SOL 标志）</label>
         <label class="scene-check"><input type="checkbox" id="sceneBrightToggle" checked /> 提亮（夜景）</label>
         <label class="scene-check"><input type="checkbox" id="sceneLightToggle" /> 光照（dLight 暗部 + 中心火把）</label>
         <button id="sceneFitBtn" type="button">复位视图</button>
+        <button id="sceneClearCacheBtn" type="button">清除地图缓存</button>
       </div>
-      <div class="char-hint">选场景 → 加载：后端用 DevilutionX 两遍绘制（地板菱形 + 墙体）复原完整场景，返回 PNG 预览 + 对齐的叠加层。拖拽平移、滑块/滚轮缩放。红色=Solid，蓝色=透明，黄色=BlockLight。勾选「光照」后按 SOL/ambient + 中心火把应用 DevilutionX LightTables 暗部着色（城镇全亮、地牢变暗）。场景含 Tristram 城镇与 L1–L4 预设。</div>
+      <div class="char-hint">选场景 → 立即加载：后端用 DevilutionX 两遍绘制（地板菱形 + 墙体）复原完整场景，返回 PNG 预览 + 对齐的叠加层。拖拽平移、下拉或滚轮缩放（支持 0.25×/0.5× 整体预览，缩放时保持地图中心）。切换「光照」会在有/无光照两种结果间复用后端缓存。红色=Solid，蓝色=透明，黄色=BlockLight。「清除地图缓存」可删除已生成的场景图并强制下次重新生成。</div>
     </aside>
 
     <aside class="gui-pane" id="guiPane" hidden>
@@ -293,6 +302,18 @@
     </aside>
   </main>
 
-  <script type="module" src="src/main.js?v=20261111e"></script>
+  <!-- Scene build loading mask: full-screen overlay that blocks the UI and shows
+       backend progress (driven by $/progress notifications). Hidden by default. -->
+  <div id="sceneLoadingMask" class="scene-loading-mask" hidden>
+    <div class="scene-loading-box">
+      <div class="scene-loading-spinner" aria-hidden="true"></div>
+      <div class="scene-loading-title">后端计算中…</div>
+      <div class="scene-loading-stage" id="sceneLoadingStage">准备加载…</div>
+      <div class="scene-loading-bar"><div class="scene-loading-fill" id="sceneLoadingFill"></div></div>
+      <div class="scene-loading-pct" id="sceneLoadingPct">0%</div>
+    </div>
+  </div>
+
+  <script type="module" src="src/main.js?v=20261112a"></script>
 </body>
 </html>

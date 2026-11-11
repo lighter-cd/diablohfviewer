@@ -328,6 +328,55 @@ mcp::ToolResult toolSceneList(const mcp::json&) {
     return r;
 }
 
+namespace {
+
+bool fileExists(const std::string& p) {
+    std::error_code ec;
+    return std::filesystem::exists(p, ec);
+}
+
+bool readFile(const std::string& p, std::string& out) {
+    std::ifstream f(p, std::ios::binary);
+    if (!f) return false;
+    out.assign((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    return true;
+}
+
+// A stable key describing everything that affects the rendered output, so an
+// identical request can be served from the on-disk cache without re-rendering.
+std::string buildCacheKey(const std::string& id,
+                          const std::vector<std::string>& archives,
+                          const decoders::SceneSpec& spec,
+                          const mcp::json& params, int maxW,
+                          const std::string& outDir) {
+    std::string a;
+    for (size_t i = 0; i < archives.size(); ++i) { if (i) a += ";"; a += archives[i]; }
+    return "v1|" + id + "|" + a + "|" +
+           (params.value("lighting", false) ? "L1" : "L0") + "|" +
+           std::to_string(params.value("ambient", spec.ambientLight)) + "|" +
+           params.value("lights", mcp::json::array()).dump() + "|" +
+           (params.value("auto_light", true) ? "A1" : "A0") + "|" +
+           std::to_string(maxW) + "|" + outDir;
+}
+
+// FNV-1a 64-bit, rendered as 16 hex chars. Used to namespace on-disk cache
+// artifacts per parameter set, so lighting on/off (and any other param
+// difference) get SEPARATE files that coexist instead of clobbering one shared
+// filename. This is what lets the two cached variants persist independently.
+uint64_t fnv1a64(const std::string& s) {
+    uint64_t h = 1469598103934665603ULL;
+    for (unsigned char c : s) { h ^= static_cast<uint64_t>(c); h *= 1099511628211ULL; }
+    return h;
+}
+std::string hashHex(const std::string& s) {
+    char buf[17];
+    std::snprintf(buf, sizeof(buf), "%016llx",
+                  static_cast<unsigned long long>(fnv1a64(s)));
+    return std::string(buf);
+}
+
+} // namespace
+
 mcp::ToolResult toolSceneBuild(const mcp::json& params) {
     const std::string id = reqStr(params, "id");
     const decoders::SceneSpec* spec = decoders::findScene(id);
@@ -337,7 +386,50 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
     const std::string outDir = params.value("out", std::string("out/scenes"));
     const int maxW = params.value("preview_max_width", 1000);
 
+    // A stable signature of everything affecting the output. Two scenes that
+    // differ ONLY in lighting produce DIFFERENT keys, so each lighting state gets
+    // its OWN on-disk cache (tristram_<hash>.png / .key / .result.json ...). They
+    // are NOT generated together — only the requested variant is built; the other
+    // persists once created, so toggling lighting back reuses it instead of
+    // re-rendering. (The <hash> suffix namespaces the artifacts per parameter
+    // set; without it both variants shared one filename and clobbered each other,
+    // so only the last-built variant ever survived.)
+    const std::string cacheKey = buildCacheKey(id, archives, *spec, params, maxW, outDir);
+    const std::string tag = hashHex(cacheKey);
+
+    // Resolve output paths up front so the cache check below and the (later)
+    // write step share the same names. The <tag> suffix namespaces the artifacts
+    // per parameter set, letting lit/unlit (and any other variant) coexist.
+    const std::string base = sanitize(id) + "_" + tag;
+    std::error_code ec;
+    std::filesystem::create_directories(outDir, ec);
+    const std::string pngPath = outDir + "/" + base + ".png";
+    const std::string previewPath = outDir + "/" + base + "_preview.png";
+    const std::string overlayPath = outDir + "/" + base + "_overlay.png";
+    const std::string nativeOverlayPath = outDir + "/" + base + "_overlay_native.png";
+    const std::string metaPath = outDir + "/" + base + ".json";
+    const std::string keyPath = outDir + "/" + base + ".key";
+    const std::string resultPath = outDir + "/" + base + ".result.json";
+
+    // Cache reuse: if a prior build used identical parameters, return the stored
+    // result WITHOUT re-rendering (the PNGs on disk are still served via HTTP).
+    if (fileExists(keyPath) && fileExists(pngPath) && fileExists(previewPath) &&
+        fileExists(nativeOverlayPath)) {
+        std::string stored;
+        if (readFile(keyPath, stored) && stored == cacheKey) {
+            std::string resTxt;
+            if (readFile(resultPath, resTxt)) {
+                mcp::tools::reportProgress(100, "复用缓存");
+                mcp::ToolResult r;
+                r.value = mcp::json::parse(resTxt);
+                return r;
+            }
+        }
+    }
+
+    mcp::tools::reportProgress(2, "解析场景规格 " + id);
     SceneAssets assets = loadSceneAssets(*spec, archives);
+    mcp::tools::reportProgress(35, "提取 MPQ 资源 / 组装网格");
     const decoders::SceneGrid& grid = assets.grid;
     decoders::MapRenderOptions opts;
     opts.prefillMicro = spec->prefillMicro;
@@ -354,6 +446,8 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
                                          ambient, lights, autoLight);
     opts.lightStyle = spec->lightStyle;
     const bool lightingEnabled = !opts.lightLevels.empty();
+    if (lightingEnabled)
+        mcp::tools::reportProgress(50, "计算光照贴图");
     opts.special = grid.special;
     opts.specialSprites = std::move(assets.specialSprites);
 
@@ -363,6 +457,7 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
         spec->microLen, opts);
     if (map.width == 0 || map.height == 0)
         throw std::runtime_error("scene render produced empty output");
+    mcp::tools::reportProgress(72, "渲染等距地图");
 
     // Verify no transparent pixels remain (the "black blocks" fix).
     size_t transparentCount = 0;
@@ -375,6 +470,10 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
     int pw = 0, ph = 0;
     std::vector<uint8_t> preview = downscale(map.rgba, map.width, map.height, step, pw, ph);
     std::vector<uint8_t> overlay = buildOverlay(map, spec->microLen, step, pw, ph);
+    // Native-size overlay (step=1) so it aligns pixel-perfectly with the full
+    // native base image when the web viewer loads both by URL.
+    std::vector<uint8_t> nativeOverlay =
+        buildOverlay(map, spec->microLen, 1, map.width, map.height);
 
     const std::vector<uint8_t> nativePng =
         decoders::encodePNG(static_cast<uint16_t>(map.width),
@@ -383,17 +482,16 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
         decoders::encodePNG(static_cast<uint16_t>(pw), static_cast<uint16_t>(ph), preview);
     const std::vector<uint8_t> overlayPng =
         decoders::encodePNG(static_cast<uint16_t>(pw), static_cast<uint16_t>(ph), overlay);
-    if (nativePng.empty() || previewPng.empty() || overlayPng.empty())
+    const std::vector<uint8_t> nativeOverlayPng =
+        decoders::encodePNG(static_cast<uint16_t>(map.width),
+                            static_cast<uint16_t>(map.height), nativeOverlay);
+    if (nativePng.empty() || previewPng.empty() || overlayPng.empty()
+        || nativeOverlayPng.empty())
         throw std::runtime_error("PNG encode failed");
+    mcp::tools::reportProgress(88, "编码 PNG / 生成叠加层");
 
-    // Write artifacts to disk.
-    std::error_code ec;
-    std::filesystem::create_directories(outDir, ec);
-    const std::string base = sanitize(id);
-    const std::string pngPath = outDir + "/" + base + ".png";
-    const std::string previewPath = outDir + "/" + base + "_preview.png";
-    const std::string overlayPath = outDir + "/" + base + "_overlay.png";
-    const std::string metaPath = outDir + "/" + base + ".json";
+    // Write artifacts to disk (paths/base were resolved earlier, before the cache
+    // check).
     auto writeBytes = [](const std::string& p, const std::vector<uint8_t>& b) {
         std::ofstream f(p, std::ios::binary);
         if (f) f.write(reinterpret_cast<const char*>(b.data()),
@@ -402,6 +500,8 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
     writeBytes(pngPath, nativePng);
     writeBytes(previewPath, previewPng);
     writeBytes(overlayPath, overlayPng);
+    writeBytes(nativeOverlayPath, nativeOverlayPng);
+    mcp::tools::reportProgress(98, "写入磁盘");
 
     // Sidecar metadata (per-cell flag grids).
     size_t solidCount = 0, transCount = 0, lightLitCount = 0, specialCount = 0;
@@ -448,12 +548,19 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
 
     const int walkableCount =
         decoders::countWalkableCells(assets.solid, map.gridW, map.gridH);
+    mcp::tools::reportProgress(100, "完成");
 
     mcp::ToolResult r;
     r.value = mcp::json{
         {"scene_id", id}, {"title", spec->title},
         {"image_path", pngPath}, {"preview_path", previewPath},
         {"overlay_path", overlayPath}, {"meta_path", metaPath},
+        // HTTP endpoints served by the mcp-server on the same port as the WS
+        // bridge: /scenes/<id>.png (native), /scenes/<id>_preview.png
+        // (downscaled), /scenes/<id>_overlay_native.png (native overlay).
+        {"image_url", "/scenes/" + base + ".png"},
+        {"preview_url", "/scenes/" + base + "_preview.png"},
+        {"overlay_url", "/scenes/" + base + "_overlay_native.png"},
         {"image_base64", mcp::base64::encode(previewPng)},
         {"overlay_base64", mcp::base64::encode(overlayPng)},
         {"width", map.width}, {"height", map.height},
@@ -468,6 +575,14 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
         {"light_lit_count", lightLitCount},
         {"meta", meta},
     };
+
+    // Persist cache markers so an identical future request can be served from
+    // disk without re-rendering: the key (parameter signature) and the full
+    // result JSON.
+    {
+        std::ofstream fk(keyPath); if (fk) fk << cacheKey;
+        std::ofstream fr(resultPath); if (fr) fr << r.value.dump();
+    }
     return r;
 }
 
@@ -547,6 +662,24 @@ mcp::ToolResult toolScenePath(const mcp::json& params) {
 namespace mcp {
 namespace tools {
 
+mcp::ToolResult toolSceneClearCache(const mcp::json& params) {
+    const std::string outDir = params.value("out", std::string("out/scenes"));
+    std::error_code ec;
+    size_t n = 0;
+    if (std::filesystem::exists(outDir, ec)) {
+        for (auto it = std::filesystem::directory_iterator(outDir);
+             it != std::filesystem::directory_iterator(); ++it) {
+            if (it->is_regular_file()) {
+                std::filesystem::remove(it->path(), ec);
+                ++n;
+            }
+        }
+    }
+    mcp::ToolResult r;
+    r.value = mcp::json{{"cleared", static_cast<long long>(n)}};
+    return r;
+}
+
 void registerSceneTools(ToolRegistry& reg) {
     reg.registerTool(ToolDef{
         "scene.list",
@@ -585,6 +718,18 @@ void registerSceneTools(ToolRegistry& reg) {
              }},
              {"required", json::array({"id", "archive"})}},
         toolSceneBuild});
+
+    reg.registerTool(ToolDef{
+        "scene.clearCache",
+        "Delete all cached scene artifacts under the scene output dir (default "
+        "out/scenes): native/overlay/preview PNGs, metadata JSON, and the "
+        "per-request cache markers (.key/.result.json). Lets the UI force a fresh "
+        "scene.build on the next request. Pass `out` to target a custom dir.",
+        json{{"type", "object"},
+             {"properties", json{
+                 {"out", json{{"type", "string"},
+                             {"description", "scene output dir (default out/scenes)"}}}}}},
+        toolSceneClearCache});
 
     reg.registerTool(ToolDef{
         "scene.path",

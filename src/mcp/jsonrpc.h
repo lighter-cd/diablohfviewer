@@ -26,7 +26,10 @@ using json = nlohmann::json;
 
 // Handle one JSON-RPC request object. Returns the response object, or
 // std::nullopt if no response should be sent (e.g. a parse error already
-// handled at the transport layer). `id` is echoed from the request.
-std::optional<json> handleRequest(const ToolRegistry& reg, const json& request);
+// handled at the transport layer). `id` is echoed from the request. `progress`,
+// if provided, is forwarded to the dispatched tool so it can report incremental
+// progress (delivered as JSON-RPC notifications by the transport).
+std::optional<json> handleRequest(const ToolRegistry& reg, const json& request,
+                                  const ProgressFn& progress = {});
 
 } // namespace mcp

@@ -12,6 +12,8 @@
 #include "tools/base64.h"
 
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <thread>
 #include <vector>
@@ -110,13 +112,11 @@ bool sendTextFrame(SOCKET s, const std::string& payload) {
     return sendAll(s, (const char*)frame.data(), (int)frame.size());
 }
 
-// Perform the WS handshake. Returns true on success (101 Switching Protocols
-// already sent). Reads the client HTTP request incrementally until the blank
-// line, finds Sec-WebSocket-Key, and replies with the computed accept value.
-bool doHandshake(SOCKET s) {
-    std::string head;
+// Read the request header block (up to the blank line) without committing to a
+// protocol. The same listen socket serves BOTH the WebSocket upgrade and plain
+// HTTP GETs for scene artifacts, so we must peek at the head first to decide.
+bool readRequestHead(SOCKET s, std::string& head) {
     char c;
-    // Read until we have the full header block "\r\n\r\n".
     while (true) {
         if (!recvAll(s, &c, 1)) return false;
         head.push_back(c);
@@ -126,7 +126,77 @@ bool doHandshake(SOCKET s) {
             break;
         if (head.size() > 16 * 1024) return false;   // guard
     }
+    return true;
+}
 
+void sendHttpStatus(SOCKET s, int code, const char* reason) {
+    std::string body = std::to_string(code) + " " + reason;
+    std::string resp =
+        "HTTP/1.1 " + body + "\r\n"
+        "Content-Type: text/plain; charset=utf-8\r\n"
+        "Content-Length: " + std::to_string(body.size()) + "\r\n"
+        "Connection: close\r\n\r\n" + body;
+    sendAll(s, resp.data(), (int)resp.size());
+}
+
+// Serve a static file for a plain HTTP GET. Only the /scenes/ prefix is allowed
+// (mapped to the scene build output dir out/scenes/); everything else is 404.
+// Paths are restricted to a bare filename (no slash/backslash/"..") so a client
+// cannot escape the scenes directory.
+void serveHttp(SOCKET s, const std::string& head) {
+    size_t sp1 = head.find(' ');
+    if (sp1 == std::string::npos) { sendHttpStatus(s, 400, "Bad Request"); return; }
+    std::string method = head.substr(0, sp1);
+    size_t sp2 = head.find(' ', sp1 + 1);
+    if (sp2 == std::string::npos) { sendHttpStatus(s, 400, "Bad Request"); return; }
+    std::string path = head.substr(sp1 + 1, sp2 - sp1 - 1);
+
+    if (method != "GET" && method != "HEAD") {
+        sendHttpStatus(s, 405, "Method Not Allowed");
+        return;
+    }
+
+    const std::string prefix = "/scenes/";
+    if (path.size() < prefix.size() || path.compare(0, prefix.size(), prefix) != 0) {
+        sendHttpStatus(s, 404, "Not Found");
+        return;
+    }
+    std::string rel = path.substr(prefix.size());
+    if (rel.empty() || rel.find("..") != std::string::npos ||
+        rel.find('/') != std::string::npos || rel.find('\\') != std::string::npos) {
+        sendHttpStatus(s, 403, "Forbidden");
+        return;
+    }
+
+    std::string contentType = "application/octet-stream";
+    if (rel.size() >= 4 && rel.compare(rel.size() - 4, 4, ".png") == 0)
+        contentType = "image/png";
+    else if (rel.size() >= 5 && rel.compare(rel.size() - 5, 5, ".json") == 0)
+        contentType = "application/json";
+
+    std::string fsPath = "out/scenes/" + rel;
+    std::ifstream f(fsPath, std::ios::binary);
+    if (!f) { sendHttpStatus(s, 404, "Not Found"); return; }
+    std::vector<uint8_t> body((std::istreambuf_iterator<char>(f)),
+                              std::istreambuf_iterator<char>());
+    f.close();
+
+    std::string header =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: " + contentType + "\r\n"
+        "Content-Length: " + std::to_string(body.size()) + "\r\n"
+        "Access-Control-Allow-Origin: *\r\n"
+        "Cache-Control: no-store\r\n"
+        "Connection: close\r\n\r\n";
+    sendAll(s, header.data(), (int)header.size());
+    if (method == "GET")
+        sendAll(s, (const char*)body.data(), (int)body.size());
+}
+
+// Perform the WS handshake. Returns true on success (101 Switching Protocols
+// already sent). `head` is the request header read by readRequestHead(); we only
+// need to extract Sec-WebSocket-Key and reply with the computed accept value.
+bool doHandshake(SOCKET s, const std::string& head) {
     // Extract Sec-WebSocket-Key. Browsers send it as "Sec-WebSocket-Key:" with
     // mixed case, so search case-insensitively but copy the value from the
     // original header (the base64 key itself is case-sensitive).
@@ -232,7 +302,36 @@ bool readMessage(SOCKET s, std::string& outText, bool& isText) {
 }
 
 void handleClient(SOCKET s, const ToolRegistry* reg) {
-    if (!doHandshake(s)) { closesocket(s); return; }
+    // Read the request head once, then decide: a plain HTTP GET (no WebSocket
+    // Upgrade) is served as a static file; an Upgrade request proceeds to the WS
+    // handshake.
+    std::string head;
+    if (!readRequestHead(s, head)) { closesocket(s); return; }
+
+    bool isWs = false;
+    {
+        std::string hl = head;
+        for (char& c : hl) if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+        isWs = hl.find("upgrade: websocket") != std::string::npos;
+    }
+    if (!isWs) {
+        serveHttp(s, head);
+        closesocket(s);
+        return;
+    }
+
+    if (!doHandshake(s, head)) { closesocket(s); return; }
+    // Progress sink: the dispatched tool may emit incremental progress, which we
+    // forward to the client as JSON-RPC notifications (no id) carrying
+    // {pct, stage}. The browser WS delivers them as separate onmessage events
+    // interleaved with the final response.
+    auto progress = [&](int pct, const std::string& stage) {
+        json note = json{
+            {"jsonrpc", "2.0"},
+            {"method", "$/progress"},
+            {"params", {{"pct", pct}, {"stage", stage}}}};
+        sendTextFrame(s, note.dump());
+    };
     std::string msg;
     bool isText;
     while (readMessage(s, msg, isText)) {
@@ -244,7 +343,7 @@ void handleClient(SOCKET s, const ToolRegistry* reg) {
                 {"error",{{"code",-32700},{"message","parse error"}}}}.dump());
             continue;
         }
-        auto resp = handleRequest(*reg, req);
+        auto resp = handleRequest(*reg, req, progress);
         if (resp)
             sendTextFrame(s, resp->dump());
     }

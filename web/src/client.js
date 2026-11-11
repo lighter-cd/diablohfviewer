@@ -10,8 +10,9 @@ export class McpClient {
   constructor() {
     this.ws = null;
     this.nextId = 1;
-    this.pending = new Map();      // id -> { resolve, reject }
+    this.pending = new Map();      // id -> { resolve, reject, onProgress }
     this.onStatus = null;          // (connected:boolean) => void
+    this.onProgress = null;        // (pct:number, stage:string) => void  (active call)
   }
 
   // Open the WebSocket. Resolves on open, rejects on error.
@@ -47,10 +48,18 @@ export class McpClient {
       console.warn("non-JSON WS message ignored:", data);
       return;
     }
-    if (msg.id === undefined || msg.id === null) return; // notifications: ignore
+    // Notifications (no id) carry out-of-band info such as progress. The backend
+    // sends { method:"$/progress", params:{ pct, stage } } while a long tool
+    // call runs; route them to the active call's progress callback.
+    if (msg.id === undefined || msg.id === null) {
+      if (msg.method === "$/progress" && msg.params && this.onProgress)
+        this.onProgress(msg.params.pct | 0, msg.params.stage || "");
+      return;
+    }
     const entry = this.pending.get(msg.id);
     if (!entry) return;
     this.pending.delete(msg.id);
+    this.onProgress = null;
     if (msg.error) {
       // The backend wraps tool failures in a generic "tool execution failed";
       // the real reason (e.g. "cel requires a positive integer 'width'") lives
@@ -62,12 +71,13 @@ export class McpClient {
     }
   }
 
-  _send(method, params) {
+  _send(method, params, onProgress) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN)
       return Promise.reject(new Error("WebSocket is not connected"));
     const id = this.nextId++;
+    this.onProgress = onProgress || null;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      this.pending.set(id, { resolve, reject, onProgress });
       this.ws.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
     });
   }
@@ -76,7 +86,7 @@ export class McpClient {
     return this._send("tools/list", {});
   }
 
-  callTool(name, args) {
-    return this._send("tools/call", { name, arguments: args || {} });
+  callTool(name, args, onProgress) {
+    return this._send("tools/call", { name, arguments: args || {} }, onProgress);
   }
 }

@@ -17,7 +17,7 @@
 // Player CL2 frames are stored direction-major: 8 directions x N frames, so
 // frameIndex = dir * framesPerDir + frameInDir (framesPerDir = total/8).
 
-import { McpClient } from "./client.js?v=20261111b";
+import { McpClient } from "./client.js?v=20261112a";
 import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js?v=20261111b";
 import { drawFrame, drawComposite, drawScene } from "./viewer.js?v=20261111b";
 
@@ -1419,7 +1419,7 @@ function stepCombatStage(delta) {
 // <img>/src involved — the bitmap is drawn, never referenced by a URL.
 
 const sceneState = {
-  zoom: 2,
+  zoom: 1,
   panX: 0,
   panY: 0,
   w: 0,             // preview natural width
@@ -1431,6 +1431,12 @@ const sceneState = {
   dragY: 0,
 };
 let sceneCatalog = [];
+
+// Discrete zoom levels for the scene viewer. Includes sub-1x ratios (0.25/0.5)
+// so the whole map can be seen at once; 1x..8x for close inspection. The wheel
+// handler steps through this list by index, and sceneSetZoom keeps the viewport
+// centre anchored to the same map point.
+const SCENE_ZOOMS = [0.25, 0.5, 1, 2, 3, 4, 6, 8];
 
 // Scene PNGs are drawn onto <canvas> layers, exactly like viewer.js blits
 // decoded sprite frames. We decode the base64 PNG bytes into a bitmap and
@@ -1493,6 +1499,62 @@ async function sceneDrawPng(canvas, b64) {
   }
 }
 
+// Derive the plain-HTTP origin from the WS bridge URL so scene artifacts can be
+// fetched from the mcp-server's file endpoint on the SAME port (ws:// -> http://).
+function sceneHttpOrigin() {
+  const raw = ($("wsUrl").value || "ws://localhost:18765").trim();
+  try {
+    const u = new URL(raw);
+    return (u.protocol === "wss:" ? "https://" : "http://") + u.host;
+  } catch {
+    return "http://localhost:18765";
+  }
+}
+
+// Load a scene PNG from the backend HTTP endpoint (native resolution) and blit it
+// onto `canvas`. The backend serves /scenes/<id>.png etc. on the WS port; this
+// keeps the full native image out of the JSON-RPC payload. Empty URL clears.
+async function sceneDrawUrl(canvas, url) {
+  if (!url) {
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    canvas.width = 0;
+    canvas.height = 0;
+    return { w: 0, h: 0 };
+  }
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error("场景图 HTTP " + resp.status);
+  const blob = await resp.blob();
+  let bitmap, revoke = null, close = false;
+  if (typeof createImageBitmap === "function") {
+    bitmap = await createImageBitmap(blob);
+    close = true;
+  } else {
+    const u = URL.createObjectURL(blob);
+    revoke = u;
+    bitmap = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error("场景 PNG 解码失败"));
+      el.src = u;
+    });
+  }
+  try {
+    const w = bitmap.width || bitmap.naturalWidth;
+    const h = bitmap.height || bitmap.naturalHeight;
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(bitmap, 0, 0);
+    return { w, h };
+  } finally {
+    if (close && typeof bitmap.close === "function") bitmap.close();
+    if (revoke) URL.revokeObjectURL(revoke);
+  }
+}
+
 function applySceneTransform() {
   if (!sceneState.loaded) return;
   const z = sceneState.zoom;
@@ -1513,13 +1575,68 @@ function applySceneTransform() {
 function sceneFit() {
   const vp = $("sceneViewport");
   if (!sceneState.loaded) return;
-  // Fit the whole preview into the viewport at zoom 1, centred.
+  // Fit at zoom 1 and centre the MAP's centre in the viewport. Allowing a
+  // negative pan (when the scene is larger than the viewport) scrolls so the
+  // middle of the map — not its top-left corner — sits in the middle of the view.
   const z = 1;
   sceneState.zoom = z;
   $("sceneZoom").value = String(z);
-  sceneState.panX = Math.max(0, (vp.clientWidth - sceneState.w * z) / 2);
-  sceneState.panY = Math.max(0, (vp.clientHeight - sceneState.h * z) / 2);
+  sceneState.panX = (vp.clientWidth - sceneState.w * z) / 2;
+  sceneState.panY = (vp.clientHeight - sceneState.h * z) / 2;
   applySceneTransform();
+}
+
+// Change zoom while keeping the MAP POINT currently under the viewport centre
+// fixed there. This avoids the view snapping back to the top-left of the map
+// when the user adjusts the zoom (the prior behaviour left pan unchanged, so the
+// centre of the screen jumped to a different map coordinate on every zoom).
+function sceneSetZoom(newZoom) {
+  if (!sceneState.loaded) return;
+  newZoom = Math.max(0.25, Math.min(8, newZoom));
+  const oldZoom = sceneState.zoom;
+  if (oldZoom === newZoom) return;
+  const vp = $("sceneViewport");
+  const cx = vp.clientWidth / 2;
+  const cy = vp.clientHeight / 2;
+  // Map coordinate (in native preview px) currently sitting under the centre.
+  const mx = (cx - sceneState.panX) / oldZoom;
+  const my = (cy - sceneState.panY) / oldZoom;
+  // Re-pin that same map point to the centre at the new zoom.
+  sceneState.zoom = newZoom;
+  sceneState.panX = cx - mx * newZoom;
+  sceneState.panY = cy - my * newZoom;
+  $("sceneZoom").value = String(newZoom);
+  $("sceneZoomNo").textContent = `${newZoom}×`;
+  applySceneTransform();
+}
+
+// Nearest index in SCENE_ZOOMS to the current zoom (used by the wheel handler).
+function sceneZoomIndex() {
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i < SCENE_ZOOMS.length; i++) {
+    const d = Math.abs(SCENE_ZOOMS[i] - sceneState.zoom);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+// ---- Scene build loading mask ------------------------------------------------
+// Blocks the whole UI and mirrors backend progress (pushSceneProgress) while a
+// scene is rendering. Shown the moment loadScene starts and hidden on finish.
+function showSceneLoading(stage) {
+  $("sceneLoadingStage").textContent = stage || "准备加载…";
+  $("sceneLoadingFill").style.width = "0%";
+  $("sceneLoadingPct").textContent = "0%";
+  $("sceneLoadingMask").hidden = false;
+}
+function pushSceneProgress(pct, stage) {
+  const clamped = Math.max(0, Math.min(100, pct | 0));
+  $("sceneLoadingFill").style.width = clamped + "%";
+  $("sceneLoadingPct").textContent = clamped + "%";
+  if (stage) $("sceneLoadingStage").textContent = stage;
+}
+function hideSceneLoading() {
+  $("sceneLoadingMask").hidden = true;
 }
 
 async function loadSceneCatalog() {
@@ -1528,13 +1645,20 @@ async function loadSceneCatalog() {
     sceneCatalog = (res && res.scenes) || [];
     const sel = $("sceneSel");
     sel.innerHTML = "";
+    // No default selection: the dropdown starts empty so the viewer does NOT
+    // auto-load any scene (the user picks one explicitly). This pairs with the
+    // backend cache — once a scene IS built, re-selecting it is instant.
+    const empty = document.createElement("option");
+    empty.value = "";
+    empty.textContent = "（未选择场景）";
+    sel.appendChild(empty);
     for (const s of sceneCatalog) {
       const o = document.createElement("option");
       o.value = s.id;
       o.textContent = `${s.title}  (${s.grid_width}×${s.grid_height})`;
       sel.appendChild(o);
     }
-    if (sceneCatalog.length) sel.value = "tristram";
+    sel.value = "";
   } catch (e) {
     showError("scene.list 失败: " + (e.message || e));
   }
@@ -1542,11 +1666,11 @@ async function loadSceneCatalog() {
 
 async function loadScene() {
   if (sceneState.loading) return;
-  const id = $("sceneSel").value || "tristram";
+  const id = $("sceneSel").value;
+  if (!id) return;   // nothing selected — don't auto-load a default scene
   hideError();
-  setMeta(`加载场景 ${id} …`);
-  $("sceneLoadBtn").disabled = true;
   sceneState.loading = true;
+  showSceneLoading(`加载场景 ${id} …`);
   try {
     const args = { id };
     // Prefer an explicit path; otherwise the catalog's primary archive. The
@@ -1562,14 +1686,24 @@ async function loadScene() {
     }
     args.preview_max_width = 1000;
     args.lighting = !!$("sceneLightToggle").checked;
-    const res = await client.callTool("scene.build", args);
+    // The onProgress callback streams backend $/progress notifications into the
+    // loading mask in real time.
+    const res = await client.callTool("scene.build", args, pushSceneProgress);
     if (!res || !res.image_base64) throw new Error("scene.build 未返回图像");
-    // Draw the returned PNG bitmaps onto the two <canvas> layers. No <img>/src is
-    // involved: the decoded bitmap is blitted directly, so the canvas always
-    // shows the actual scene once the tool returns.
-    const dim = await sceneDrawPng($("sceneBase"), res.image_base64);
-    await sceneDrawPng($("sceneOverlay"), res.overlay_base64 || "");
-    $("sceneOverlay").hidden = !res.overlay_base64 || !$("sceneOverlayToggle").checked;
+    // Prefer the backend HTTP endpoint for the NATIVE-resolution image so the
+    // canvas shows the full-size scene (base + overlay both native, aligned).
+    // Fall back to the base64 preview if the endpoint is unavailable.
+    const origin = sceneHttpOrigin();
+    let dim;
+    try {
+      dim = await sceneDrawUrl($("sceneBase"), origin + res.image_url);
+      await sceneDrawUrl($("sceneOverlay"), res.overlay_url ? origin + res.overlay_url : "");
+    } catch (e) {
+      console.warn("scene URL load failed, using base64 preview:", e);
+      dim = await sceneDrawPng($("sceneBase"), res.image_base64);
+      await sceneDrawPng($("sceneOverlay"), res.overlay_base64 || "");
+    }
+    $("sceneOverlay").hidden = !res.overlay_url || !$("sceneOverlayToggle").checked;
     // Night-palette scenes (e.g. Tristram) render very dark and look blank;
     // the brighten toggle defaults to ON, so apply its state on every load.
     $("sceneLayers").classList.toggle("bright", $("sceneBrightToggle").checked);
@@ -1591,27 +1725,35 @@ async function loadScene() {
     setMeta("场景加载失败", true);
   } finally {
     sceneState.loading = false;
-    $("sceneLoadBtn").disabled = false;
+    hideSceneLoading();
   }
 }
 
 async function showSceneView() {
-  // Auto-load the default scene on first entry so the canvas is never an empty
-  // element with no content (the src-less <img> problem). Catalog + archives are
-  // both required; the WS connect handler below triggers this too.
+  // Do NOT auto-load any scene on entry: the dropdown starts empty (no default
+  // selection), so the viewer waits for the user to pick one. We only (re)load
+  // when a scene is already selected — e.g. returning to the tab after switching
+  // modes, or after a cache clear.
   if (!sceneCatalog.length) await loadSceneCatalog();
   if (sceneState.loaded) { sceneFit(); return; }
-  if (allArchives && allArchives.length && !sceneState.loading) {
+  const id = $("sceneSel").value;
+  if (id && allArchives && allArchives.length && !sceneState.loading) {
     await loadScene();
+  } else {
+    // No selection yet: leave a clear prompt instead of an empty canvas.
+    $("currentName").textContent = "（未选择场景 — 请在上方下拉框中选择一个场景）";
+    setMeta("");
   }
 }
 
 function wireSceneControls() {
-  $("sceneLoadBtn").addEventListener("click", () => loadScene());
-  $("sceneSel").addEventListener("change", () => { /* explicit load button */ });
-  $("sceneZoom").addEventListener("input", (e) => {
-    sceneState.zoom = Math.max(1, Math.min(8, parseInt(e.target.value, 10) || 1));
-    applySceneTransform();
+  // Auto-load: selecting a scene (or toggling lighting) immediately rebuilds it,
+  // no explicit "load" button needed.
+  $("sceneSel").addEventListener("change", () => loadScene());
+  // Zoom dropdown: discrete levels including sub-1x (0.25/0.5). sceneSetZoom
+  // keeps the viewport centre pinned to the same map point.
+  $("sceneZoom").addEventListener("change", (e) => {
+    sceneSetZoom(parseFloat(e.target.value) || 1);
   });
   $("sceneOverlayToggle").addEventListener("change", (e) => {
     $("sceneOverlay").hidden = !e.target.checked;
@@ -1621,18 +1763,33 @@ function wireSceneControls() {
   });
   $("sceneLightToggle").addEventListener("change", () => {
     // Rebuild the scene so dLight shading is applied/removed server-side.
-    if (sceneState.loaded) loadScene();
+    loadScene();
   });
   $("sceneFitBtn").addEventListener("click", () => sceneFit());
+  // Clear the on-disk cache (native/overlay/preview PNGs + metadata + cache
+  // markers) and rebuild the current scene fresh if one is selected.
+  $("sceneClearCacheBtn").addEventListener("click", async () => {
+    if (sceneState.loading) return;
+    try {
+      const res = await client.callTool("scene.clearCache", { out: "out/scenes" });
+      const n = (res && res.cleared) || 0;
+      setMeta(`已清除场景缓存 ${n} 个文件`);
+      const id = $("sceneSel").value;
+      if (id && allArchives && allArchives.length) {
+        await loadScene();   // cache is gone, so this does a fresh server-side build
+      }
+    } catch (e) {
+      showError("清除场景缓存失败: " + (e.message || e));
+    }
+  });
 
   const vp = $("sceneViewport");
   vp.addEventListener("wheel", (e) => {
     if (!isSceneMode()) return;
     e.preventDefault();
-    const step = e.deltaY < 0 ? 1 : -1;
-    sceneState.zoom = Math.max(1, Math.min(8, sceneState.zoom + step));
-    $("sceneZoom").value = String(sceneState.zoom);
-    applySceneTransform();
+    const dir = e.deltaY < 0 ? 1 : -1;
+    const idx = Math.max(0, Math.min(SCENE_ZOOMS.length - 1, sceneZoomIndex() + dir));
+    sceneSetZoom(SCENE_ZOOMS[idx]);
   }, { passive: false });
   vp.addEventListener("mousedown", (e) => {
     if (!isSceneMode()) return;
@@ -2045,6 +2202,8 @@ function wireControls() {
       // (#guiPane / #scenePane) and show their summary in #currentName. Hide it
       // so the stage isn't cluttered with dead inputs.
       $("stageControls").hidden = scene || gui;
+      // Leaving the scene view should also dismiss any loading mask left behind.
+      if (!scene) hideSceneLoading();
       // Combat uses a fixed 8-way scene direction; other modes use the sprite's
       // own direction count when the next sprite is decoded.
       if (combat) syncCombatDirControl();

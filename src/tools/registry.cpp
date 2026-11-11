@@ -6,6 +6,18 @@
 
 namespace mcp {
 
+namespace {
+// Active progress sink for the current thread. Each WS connection runs on its
+// own detached thread, so this is effectively per-connection.
+ProgressFn g_activeProgress;
+} // namespace
+
+namespace tools {
+void reportProgress(int pct, const std::string& stage) {
+    if (g_activeProgress) g_activeProgress(pct, stage);
+}
+} // namespace tools
+
 void ToolRegistry::registerTool(ToolDef def) {
     if (has(def.name))
         return;   // first registration wins; ignore duplicates
@@ -19,7 +31,8 @@ bool ToolRegistry::has(const std::string& name) const {
     return false;
 }
 
-ToolResult ToolRegistry::dispatch(const std::string& name, const json& params) const {
+ToolResult ToolRegistry::dispatch(const std::string& name, const json& params,
+                                 const ProgressFn& progress) const {
     const ToolDef* found = nullptr;
     for (const auto& t : tools_)
         if (t.name == name) { found = &t; break; }
@@ -30,6 +43,11 @@ ToolResult ToolRegistry::dispatch(const std::string& name, const json& params) c
         r.value = json{{"error", "unknown tool"}, {"tool", name}};
         return r;
     }
+
+    // Install the progress sink for the duration of this call, restoring any
+    // previously-active sink afterwards (also on exception paths).
+    struct Guard { ProgressFn prev; ~Guard() { g_activeProgress = prev; } } guard{ g_activeProgress };
+    g_activeProgress = progress;
 
     try {
         return found->handler(params);
