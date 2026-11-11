@@ -784,7 +784,18 @@ DiabloHFConverter/
 - [x] **更多关卡预设（2026-11-09）**：`sceneCatalog` 由 Tristram + 2 个 L1 扩到
       **6 个完整场景**：`tristram`、`l1_rnd2`、`l1_skngdo`、`l2_blind`（L2，prefill 12）、
       `l3_anvil`（L3，prefill 8）、`l4_diab1`（L4，`microLen=12`/`blocks=16`、prefill 30、
-      Hell 光照）；palette 分别为 `l2_2.pal` / `l3pfoul.pal` / `l4_1.pal`（均已实证存在）。
+      Hell 光照）；palette 分别为       `l2_2.pal` / `l3pfoul.pal` / `l4_1.pal`（均已实证存在）。
+- [x] **地牢预设门/通道渲染修复（2026-11-12）**：对照 DevilutionX
+      `LoadL1Dungeon → LoadDungeonBase → PlaceDunTiles(dunData,{0,0},floorId)`，
+      `buildDungeonScene` 曾把 DUN 值为 0 的格直接跳过、保留 Dirt 预填，导致房间内部
+      地板/通道被画成实心墙（`l1_rnd2` 的 32 个 0 值格全为 `walkable=0`）；且漏掉
+      `Pass3() → InitDungeonPieces()` 的 `dSpecial`（`special_count=0`），门/拱门只剩
+      32px 残缺微块。现已按各层 floorId（L1=13 / L2=3 / L3=7 / L4=6）铺 Floor，并按
+      `drlg_l1.cpp` / `drlg_l2.cpp` 的 micro 表标 `dSpecial`、从 `l1s.cel` / `l2s.cel`
+      叠加 64px 拱门/门框（Caves/Hell 的 `Pass3()` 无此步，保持不加载）；
+      `scene.build` 缓存 key 升 `v2` 并纳入组装参数，旧缓存自动失效。验收：单测 / core /
+      集成测试全绿；`scene.build(l1_rnd2)` 32/32 个 0 值格可走、`special_count=36`、
+      `transparent_pixel_count=0`。
 - [x] **动态地图规则与导出/渲染桥接（2026-11-09）**：新增 `docs/MAP_GENERATION.md`，记录
       `DungeonSeeds`/`LevelSeeds`、Borland LCG（`0x015A4E35`+1）、`CreateDungeon` 分派、
       L1–L4 与 Hellfire L5/L6 生成流程、主题/任务/miniset 依赖，以及用 DevilutionX 调试版

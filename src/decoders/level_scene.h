@@ -7,8 +7,11 @@
 //   * Town (Tristram): DrlgTPass3() prefills dPiece[112][112] with micro 426,
 //     then FillSector() lays four sector .dun files at fixed offsets. A DUN
 //     word of 0 -> micro 218; a word >= 1 -> pMegaTiles[word-1].micro1..4.
-//   * Dungeon: DRLG_LPass3() prefills from a "Dirt" megatile, then overlays the
-//     DUN tile layer at (16,16).
+//   * Dungeon: LoadDungeonBase -> PlaceDunTiles() maps a zero DUN cell to the
+//     level's Floor megatile (not Dirt), then DRLG_LPass3() prefills from a
+//     "Dirt" megatile and overlays the DUN tile layer at (16,16).
+//     Pass3() -> InitDungeonPieces() marks arch / door cells in dSpecial so
+//     the level's special CEL supplies their 64px body.
 //
 // The output SceneGrid.micro holds 0-based micro indices (kNoMicro = outside),
 // matching level_render.cpp's renderMap. SceneGrid.megaId holds 1-based
@@ -27,14 +30,20 @@ namespace decoders {
 
 enum class SceneLayout { Town, Dungeon };
 
+// Which DevilutionX InitDungeonPieces() table to apply when marking dSpecial
+// overlays on a dungeon preset. Caves / Hell have no InitDungeonPieces() call
+// in Pass3() (drlg_l3.cpp / drlg_l4.cpp), so they stay None.
+enum class DungeonSpecialTable { None, Cathedral, Catacombs };
+
 struct SceneSpec {
     std::string id;
     std::string title;
     // In-archive asset names (forward or back slashes both work; the Archive
     // layer normalizes them).
     std::string cel, til, min, sol, palette, dun;
-    // Town-only special CEL (`levels/towndata/towns.cel`) whose frames are the
-    // 64-px-wide tree/arch overlays selected by dSpecial. Empty = none.
+    // Special CEL whose frames are the dSpecial overlays (town: towns.cel
+    // tree canopies; dungeon L1/L2: l1s.cel / l2s.cel arches and doors).
+    // Empty = none.
     std::string specialCel;
     uint16_t specialCelWidth = 64;
     std::vector<std::string> sectorDuns;              // town only
@@ -45,6 +54,12 @@ struct SceneSpec {
     uint16_t prefillMicro = 426;                      // town DrlgTPass3 default
     uint16_t emptyMicro = 218;                        // town FillSector word 0
     uint16_t prefillMegaTile = 22;                    // dungeon Dirt megatile (1-based)
+    // DevilutionX LoadDungeonBase -> PlaceDunTiles(dunData, {0,0}, floorId):
+    // a zero DUN cell becomes this Floor megatile (1-based), NOT the Dirt
+    // prefill. Zero cells are the room's walkable floor / passages.
+    // 0 disables the substitution (keeps the old Dirt-prefill behaviour).
+    uint16_t floorMegaTile = 0;
+    DungeonSpecialTable specialTable = DungeonSpecialTable::None;
     uint32_t background = 0xFF000000;                 // opaque black RGBA
     int gridW = 112, gridH = 112;                     // dPiece dimensions
     int dunW = 0, dunH = 0;                           // known .dun dims (for catalog)

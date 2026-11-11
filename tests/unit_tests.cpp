@@ -1487,6 +1487,33 @@ static void testLevelScene()
     lvlChk(dg.micro[ov] == 5 && dg.micro[ov + 1] == 6,
            "buildDungeonScene overlays DUN at (16,16)");
 
+    // DevilutionX LoadDungeonBase -> PlaceDunTiles(dunData, {0,0}, floorId):
+    // a zero DUN cell becomes the Floor megatile, NOT the Dirt prefill.
+    decoders::SceneSpec fspec = dspec;
+    fspec.floorMegaTile = 2; // -> mega[1] = (5,6,7,8)
+    std::vector<uint8_t> zeroBuf(4 + 2 * 2, 0);
+    WriteLE16(&zeroBuf[0], 1); WriteLE16(&zeroBuf[2], 1);
+    WriteLE16(&zeroBuf[4], 0);
+    auto zg = decoders::buildDungeonScene(fspec, mega, decoders::loadDun(zeroBuf));
+    lvlChk(zg.micro[ov] == 5 && zg.micro[ov + 1] == 6 &&
+               zg.micro[ov + zg.gw] == 7 && zg.micro[ov + zg.gw + 1] == 8,
+           "buildDungeonScene maps DUN word 0 to Floor megatile (PlaceDunTiles floorId)");
+    lvlChk(zg.megaId[ov] == 2, "buildDungeonScene records floorId on zero cells");
+
+    // Pass3() -> InitDungeonPieces(): cathedral arch/door micros -> dSpecial.
+    std::vector<decoders::MegaTile> smega = {
+        decoders::MegaTile{1, 2, 3, 4}, decoders::MegaTile{11, 10, 252, 0},
+    };
+    decoders::SceneSpec sspec = dspec;
+    sspec.specialTable = decoders::DungeonSpecialTable::Cathedral;
+    std::vector<uint8_t> sdunBuf(4 + 2 * 2, 0);
+    WriteLE16(&sdunBuf[0], 1); WriteLE16(&sdunBuf[2], 1);
+    WriteLE16(&sdunBuf[4], 2);
+    auto sg = decoders::buildDungeonScene(sspec, smega, decoders::loadDun(sdunBuf));
+    lvlChk(sg.special[ov] == 1 && sg.special[ov + 1] == 2 &&
+               sg.special[ov + sg.gw] == 3,
+           "buildDungeonScene marks Cathedral arch/door micros in dSpecial");
+
     // Catalog + projection.
     auto& cat = decoders::sceneCatalog();
     lvlChk(cat.size() >= 6 && decoders::findScene("tristram") != nullptr,

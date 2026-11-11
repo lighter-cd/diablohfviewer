@@ -1,17 +1,76 @@
 // src/decoders/level_scene.cpp
 //
 // Scene assembly, ported from DevilutionX Source/levels/town.cpp (DrlgTPass3 /
-// FillSector) and gendung.cpp (DRLG_LPass3). See level_scene.h for the model.
+// FillSector), gendung.cpp (DRLG_LPass3 / PlaceDunTiles / LoadDungeonBase) and
+// drlg_l1.cpp / drlg_l2.cpp (InitDungeonPieces). See level_scene.h for the model.
 
 #include "decoders/level_scene.h"
 
 #include <algorithm>
 #include <cstddef>
+#include <initializer_list>
 #include <tuple>
 
 namespace decoders {
 
 namespace {
+
+bool microIn(uint16_t v, std::initializer_list<uint16_t> ids)
+{
+    for (uint16_t id : ids)
+        if (v == id)
+            return true;
+    return false;
+}
+
+// DevilutionX drlg_l1.cpp::InitDungeonPieces / drlg_l2.cpp::InitDungeonPieces.
+// Arch / door megatiles only carry a 32px stub in the level MIN; their 64px
+// body is drawn from the special CEL indexed by dSpecial - 1
+// (scrollrt.cpp:912-935). Without this pass the doors render as broken stubs.
+uint8_t dungeonSpecialId(DungeonSpecialTable table, uint16_t micro)
+{
+    if (table == DungeonSpecialTable::Cathedral) {
+        if (microIn(micro, { 11, 70, 320, 210, 340, 417 })) return 1;
+        if (microIn(micro, { 10, 248, 324, 343, 330, 420 })) return 2;
+        if (micro == 252) return 3;
+        if (micro == 254) return 4;
+        if (micro == 258) return 5;
+        if (micro == 266) return 6;
+    } else if (table == DungeonSpecialTable::Catacombs) {
+        if (microIn(micro, { 540, 177, 550 })) return 5;
+        if (microIn(micro, { 541, 552 })) return 6;
+    }
+    return 0;
+}
+
+void applyDungeonSpecial(SceneGrid& g, DungeonSpecialTable table)
+{
+    if (table == DungeonSpecialTable::None)
+        return;
+    const size_t w = static_cast<size_t>(g.gw), h = static_cast<size_t>(g.gh);
+    for (size_t j = 0; j < h; ++j) {
+        for (size_t i = 0; i < w; ++i) {
+            const uint8_t id = dungeonSpecialId(table, g.micro[j * w + i]);
+            if (id != 0)
+                g.special[j * w + i] = id;
+        }
+    }
+    // drlg_l2.cpp:1672-1681: dPiece 131/134/138 also marks neighbouring cells.
+    if (table == DungeonSpecialTable::Catacombs) {
+        for (size_t j = 0; j < h; ++j) {
+            for (size_t i = 0; i < w; ++i) {
+                const uint16_t mi = g.micro[j * w + i];
+                if (mi == 131) {
+                    if (j + 1 < h) g.special[(j + 1) * w + i] = 2;
+                    if (j + 2 < h) g.special[(j + 2) * w + i] = 1;
+                } else if (mi == 134 || mi == 138) {
+                    if (i + 1 < w) g.special[j * w + i + 1] = 3;
+                    if (i + 2 < w) g.special[j * w + i + 2] = 4;
+                }
+            }
+        }
+    }
+}
 
 // Copy a megatile's four micro indices into a 2x2 block at (x, y). `mega` is
 // the 1-based megatile id written to SceneGrid.megaId (0 = none / prefill).
@@ -137,16 +196,28 @@ SceneGrid buildDungeonScene(const SceneSpec& spec,
         for (uint16_t j = 0; j < dun.height; ++j) {
             for (uint16_t i = 0; i < dun.width; ++i) {
                 const uint16_t word = dun.tileLayer[static_cast<size_t>(j) * dun.width + i];
-                if (word == 0)
+                const int px = 16 + static_cast<int>(i) * 2;
+                const int py = 16 + static_cast<int>(j) * 2;
+                if (word == 0) {
+                    // DevilutionX LoadDungeonBase -> PlaceDunTiles(dunData,
+                    // {0,0}, floorId): a zero DUN cell is replaced by the
+                    // level's Floor megatile, not left as the Dirt prefill.
+                    // These cells are the room's walkable floor / passages.
+                    const uint16_t floor = spec.floorMegaTile;
+                    if (floor > 0 && static_cast<size_t>(floor - 1) < megatiles.size())
+                        putMega(g, px, py, megatiles[floor - 1], floor);
                     continue;
+                }
                 const size_t ti = static_cast<size_t>(word - 1);
                 if (ti >= megatiles.size())
                     continue;
-                putMega(g, 16 + static_cast<int>(i) * 2,
-                        16 + static_cast<int>(j) * 2, megatiles[ti], word);
+                putMega(g, px, py, megatiles[ti], word);
             }
         }
     }
+    // Pass3() -> InitDungeonPieces(): mark arch / door cells for the special
+    // CEL overlay (town does the equivalent via townSpecialFrameId).
+    applyDungeonSpecial(g, spec.specialTable);
     return g;
 }
 
@@ -225,26 +296,39 @@ const std::vector<SceneSpec>& sceneCatalog()
             const char* palette;
             uint8_t microLen;
             uint8_t blocks;
-            uint16_t prefill;
+            uint16_t prefill;                  // Dirt megatile (1-based)
+            uint16_t floorId;                  // PlaceDunTiles floorId (1-based)
+            const char* specialCel;            // dSpecial overlay CEL, "" = none
+            DungeonSpecialTable specialTable;
             uint8_t ambient;
             uint8_t lightStyle;
         };
+        // floorId / special CEL from DevilutionX:
+        //   drlg_l1.cpp:1330 LoadDungeonBase(path, spawn, Floor=13, Dirt=22)
+        //   drlg_l2.cpp:2851 (3, 12)   drlg_l3.cpp:2207 (7, 8)
+        //   drlg_l4.cpp:1249 (6, 30)
+        //   diablo.cpp:1389-1408 LoadLvlGFX: Cathedral/Caves -> l1s, Catacombs/Hell -> l2s
+        // Only Cathedral and Catacombs call InitDungeonPieces() in Pass3();
+        // Caves / Hell have no dSpecial source, so their specialCel stays empty.
         const DunScene dunScenes[] = {
             { "l1_rnd2", "大教堂 L1 · rnd2 房间", "levels/l1data",
               "levels/l1data/rnd2.dun", 11, 11, "levels/l1data/l1_2.pal",
-              10, 10, 22, 15, 0 },
+              10, 10, 22, 13, "levels/l1data/l1s.cel",
+              DungeonSpecialTable::Cathedral, 15, 0 },
             { "l1_skngdo", "大教堂 L1 · skngdo 大厅", "levels/l1data",
               "levels/l1data/skngdo.dun", 7, 7, "levels/l1data/l1_2.pal",
-              10, 10, 22, 15, 0 },
+              10, 10, 22, 13, "levels/l1data/l1s.cel",
+              DungeonSpecialTable::Cathedral, 15, 0 },
             { "l2_blind", "地下墓穴 L2 · blind 房间", "levels/l2data",
               "levels/l2data/blind1.dun", 11, 11, "levels/l2data/l2_2.pal",
-              10, 10, 12, 15, 0 },
+              10, 10, 12, 3, "levels/l2data/l2s.cel",
+              DungeonSpecialTable::Catacombs, 15, 0 },
             { "l3_anvil", "洞穴 L3 · anvil 房间", "levels/l3data",
               "levels/l3data/anvil.dun", 9, 9, "levels/l3data/l3pfoul.pal",
-              10, 10, 8, 15, 0 },
+              10, 10, 8, 7, "", DungeonSpecialTable::None, 15, 0 },
             { "l4_diab1", "地狱 L4 · diab1 房间", "levels/l4data",
               "levels/l4data/diab1.dun", 6, 6, "levels/l4data/l4_1.pal",
-              12, 16, 30, 15, 1 },
+              12, 16, 30, 6, "", DungeonSpecialTable::None, 15, 1 },
         };
         for (const DunScene& ds : dunScenes) {
             SceneSpec s;
@@ -263,6 +347,9 @@ const std::vector<SceneSpec>& sceneCatalog()
             s.microLen = ds.microLen;
             s.blocks = ds.blocks;
             s.prefillMegaTile = ds.prefill;
+            s.floorMegaTile = ds.floorId;
+            s.specialCel = ds.specialCel;
+            s.specialTable = ds.specialTable;
             s.ambientLight = ds.ambient;
             s.lightStyle = ds.lightStyle;
             s.dunW = ds.dunW;

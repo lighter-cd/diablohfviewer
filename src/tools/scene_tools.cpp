@@ -125,8 +125,9 @@ SceneAssets loadSceneAssets(const decoders::SceneSpec& spec,
     else
         out.grid = decoders::buildDungeonScene(spec, megatiles, decoders::loadDun(dunBuf));
 
-    // Town dSpecial overlays come from a separate CEL (towns.cel), not the level
-    // CEL. Decode them into RGBA frames indexed by dSpecial id - 1.
+    // dSpecial overlays come from a separate CEL (town: towns.cel tree
+    // canopies; dungeon L1/L2: l1s.cel / l2s.cel arches and doors), not the
+    // level CEL. Decode them into RGBA frames indexed by dSpecial id - 1.
     if (!spec.specialCel.empty()) {
         std::vector<uint8_t> specialBuf;
         if (extractAny(archives, spec.specialCel, specialBuf)) {
@@ -351,7 +352,12 @@ std::string buildCacheKey(const std::string& id,
                           const std::string& outDir) {
     std::string a;
     for (size_t i = 0; i < archives.size(); ++i) { if (i) a += ";"; a += archives[i]; }
-    return "v1|" + id + "|" + a + "|" +
+    // v2: dungeon presets now apply PlaceDunTiles floorId and dSpecial, so the
+    // rendered grid changed. Include the scene-assembly inputs in the key so
+    // catalog/assembly changes invalidate cached PNGs automatically.
+    return "v2|" + id + "|" + a + "|" +
+           std::to_string(spec.floorMegaTile) + "|" + spec.specialCel + "|" +
+           std::to_string(static_cast<int>(spec.specialTable)) + "|" +
            (params.value("lighting", false) ? "L1" : "L0") + "|" +
            std::to_string(params.value("ambient", spec.ambientLight)) + "|" +
            params.value("lights", mcp::json::array()).dump() + "|" +

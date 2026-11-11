@@ -399,3 +399,6 @@
 ## 2026-11-12 04:29:11
 - 移除 tests/ 下 21 个手工 JSON-RPC 夹具/响应快照，复跑三套测试仍全部 ALL PASS（测试自包含、不读取任何夹具，运行后 tests/ 根目录无 .json 再生）；同步修正 README.md、docs/ARCHITECTURE.md、docs/PROJECT.md、.gitignore 共 7 处过时描述（tests/ 仅三套 .cpp、夹具已移除、out/ 与 out_bak/ 整目录忽略）；本轮连同删除的 21 个 JSON 与 .gitignore 改动一并提交推送。
 - 涉及: tests/(21 个 .json 删除), .gitignore, README.md, docs/ARCHITECTURE.md, docs/PROJECT.md, changed-history.txt
+## 2026-11-12 05:41:23
+- 修复场景查看器固定房间地图的门/通道图块渲染错误：对照 DevilutionX LoadDungeonBase→PlaceDunTiles(floorId) 把 DUN 0 值格铺成各层可走 Floor（此前被跳过、画成 Dirt 实心墙），按 InitDungeonPieces 标 dSpecial 并从 l1s.cel/l2s.cel 叠加 64px 拱门与门框，scene.build 缓存 key 升 v2 并纳入组装参数；单测/core/集成测试全绿，scene.build(l1_rnd2) 32/32 通道格可走、special_count 36、0 透明像素。
+- 涉及: src/decoders/level_scene.cpp, src/decoders/level_scene.h, src/tools/scene_tools.cpp, tests/unit_tests.cpp, tests/integration_tests.cpp, README.md, docs/ARCHITECTURE.md, docs/PROJECT.md, web/README.md

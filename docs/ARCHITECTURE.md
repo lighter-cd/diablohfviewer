@@ -527,7 +527,8 @@ scene.build {id,archive,archives?,out?,preview_max_width?=1000,lighting?,ambient
    ├─ 抽取: town.{cel,til,min,sol,pal} + sector1s..4s.dun（城镇）
    │        或 lN.{cel,til,min,sol} + *.dun + lN palette（地牢 L1..L4）
    ├─ 组装: buildTownScene（预填 426 + 4 sector, DUN word0→218, 96×96）
-   │        或 buildDungeonScene（L1..L4 prefill 22/12/8/30 + DUN@16,16）
+   │        或 buildDungeonScene（L1..L4 prefill 22/12/8/30 + DUN@16,16；
+   │          DUN word0→Floor 13/3/7/6；Pass3→InitDungeonPieces 标 dSpecial + l1s/l2s CEL）
    ├─ 光照: buildLightMap(ambient + lights) → LightTables 烘焙每格 palette（可选）
    ├─ 渲染: buildFrameTypes → reencodeLevelCel → renderMap(两遍, 不透明背景, prefill, dLight)
    ├─ 叠加层: buildOverlay（sceneProjection 同坐标；主要网格 + SOL 着色，preview 分辨率）
@@ -544,10 +545,16 @@ scene.path {id,archive,archives?,from:{x,y},to:{x,y},max_steps?=1024,preview_max
 - **tiles / objects**：`renderMap` Pass 1 只处理 `IsFloor`（SOL 非 Solid/BlockMissile）格子，
   避免对墙基/树叶数据强行三角形解码；`TransparentSquare` 地板按真实 RLE 解码
   （DevilutionX 的 `ReencodeDungeonCels` 会拆成 triangle floor + foliage，本实现直接画完整
-  RLE，先保证不产生噪点）。城镇 `dSpecial`（`town.cpp::InitTownPieces`）映射到
-  `levels/towndata/towns.cel`（64×224 树冠帧），在 `Meta.special` 暴露并按底部锚定绘制。
-  Tristram 另外应用非任务态 `FillTile`（水井/喷泉、传送入口）。地牢 DUN object layer 与
-  `dTransVal`/`TransList` 透明遮挡尚未实现。
+  RLE，先保证不产生噪点）。`dSpecial` 映射到独立 special CEL、在 `Meta.special` 暴露并
+  按底部锚定绘制：城镇 `town.cpp::InitTownPieces` → `levels/towndata/towns.cel`（64×224
+  树冠帧）；地牢 `drlg_l1.cpp` / `drlg_l2.cpp::InitDungeonPieces` → `levels/l1data/l1s.cel`
+  / `levels/l2data/l2s.cel`（64px 拱门与门框，8 帧）。Caves / Hell 的 `Pass3()` 没有
+  `InitDungeonPieces()`，故 `l3_anvil` / `l4_diab1` 不加载 special CEL。
+  **地牢 DUN 值为 0 的格**按 `LoadDungeonBase → PlaceDunTiles(dunData,{0,0},floorId)`
+  铺成本层 Floor megatile（L1=13 / L2=3 / L3=7 / L4=6），而非保留 Dirt 预填——
+  这些格是房间的可走地板/通道；修复前被画成实心墙（`walkable=0`）。
+  Tristram 另外应用非任务态 `FillTile`（水井/喷泉、传送入口）。地牢 DUN object layer
+  （`AddL1Objs` 门物件）与 `dTransVal`/`TransList` 透明遮挡尚未实现。
 - **tile 纵向翻转修复（2026-11-09）**：`DecodeLeft/RightTriangle` 与
   `DecodeLeft/RightTrapezoid` 输出 top-down RGBA，而 `DecodeSquare/TransparentSquare`
   输出 bottom-up（源 CEL 行 0 为底）；`blitFrame` 又统一翻转一次，导致三角/梯形 tile

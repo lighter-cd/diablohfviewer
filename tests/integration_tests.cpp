@@ -1566,6 +1566,12 @@ static void testSceneTools(const std::string& mpq) {
               "L1 central torch fully lights at least one cell");
         CHECK(lv.value("transparent_pixel_count", 1) == 0,
               "lit dungeon still has 0 transparent pixels");
+        // Zero DUN cells must become walkable Floor (LoadDungeonBase ->
+        // PlaceDunTiles floorId), and arch/door cells must carry dSpecial.
+        CHECK(lv.value("walkable_count", 0) > 0,
+              "l1_rnd2 zero DUN cells are walkable Floor, not Dirt walls");
+        CHECK(lv.value("special_count", 0) > 0,
+              "l1_rnd2 emits dungeon dSpecial overlays (arches/doors)");
         const int lgw = lv.value("grid_width", 0), lgh = lv.value("grid_height", 0);
         CHECK(lv["meta"]["light"].size() == (size_t)(lgw * lgh),
               "scene.build light array sized gw*gh");

@@ -312,7 +312,10 @@ web/
 场景由后端 `scene.build` 用 DevilutionX 两遍绘制（地板菱形 + 墙体）复原，输出
 **不透明背景、无透明空洞**（`transparent_pixel_count == 0`）。场景目录：Tristram
 城镇（4 个 sector DUN + 预填微瓦片）+ L1/L2/L3/L4 预设（`l1_rnd2`、`l1_skngdo`、
-`l2_blind`、`l3_anvil`、`l4_diab1`）。`scene.path` 可在同一 SOL 网格上做 A* 寻路并返回
+`l2_blind`、`l3_anvil`、`l4_diab1`）。地牢预设里 DUN 值为 0 的格按 DevilutionX
+`PlaceDunTiles(floorId)` 铺成可走地板/通道，L1/L2 的门与拱门由 `dSpecial` +
+`l1s/l2s.cel` 叠加还原，因此房间内部是完整地面而非实心墙，SOL/寻路网格与画面一致。
+`scene.path` 可在同一 SOL 网格上做 A* 寻路并返回
 与预览对齐的路径坐标（供后续前端叠加）。原理与资产路径见
 `docs/ARCHITECTURE.md` §9.3 与 `docs/PROJECT.md`。
 
