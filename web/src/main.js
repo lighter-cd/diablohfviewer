@@ -1577,10 +1577,15 @@ async function loadScene() {
     sceneState.h = dim.h || res.preview_height || 0;
     sceneState.loaded = true;
     sceneFit();
-    setMeta(`${res.title}  原始 ${res.width}×${res.height}  预览 ${res.preview_width}×${res.preview_height}  ` +
-            `网格 ${res.grid_width}×${res.grid_height}  缩放 1/${res.scale}  ` +
-            `透明像素 ${res.transparent_pixel_count}  Solid ${res.solid_count}  ` +
-            `光照 ${res.lighting ? "开" : "关"}`);
+    // Mirror the GUI layout viewer: show one consolidated scene summary in the
+    // top-right "当前资源" line (#currentName) and keep the bottom status bar
+    // free of duplicates. The shared sprite control bar (#stageControls) is
+    // hidden in scene mode (see setMode), so show the info here instead.
+    $("currentName").textContent =
+      `${res.title}  原始 ${res.width}×${res.height}  预览 ${res.preview_width}×${res.preview_height}  ` +
+      `网格 ${res.grid_width}×${res.grid_height}  缩放 1/${res.scale}  ` +
+      `透明像素 ${res.transparent_pixel_count}  Solid ${res.solid_count}  光照 ${res.lighting ? "开" : "关"}`;
+    setMeta("");
   } catch (e) {
     showError("scene.build 失败: " + (e.message || e));
     setMeta("场景加载失败", true);
@@ -2036,9 +2041,10 @@ function wireControls() {
       $("overlaysPanel").hidden = viewOwned;
       // The shared sprite/character control bar (palette / TRN / directions /
       // frame / zoom / play / fps / #meta) does not apply to the GUI layout
-      // viewer, which has its own controls in #guiPane and shows its summary in
-      // #currentName. Hide it so the GUI stage isn't cluttered with dead inputs.
-      $("stageControls").hidden = gui;
+      // viewer or the scene viewer, both of which have their own controls
+      // (#guiPane / #scenePane) and show their summary in #currentName. Hide it
+      // so the stage isn't cluttered with dead inputs.
+      $("stageControls").hidden = scene || gui;
       // Combat uses a fixed 8-way scene direction; other modes use the sprite's
       // own direction count when the next sprite is decoded.
       if (combat) syncCombatDirControl();

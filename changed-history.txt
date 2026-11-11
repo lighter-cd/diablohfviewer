@@ -367,3 +367,7 @@
 ## 2026-11-11 09:05:00
 - 修复目录浏览中 PCX 用错调色板：sprite.list(kind=ui) 的 PCX 叶子 palette="embedded"（PCX 自带 256 色调色板存于文件尾 0x0C+768 字节），但 web/src/main.js 的 buildDecodeArgs 把 embedded 排除后落到全局下拉调色板，sprite.decode 的 resolvePalette 优先级 palette_name(下拉) 高于 embeddedPal，于是用游戏调色板套 PCX 像素索引 → 颜色全错且随下拉变；而 clx/cel 叶子 palette 是真实路径故一直正确、下拉被忽略（用户现象"其他 ui/ 文件不受调色板影响"）。修正：palette==="embedded" 时不再传 palette_name，让后端回退到 PCX 自带调色板；index.html 缓存戳 20261111c→d。实测 mainmenu.pcx 不传 palette_name 解出 640x480 且 palette_resolved=true，传 cut2.pal 则逐像素不同（错）。
 - 涉及: web/src/main.js, web/index.html, changed-history.txt
+
+## 2026-11-11 09:20:00
+- 场景查看器仿界面布局查看器：原 #stageControls（调色板/TRN/方向/帧/缩放/播放条）仅在 gui 模式隐藏，场景模式下仍残留且对场景无效；改动：setMode 中 $("stageControls").hidden = scene || gui，场景模式一并隐藏；loadScene 成功后将场景摘要（标题/原始尺寸/预览尺寸/网格/缩放/透明像素/Solid/光照）写入 #currentName（顶部"当前资源"），并 setMeta("") 清空底部状态栏避免重复，与 gui.build 一致。index.html 缓存戳 20261111d→e。
+- 涉及: web/src/main.js, web/index.html, changed-history.txt
