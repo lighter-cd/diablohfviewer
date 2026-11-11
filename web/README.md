@@ -30,6 +30,9 @@ python -m http.server 8000        # 或： npx serve .
 
 - **目录浏览**（默认）：左侧目录树由 `sprite.list` 构建；点任一精灵即调用 `sprite.decode`
   并绘制，用下方「方向 / 帧」滑块翻看，或点「▶ 播放」循环播放当前方向的动画。
+  **例外：`level` 家族**（`levels\l<d>data\l<d>.cel` / `nlevels\...`）是关卡瓦片集、非帧精灵，
+  点击不在本页解码，而是新开标签页打开 `level.html?tileset=l1..l6` 跳到关卡 Tile 查看器
+  （由 `level.inspect` 渲染），详见下方「关卡 Tile 查看器」一节。
   另有 `ui` 分支（`sprite.list(kind:"ui")`），列出界面布局查看器用到的全部 UI 美术
   （`ui_art\*.pcx` / `data\*.clx·.cel` / `ctrlpan\*.cel` 等），点开即可看这些元素及其
   帧动画；每个 UI 叶子自带 `palette` / `width` / `frames`，解码时自动按自身调色板取色，
@@ -327,3 +330,6 @@ web/
 
 这是区分 **tiles 错** 还是 **objects 错** 的关键工具。2026-11-09 的 tile 纵向翻转修复
 （triangle/trapezoid 被二次翻转，导致水池不圆）就是用它定位的。
+
+页面支持深链：`level.html?tileset=l1`（或 `l2`…`l6`）会预选对应图块集并连接后自动检查，
+无需手动切下拉框。目录浏览里点 `level/L1..L6` 下的 `.cel` 就是带上这个参数打开本页的。

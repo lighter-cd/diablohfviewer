@@ -753,6 +753,23 @@ async function onSelectSprite(sprite) {
   lastSprite = sprite;
   hideError();
   $("currentName").textContent = sprite.name;
+
+  // Level tileset CELs (levels\l<d>data\l<d>.cel / nlevels\...) are NOT frame
+  // sprites — they need the dedicated Level Tile Viewer (level.inspect), which
+  // assembles TIL→MIN→CEL with the right palette variant. Route the click there
+  // instead of sprite.decode (which would fail: "cel requires a width").
+  if (sprite.family === "level") {
+    if (sprite.tileset) {
+      const url = `level.html?tileset=${encodeURIComponent(sprite.tileset)}`;
+      window.open(url, "_blank", "noopener");
+      setMeta("已在新标签页打开关卡查看器：" + sprite.name);
+    } else {
+      showError("该关卡文件未匹配到已知 tileset，请在关卡查看器中手动加载：" + sprite.name);
+    }
+    stopPlay();
+    return;
+  }
+
   $("combatInfo").hidden = true; $("combatInfo").textContent = "";
   // Overlays are tied to the base sprite; clear them whenever a new one is picked.
   overlayLayers = [];

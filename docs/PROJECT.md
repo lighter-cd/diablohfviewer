@@ -501,6 +501,17 @@ DiabloHFConverter/
       面板 320×352、图标逐帧宽度 33/28/56 全量验证通过；三套测试新增
       `testInvWidthsTable`/`testCelToClxPerFrameWidths`/`testSpriteListInvFamily`/
       `testSpriteDecodeInv` 全绿。
+- [x] 关卡瓦片集归 `level` 家族并跳关卡查看器（2026-11-11）：`levels\l<d>data\l<d>.cel`
+      与 `nlevels\l<d>data\l<d>.cel` 是**关卡瓦片集（非帧精灵）**，原 `classifySprite`
+      无对应分支，被收进目录树的 `(unknown)/(unknown)`，点击 `sprite.decode` 必报
+      `cel requires a positive integer 'width'`。新增 `levels`/`nlevels` 分支 →
+      家族 `level`、`class=L1..L6`、条目带 `tileset`(`l1..l6` 对应 `web/src/level.js`
+      的 `TILESETS`)、`width` 固定 0；`sprite.list` 同步跳过 `autoWidth` 并下发 `tileset`。
+      前端 `onSelectSprite` 检测到 `family==="level"` 时不调 `sprite.decode`，而是
+      `window.open("level.html?tileset=lN")` 在新标签页打开关卡查看器，由 `level.inspect`
+      渲染 TIL→MIN→CEL；`level.js` 读 `?tileset=` 预填对应 tileset 并在连接后自动 inspect。
+      6 个 tileset（l1..l6）的 `level.inspect` 均验证可渲染（micros/frames/assembly 非空）。
+      文档同步 README / ARCHITECTURE / PROJECT / web/README；缓存戳 `20261111b→c`。
 
 ### 特效叠加层（alpha 合成）
 - 通用叠加子系统：在任一浏览模式下选中基础精灵后，右侧「特效叠加层」面板（默认折叠，点「展开」）可把

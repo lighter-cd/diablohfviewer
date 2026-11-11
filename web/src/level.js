@@ -57,7 +57,16 @@ function initTilesets() {
     opt.textContent = t.label;
     sel.appendChild(opt);
   }
-  sel.value = "tristram";
+  // Allow deep-linking from the sprite catalog: ?tileset=l1 opens the matching
+  // level tileset and prefills its CEL/TIL/MIN/SOL/palette inputs. The actual
+  // inspect runs after the WS connection is established (see connect handler).
+  const requested = new URLSearchParams(location.search).get("tileset");
+  if (requested && TILESETS.some((t) => t.id === requested)) {
+    sel.value = requested;
+    applyTileset(requested, false);
+  } else {
+    sel.value = "tristram";
+  }
   sel.addEventListener("change", () => applyTileset(sel.value, true));
 }
 

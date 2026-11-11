@@ -279,6 +279,13 @@ mcp-server --stdio --ws 18765      # 同时（开发调试最方便）
    帧循环按全局帧索引取宽。物品栏背景 `inv*.cel` 仍是单帧固定 `width=320`
    （`SidePanelSize`，`control.hpp:38`），`sprite.list` 直接给出该宽度。
    `sprite.list` **不**在条目里携带 `widths` 数组（179×跨档案重复会撑大 WS 载荷）。
+  再立 **`level` 家族**：`levels\l<d>data\l<d>.cel` 与 `nlevels\l<d>data\l<d>.cel`
+  是**关卡瓦片集（非帧精灵）**，不能走 `sprite.decode`（报 `cel requires a width`）。
+  `classifySprite` 把它们归到 `level` 家族、`class` 为 `L1..L6`、条目带 `tileset`
+  （`l1..l6`，对应 `web/src/level.js` 的 `TILESETS`）；`sprite.list` 对 `level` 家族
+  `width` 固定 0。前端点击时（见 `web/src/main.js` 的 `onSelectSprite`）不调用
+  `sprite.decode`，而是 `window.open("level.html?tileset=lN")` 跳到关卡查看器，由
+  `level.inspect` 渲染 TIL→MIN→CEL（含正确调色板变体 `l1_2.pal`/`l3pfoul.pal`/`l5base.pal`…）。
 
 > 契约与 stdio 完全一致 = 同一套 `dispatch`，前端无需特殊适配。rgba 为原始像素，
 > 前端负责 ImageData 组装与 Canvas 绘制。

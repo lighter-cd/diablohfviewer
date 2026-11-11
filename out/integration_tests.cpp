@@ -859,6 +859,57 @@ static void testSpriteListInvFamily() {
     printf("sprite_tools (inv catalog): %s\n", allOk ? "PASS" : "FAIL");
 }
 
+// levels\l<d>data\l<d>.cel / nlevels\... are LEVEL tilesets (not frame sprites).
+// They must be enumerated as their own "level" family (class L1..L6, tileset
+// l1..l6, width 0) so the frontend routes the click to the Level viewer instead
+// of sprite.decode (which would fail: "cel requires a width").
+static void testSpriteListLevelFamily() {
+    ToolRegistry reg;
+    tools::registerSpriteTools(reg);
+
+    std::string dictPath = "out/_it_level_dict.json";
+    {
+        std::ofstream d(dictPath);
+        d << "{ \"archives\": [ { \"name\": \"DIABDAT.MPQ\", "
+             "\"path\": \"D:/fixtures/DIABDAT.MPQ\", \"recovered\": [ ";
+        d << "{ \"name\": \"levels\\\\l1data\\\\l1.cel\", \"size\": 100 }, ";
+        d << "{ \"name\": \"levels\\\\l2data\\\\l2.cel\", \"size\": 100 }, ";
+        d << "{ \"name\": \"levels\\\\l3data\\\\l3.cel\", \"size\": 100 }, ";
+        d << "{ \"name\": \"levels\\\\l4data\\\\l4.cel\", \"size\": 100 } ";
+        d << "] }, { \"name\": \"hellfire.mpq\", "
+             "\"path\": \"D:/fixtures/hellfire.mpq\", \"recovered\": [ ";
+        d << "{ \"name\": \"nlevels\\\\l5data\\\\l5.cel\", \"size\": 100 }, ";
+        d << "{ \"name\": \"nlevels\\\\l6data\\\\l6.cel\", \"size\": 100 } ";
+        d << "] } ] }";
+    }
+    auto resp = handleRequest(reg, json{
+        {"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/call"},
+        {"params", json{{"name", "sprite.list"},
+                        {"arguments", json{{"dict", dictPath}, {"family", "level"}}}}}});
+    CHECK(resp.has_value(), "level: sprite.list returns a response");
+    json lst = resp ? resp->value("result", json::object()) : json::object();
+    json sprites = lst.value("sprites", json::array());
+    CHECK(sprites.size() == 6, "level: sprite.list enumerates 6 level tileset CELs");
+    int nL = 0;
+    for (auto& s : sprites) {
+        CHECK(s.value("family", "") == "level", "level: family == level");
+        CHECK(s.value("type", "") == "cel", "level: type == cel");
+        CHECK(s.value("width", -1) == 0, "level: width == 0 (not a frame sprite)");
+        const std::string cls = s.value("class", "");
+        const std::string tileset = s.value("tileset", "");
+        CHECK(!tileset.empty(), "level: carries a non-empty tileset id");
+        // class == "L" + tileset digit; tileset matches TILESETS ids l1..l6
+        bool okTileset = (tileset == "l1" || tileset == "l2" || tileset == "l3" ||
+                          tileset == "l4" || tileset == "l5" || tileset == "l6");
+        CHECK(okTileset, "level: tileset is a known TILESETS id");
+        CHECK(cls == ("L" + tileset.substr(1)), "level: class == L<digit>");
+        ++nL;
+    }
+    CHECK(nL == 6, "level: 6 level family entries classified");
+    std::remove(dictPath.c_str());
+    printf("sprite_tools (level catalog): %s\n", allOk ? "PASS" : "FAIL");
+}
+
 // data\inv\objcurs*.cel inventory ICONS have a different width per frame.
 // sprite.decode must decode them via width:"auto" (built-in table) or an
 // explicit widths[] array, while a single width is still rejected cleanly.
@@ -1869,6 +1920,7 @@ int main() {
     testSpriteList();
     testSpriteListSynthesis();
     testSpriteListInvFamily();
+    testSpriteListLevelFamily();
 
     std::string mpq = "/d/work/xt/diablo/DevilutionX-Hell Fire/devilutionx.mpq";
     if (const char* e = std::getenv("DHFC_TEST_MPQ"))

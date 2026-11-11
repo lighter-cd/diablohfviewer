@@ -417,12 +417,14 @@ mcp::ToolResult toolSpriteDecode(const mcp::json& params)
 // is something we enumerate: CL2 / CEL sprites, or .pal palette files. Used by
 // sprite.list (the `kind` filter decides which of these to emit).
 struct SpriteInfo {
-    // plrgfx / monsters / missiles / items / objects / towners / inv / palette
+    // plrgfx / monsters / missiles / items / objects / towners / inv / palette / level
     std::string family;
     std::string cls;    // class path, assetsSuffix, missile/item/object name, etc.
     std::string type;   // 2-char player type code (as/at/...), or monster L letter
     bool        sprite = false;
     int         fixedWidth = 0; // single known width for families without a TSV
+    std::string tileset; // level TILESETS id ("l1".."l6") when family == "level"
+    bool        level = false;  // true for level tileset CELs (not frame sprites)
 };
 
 static SpriteInfo classifySprite(const std::string& name, bool& isSpriteExt) {
@@ -514,6 +516,26 @@ static SpriteInfo classifySprite(const std::string& name, bool& isSpriteExt) {
         r.type = "cel";
         r.fixedWidth = isCursor ? 0 : 320;
         r.sprite = true;
+    } else if (comps.size() >= 2 && (comps[0] == "levels" || comps[0] == "nlevels")) {
+        // levels\l<d>data\l<d>.cel (Cathedral/Catacombs/Caves/Hell) and
+        // nlevels\l<d>data\l<d>.cel (Hellfire Crypt/Nest) are LEVEL tilesets,
+        // not frame sprites. They are browsed through the dedicated Level viewer
+        // (level.inspect), keyed by a TILESETS id ("l1".."l6"). Give them a
+        // proper catalog node and let the frontend route the click there instead
+        // of sprite.decode (which cannot decode level CELs as frames).
+        r.family = "level";
+        const std::string dir = comps[1];
+        std::string tileId;
+        if (dir.size() >= 2 && dir[0] == 'l' && std::isdigit((unsigned char)dir[1])) {
+            size_t k = 1;
+            while (k < dir.size() && std::isdigit((unsigned char)dir[k])) ++k;
+            tileId = "l" + dir.substr(1, k - 1); // "l1".."l6"
+        }
+        r.tileset = tileId;
+        r.cls = tileId.empty() ? dir : ("L" + tileId.substr(1)); // "L1".."L6"
+        r.type = "cel";
+        r.level = true;
+        // width intentionally 0: this is not a frame sprite.
     }
     return r;
 }
@@ -835,20 +857,28 @@ mcp::ToolResult toolSpriteList(const mcp::json& params)
                         // frontend send width:"auto", which resolves the
                         // built-in table in sprite.decode.
                         w = si.fixedWidth;
+                    } else if (si.family == "level") {
+                        // Level CELs are not frame sprites; width stays 0 so the
+                        // frontend routes the click to the Level viewer instead
+                        // of sprite.decode.
+                        w = 0;
                     } else {
                         std::string dbg;
                         int aw = decoders::sprite_width::autoWidth(name, devRoot, dbg);
                         if (aw > 0) w = aw;
                     }
                 }
-                sprites.push_back(mcp::json{
+                mcp::json entry = mcp::json{
                     { "name", name },
                     { "archive", archName },
                     { "archive_path", archPath },
                     { "family", si.family },
                     { "class", si.cls },
                     { "type", si.type },
-                    { "width", w } });
+                    { "width", w } };
+                if (si.level && !si.tileset.empty())
+                    entry["tileset"] = si.tileset;
+                sprites.push_back(std::move(entry));
             }
         }
     }
