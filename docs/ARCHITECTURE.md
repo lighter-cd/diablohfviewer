@@ -493,13 +493,12 @@ sidecar JSON（`grid_width/grid_height/micro_len/frame_count` + 四个每格标�
 Catacombs/Caves/Hell/Crypt 仍待移植。
 
 **测试目录**（2026-11-12 调整）：三套测试源码（`tests/unit_tests.cpp` /
-`tests/core_tests.cpp` / `tests/integration_tests.cpp`）与 21 个手工 JSON-RPC 请求模板、
-响应快照统一置于 `tests/`；`out/` 只承载 mcp-server 与 `mpq-info/` 辅助工具的运行产物。
-测试内硬编码的运行临时产物路径（`tests/__png_test.png`、`tests/_it_*`、
-`tests/gen_test/`、`tests/ui/`）及编译出的 `tests/*.exe` 均由 `.gitignore` 忽略。
-经实证这 21 个 JSON 夹具不被任何测试 `.cpp` 读取，仅用于手工向 stdio/WS 复现请求与留存
-响应基准；`out/` 侧同名遗留产物亦由 `out/_it_*` 兜底忽略。三套 g++ 构建/运行命令见
-`README.md` §测试。
+`tests/core_tests.cpp` / `tests/integration_tests.cpp`）统一置于 `tests/`；`out/` 整目录被
+`.gitignore` 忽略，只承载 mcp-server 与 `mpq-info/` 辅助工具的运行产物。测试内硬编码的运行
+临时产物路径（`tests/__png_test.png`、`tests/_it_*`、`tests/gen_test/`、`tests/ui/`）及
+编译出的 `tests/*.exe` 均由 `.gitignore` 忽略。三套测试均为自包含：不读取任何 JSON 夹具，
+原置于 `tests/` 的 21 个手工 JSON-RPC 请求模板/响应快照已移除，移除后三套仍全绿。三套
+g++ 构建/运行命令见 `README.md` §测试。
 
 **测试**（见 `README.md` §测试 / §6）：
 - `tests/unit_tests.cpp`：TIL/MIN/DUN/SOL、`buildMicroGrid` 0-based、Square/Triangle CEL、

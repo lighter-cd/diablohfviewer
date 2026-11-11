@@ -252,7 +252,7 @@ DiabloHFConverter/
 │       └── recovered.json       # 汇总清单（可由 mpq.recover 重建）
 ├── build-mcp/           # CMake 构建目录（mcp-server.exe 产物）
 ├── CMakeLists.txt       # MinGW 构建（StormLib + 静态运行时 + ws2_32/wininet）
-├── tests/               # 三套测试源码（*.cpp）+ 手工 JSON-RPC 夹具/响应快照（入库）
+├── tests/               # 三套自包含测试源码（*.cpp），运行产物不入库
 └── out/                 # 产出的 PNG/JSON/文本（运行产物，不入库）
 ```
 

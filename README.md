@@ -142,7 +142,7 @@ cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经
 
 ## 测试
 
-后端各单元均配合单元测试，分三个套件，测试源码与手工 JSON 夹具全部在 `tests/` 下，用 MinGW-w64 的 `g++` 直接构建运行（编译出的 `tests/*.exe` 与测试运行临时产物均不入库）。
+后端各单元均配合单元测试，分三个套件，测试源码全部在 `tests/` 下，用 MinGW-w64 的 `g++` 直接构建运行（编译出的 `tests/*.exe` 与测试运行临时产物均不入库；三套测试自包含，不依赖任何外部夹具文件）。
 （注意：`GLOB_RECURSE` 用于 CMake 的 `mcp-server`；新增 `src/**/*.cpp` 后需重跑一次
 `cmake -S . -B build-mcp` 才会被纳入构建。测试用 g++ 单文件直接编译，把新增源文件加进命令即可。）
 

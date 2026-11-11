@@ -395,3 +395,7 @@
 ## 2026-11-12 03:49:58
 - 测试套件迁出 out/：新建 tests/ 并用 git mv 迁入三套测试源码（unit/core/integration_tests.cpp）与 21 个手工 JSON-RPC 夹具/响应快照，out/ 从此 0 个已跟踪文件；三套 .cpp 内硬编码的 out/ 运行临时产物路径同步改为 tests/（__png_test.png、_it_*、gen_test、ui），.gitignore 新增 tests/ 运行产物忽略段并补 out/_it_* 兜底，README/docs/src 注释共 20+ 处引用同步更新；迁移前后三套测试均 ALL PASS。经实证 21 个 JSON 夹具不被任何测试 .cpp 读取，仅作手工复现请求与响应基准。out/ 未删、未整目录忽略，留待测试后再定。
 - 涉及: tests/(24 文件), .gitignore, README.md, docs/ARCHITECTURE.md, docs/PROJECT.md, src/tools/spell_tables.h, src/tools/ui_layout.h, src/tools/ui_render.h, changed-history.txt
+
+## 2026-11-12 04:29:11
+- 移除 tests/ 下 21 个手工 JSON-RPC 夹具/响应快照，复跑三套测试仍全部 ALL PASS（测试自包含、不读取任何夹具，运行后 tests/ 根目录无 .json 再生）；同步修正 README.md、docs/ARCHITECTURE.md、docs/PROJECT.md、.gitignore 共 7 处过时描述（tests/ 仅三套 .cpp、夹具已移除、out/ 与 out_bak/ 整目录忽略）；本轮连同删除的 21 个 JSON 与 .gitignore 改动一并提交推送。
+- 涉及: tests/(21 个 .json 删除), .gitignore, README.md, docs/ARCHITECTURE.md, docs/PROJECT.md, changed-history.txt

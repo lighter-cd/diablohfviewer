@@ -19,8 +19,8 @@ Makefile
 # 3rdparty/StormLib 已是 submodule，其 build/ 由 build-stormlib.sh 生成、重新运行即可重建。
 3rdparty/StormLib/build/
 
-# ---------- 测试目录 tests/（源码与 JSON 夹具入库） ----------
-# 三套测试源码（*.cpp）与手工 JSON-RPC 夹具/响应快照在 tests/ 下入库，
+# ---------- 测试目录 tests/（仅测试源码入库） ----------
+# 三套测试源码（*.cpp）在 tests/ 下入库；JSON 夹具已移除（测试自包含、不依赖）。
 # 仅忽略测试编译出的可执行件与运行临时产物（见 tests/*.cpp 内硬编码路径）。
 tests/*.exe
 tests/__png_test.png
@@ -28,30 +28,11 @@ tests/_it_*
 tests/gen_test/
 tests/ui/
 
-# ---------- 运行产物 out/（构建/运行生成物，不入库） ----------
-# 测试套件源码与 JSON 夹具已迁至 tests/；out/ 只承载运行产物，全部忽略。
-# 编译出的辅助工具可执行件
-out/*.exe
-# 解码出的精灵图片
-out/*.png
-out/*.bmp
-# base64 / 预览等运行输出文本
-out/*.txt
-# 测试运行临时产物（_it_*.json/.bin 等，覆盖 out/ 侧遗留与运行时残留）
-out/_it_*
-# 从 mpq 中提取出的文件（.dun/.til/.min/.cel/.sol/.pal 等）
-out/*.dun
-out/*.til
-out/*.min
-out/*.cel
-out/*.sol
-out/*.pal
-out/extracted/
-out/render/
-# map.build / scene.build / ui.build 生成的地图/界面 PNG / 预览 / 叠加层 / sidecar JSON（运行产物，不入库）
-out/maps/
-out/scenes/
-out/ui/
+# ---------- 运行产物 out/（整目录忽略） ----------
+# 测试套件源码已迁至 tests/；out/ 只承载 mcp-server 与辅助工具的运行产物，
+# out_bak/ 为 out/ 的备份，两者均整目录忽略、不入库。
+out/
+out_bak/
 
 # ---------- MPQ 文件名恢复的生成产出（字典源文件保留） ----------
 # recovered.json / recovered/ 可由 mcp-server 的 mpq.recover 重建。
