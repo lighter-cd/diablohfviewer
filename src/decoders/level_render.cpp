@@ -386,16 +386,29 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
                 }
             }
 
-            // Town dSpecial overlay (tree canopies, arches, etc.), drawn after
-            // the cell content like DrawDungeon's pSpecialCels pass. The sprite
-            // is bottom-anchored at the cell base.
+            // dSpecial overlay (town tree canopies; dungeon arches / doors),
+            // drawn after the cell content like DrawDungeon's pSpecialCels pass.
+            // DevilutionX shades non-town overlays with ClxDrawLight using the
+            // cell's dLight (scrollrt.cpp:912-935), so pick the frame set that
+            // was decoded through LightTables[level]; town and FullyLit use the
+            // plain unlit frames.
             if (idx < opts.special.size() && opts.special[idx] != 0) {
                 const size_t si = static_cast<size_t>(opts.special[idx] - 1);
-                if (si < opts.specialSprites.size()) {
+                const SpriteFrameRGBA* spr = nullptr;
+                if (useLight && !opts.specialSpritesLit.empty()) {
+                    const size_t lev = static_cast<size_t>(res.light[idx] & 0x0F);
+                    if (lev < opts.specialSpritesLit.size()) {
+                        const auto& set = opts.specialSpritesLit[lev];
+                        if (si < set.size())
+                            spr = &set[si];
+                    }
+                }
+                if (!spr && si < opts.specialSprites.size())
+                    spr = &opts.specialSprites[si];
+                if (spr) {
                     const int baseY = ct + Hm - 1;
-                    const SpriteFrameRGBA& spr = opts.specialSprites[si];
-                    const int sx = x + (64 - spr.width) / 2;
-                    blitSpriteBottom(spr, res.rgba.data(), res.width, res.height,
+                    const int sx = x + (64 - spr->width) / 2;
+                    blitSpriteBottom(*spr, res.rgba.data(), res.width, res.height,
                                      pitch, sx, baseY);
                 }
             }

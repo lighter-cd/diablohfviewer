@@ -1519,6 +1519,9 @@ static void testSceneTools(const std::string& mpq) {
           "scene.build walkable_count positive");
     CHECK(v.value("special_count", 0) > 0,
           "scene.build emits dSpecial town overlays (trees/arches)");
+    // DevilutionX scrollrt.cpp:936-943 draws town dSpecial with unlit ClxDraw.
+    CHECK(v["meta"].value("special_lit_levels", -1) == 0,
+          "town dSpecial overlays stay unlit (no LightTables copies)");
     CHECK(v["meta"]["special"].size() == (size_t)(96 * 96),
           "scene.build special array sized gw*gh");
     // Decode the base64 and confirm the PNG signature.
@@ -1572,6 +1575,10 @@ static void testSceneTools(const std::string& mpq) {
               "l1_rnd2 zero DUN cells are walkable Floor, not Dirt walls");
         CHECK(lv.value("special_count", 0) > 0,
               "l1_rnd2 emits dungeon dSpecial overlays (arches/doors)");
+        // scrollrt.cpp:912-935 ClxDrawLight: dungeon overlays are shaded per
+        // dLight, so the special CEL is decoded once per light level.
+        CHECK(lv["meta"].value("special_lit_levels", -1) == 16,
+              "l1_rnd2 dSpecial CEL has 16 dLight-shaded copies");
         // Default: cropped to the .dun bbox (11x11 megatiles -> 22x22 micro).
         CHECK(lv.value("grid_width", 0) == 22 && lv.value("grid_height", 0) == 22,
               "l1_rnd2 default grid cropped to 22x22 bbox");

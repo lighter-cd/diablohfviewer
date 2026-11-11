@@ -302,7 +302,9 @@ web/
   黄=BlockLight），由后端按网格数组生成；开关控制显隐。
 - **光照（dLight）**：勾选后 `loadScene()` 传 `scene.build(lighting:true)`，后端按
   场景环境光（城镇 0、地牢 15）+ 中心 radius-15 火把计算每格光照，用 DevilutionX
-  `LightTables` 烘焙调色板暗部；切换复选框会重建场景。
+  `LightTables` 烘焙调色板暗部；地牢的门/拱门 `dSpecial` 精灵按同一 `dLight` 着色
+  （DevilutionX `ClxDrawLight`），因此门与通道随房间一起变暗，城镇树冠依原版
+  `ClxDraw` 保持不着色；切换复选框会重建场景。
 - **绘制 Dirt 边框**：默认**不勾选**，地牢预设按 `.dun` bbox 裁剪（`l1_rnd2` 为
   22×22），房间完整可见；勾选后 `loadScene()` 传 `scene.build(dirt_border:true)`，
   恢复 DevilutionX `DRLG_LPass3` 的 32 微格 Dirt 边框 + (16,16) 偏移以忠实复原完整

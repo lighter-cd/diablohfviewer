@@ -405,3 +405,6 @@
 ## 2026-11-12 06:18:04
 - 地牢预设场景默认按 .dun bbox 裁剪（Dirt 边框是实心土块、会遮住房间）：buildDungeonScene 网格改为 dunW*2×dunH*2、DUN@0,0，sceneGridDims/catalog 同步；新增 scene.build/scene.path 的 dirt_border 选项（默认 false），开启后恢复 32 微格 Dirt 边框 + (16,16) 偏移以忠实复原完整 dPiece，两工具同参数保证 path 坐标对齐；缓存 key 升 v3 并纳入开关；前端场景查看器新增同名复选框（默认不勾选）。三套测试全绿，scene.build(l1_rnd2) 默认 22×22 / dirt_border:true 54×54，两者 walkable 387、special 36、0 透明像素一致。
 - 涉及: src/decoders/level_scene.cpp, src/decoders/level_scene.h, src/tools/scene_tools.cpp, tests/unit_tests.cpp, tests/integration_tests.cpp, web/index.html, web/src/main.js, README.md, docs/ARCHITECTURE.md, docs/PROJECT.md, web/README.md
+## 2026-11-12 07:36:50
+- 修复固定房间场景开启光照时门/通道不受光照影响：对照 DevilutionX scrollrt.cpp:912-935（非城镇 dSpecial 用 ClxDrawLight 按 lightTableIndex 着色），level_render.cpp 原先直接贴用原始调色板解码的 special CEL RGBA 帧、绕过 LightTables；现由 loadSceneAssets 按 16 个 LightTables 级别预解码 special 帧，renderMap 按每格 dLight 选套，城镇依 ClxDraw 仍不着色；meta 新增 special_lit_levels，缓存 key 升 v4。三套测试全绿，同参数 A/B 像素对比 5.4% 像素变化且全部变暗、零变亮，ambient=15/auto_light=false 全暗场景平均亮度 0.000。
+- 涉及: src/decoders/level.h, src/decoders/level_render.cpp, src/tools/scene_tools.cpp, tests/unit_tests.cpp, tests/integration_tests.cpp, README.md, docs/ARCHITECTURE.md, docs/PROJECT.md, web/README.md

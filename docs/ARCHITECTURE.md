@@ -477,7 +477,8 @@ sidecar JSON（`grid_width/grid_height/micro_len/frame_count` + 四个每格标�
 `lighting`（默认 false）、`ambient`（默认城镇 0 / 地牢 15）、`lights[]`
 （`{x,y,radius,offset_x,offset_y}` 微瓦片坐标）、`auto_light`（无光源时中心 radius-15 火把）、
 `dirt_border`（默认 false，地牢裁到 `.dun` bbox；true 恢复 32 微格 Dirt 边框 + (16,16) 偏移）。
-`meta.light` 输出逐格级别；`light_lit_count` 为 level 0 格数。
+`meta.light` 输出逐格级别；`light_lit_count` 为 level 0 格数；地牢 `dSpecial` 精灵同样
+按 `LightTables` 着色（`scrollrt.cpp` `ClxDrawLight`），`Meta.special_lit_levels` = 16。
 
 **寻路（`level_path.cpp` + `scene.path`，2026-11-09）**：在 SOL `Solid` 网格上做 8 方向 A*：
 直行代价 100、斜行 101（照搬 `Source/engine/path.cpp`），斜向不额外限制转角（`CanStep`
@@ -553,6 +554,11 @@ scene.path {id,archive,archives?,from:{x,y},to:{x,y},max_steps?=1024,preview_max
   树冠帧）；地牢 `drlg_l1.cpp` / `drlg_l2.cpp::InitDungeonPieces` → `levels/l1data/l1s.cel`
   / `levels/l2data/l2s.cel`（64px 拱门与门框，8 帧）。Caves / Hell 的 `Pass3()` 没有
   `InitDungeonPieces()`，故 `l3_anvil` / `l4_diab1` 不加载 special CEL。
+  **光照**：DevilutionX `scrollrt.cpp:912-935` 对非城镇 `dSpecial` 用
+  `ClxDrawLight(..., lightTableIndex)`（城镇 `ClxDraw` 不着色）。`loadSceneAssets` 把
+  special CEL 按 `LightTables[0..15]` 预解码成 16 套 RGBA 帧，`renderMap` 绘制时按该格
+  `res.light` 选套，故门/拱门与地形同步变暗；`Meta.special_lit_levels` 暴露副本数
+  （地牢 16 / 城镇 0），修复前精灵用原始调色板解码、始终全亮。
   **地牢 DUN 值为 0 的格**按 `LoadDungeonBase → PlaceDunTiles(dunData,{0,0},floorId)`
   铺成本层 Floor megatile（L1=13 / L2=3 / L3=7 / L4=6），而非保留 Dirt 预填——
   这些格是房间的可走地板/通道；修复前被画成实心墙（`walkable=0`）。

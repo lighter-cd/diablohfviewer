@@ -113,6 +113,11 @@ struct MapRenderOptions {
     // matching DevilutionX DrawDungeon's pSpecialCels pass (town trees etc.).
     std::vector<uint8_t> special;
     std::vector<SpriteFrameRGBA> specialSprites;
+    // DevilutionX DrawDungeon shades DUNGEON dSpecial overlays with
+    // LightTables[lightTableIndex] (scrollrt.cpp:912-935 ClxDrawLight); town
+    // overlays are unlit (ClxDraw). One decoded copy per dLight level (16).
+    // Empty = fall back to specialSprites (FullyLit / town).
+    std::vector<std::vector<SpriteFrameRGBA>> specialSpritesLit;
 };
 
 // Isometric bounding box of a (gw x gh) micro grid with `microLen` blocks per

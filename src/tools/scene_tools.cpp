@@ -84,6 +84,8 @@ struct SceneAssets {
     decoders::ReencodedLevelCel reencoded;
     std::vector<uint8_t> solid; // per-cell, from SOL (1 = blocks walking)
     std::vector<decoders::SpriteFrameRGBA> specialSprites; // dSpecial frames
+    // Per-dLight-level copies for dungeon (ClxDrawLight); town stays unlit.
+    std::vector<std::vector<decoders::SpriteFrameRGBA>> specialSpritesLit;
 };
 
 SceneAssets loadSceneAssets(const decoders::SceneSpec& spec,
@@ -144,6 +146,38 @@ SceneAssets loadSceneAssets(const decoders::SceneSpec& spec,
                 s.height = f.height;
                 s.rgba = f.rgba;
                 out.specialSprites.push_back(std::move(s));
+            }
+
+            // DevilutionX scrollrt.cpp:912-935 draws a non-town dSpecial
+            // overlay with ClxDrawLight(..., lightTableIndex): the sprite's
+            // palette indices are remapped through LightTables[dLight]. Decode
+            // one copy per light level so renderMap can pick the cell's shade.
+            // Town overlays use the unlit ClxDraw, so they get no copies.
+            if (spec.layout == decoders::SceneLayout::Dungeon && !clx.empty() &&
+                out.palRgb.size() >= 256 * 3) {
+                decoders::LightTableView lightTables;
+                lightTables.build(static_cast<decoders::LightStyle>(
+                    spec.lightStyle <= 2 ? spec.lightStyle : 0));
+                out.specialSpritesLit.resize(decoders::kNumLightLevels);
+                for (int level = 0; level < decoders::kNumLightLevels; ++level) {
+                    std::vector<uint8_t> litRgb(256 * 3, 0);
+                    for (int i = 0; i < 256; ++i) {
+                        const uint8_t mapped = lightTables.tables[level][i];
+                        for (int c = 0; c < 3; ++c)
+                            litRgb[static_cast<size_t>(i) * 3 + c] =
+                                out.palRgb[static_cast<size_t>(mapped) * 3 + c];
+                    }
+                    const auto litFrames = decoders::decodeClx(clx, litRgb);
+                    auto& dst = out.specialSpritesLit[level];
+                    dst.reserve(litFrames.size());
+                    for (const auto& f : litFrames) {
+                        decoders::SpriteFrameRGBA s;
+                        s.width = f.width;
+                        s.height = f.height;
+                        s.rgba = f.rgba;
+                        dst.push_back(std::move(s));
+                    }
+                }
             }
         }
     }
@@ -354,11 +388,12 @@ std::string buildCacheKey(const std::string& id,
                           const std::string& outDir) {
     std::string a;
     for (size_t i = 0; i < archives.size(); ++i) { if (i) a += ";"; a += archives[i]; }
-    // v3: dungeon presets are cropped to the .dun bbox by default; the
-    // optional dirt_border restores the old 32-micro border. Include the
-    // assembly inputs and the switch so catalog changes / toggles invalidate
-    // cached PNGs automatically.
-    return "v3|" + id + "|" + a + "|" +
+    // v4: dungeon dSpecial sprites are now shaded by the cell's dLight
+    // (ClxDrawLight), so lit renders differ from the old unlit overlays.
+    // Earlier: v3 cropped presets to the .dun bbox (dirt_border restores the
+    // border); assembly inputs and switches are all in the key so catalog
+    // changes / toggles invalidate cached PNGs automatically.
+    return "v4|" + id + "|" + a + "|" +
            std::to_string(spec.floorMegaTile) + "|" + spec.specialCel + "|" +
            std::to_string(static_cast<int>(spec.specialTable)) + "|" +
            (params.value("dirt_border", false) ? "B1" : "B0") + "|" +
@@ -460,7 +495,11 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
     if (lightingEnabled)
         mcp::tools::reportProgress(50, "计算光照贴图");
     opts.special = grid.special;
+    // Number of dLight-shaded copies of the special CEL (16 for dungeon
+    // L1/L2 arches/doors, 0 for town / scenes without a special CEL).
+    const size_t specialLitLevels = assets.specialSpritesLit.size();
     opts.specialSprites = std::move(assets.specialSprites);
+    opts.specialSpritesLit = std::move(assets.specialSpritesLit);
 
     decoders::MapRenderResult map = decoders::renderMap(
         assets.reencoded, assets.micros, grid.micro, grid.gw, grid.gh,
@@ -544,6 +583,7 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
         {"walkable", walkArr},
     };
     meta["special_count"] = specialCount;
+    meta["special_lit_levels"] = static_cast<int>(specialLitLevels);
     meta["special"] = mcp::json::array();
     for (const uint8_t id : grid.special)
         meta["special"].push_back(id);

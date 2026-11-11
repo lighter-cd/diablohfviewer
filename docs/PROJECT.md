@@ -806,6 +806,17 @@ DiabloHFConverter/
       缓存 key 升 `v3` 并纳入该开关；前端场景查看器新增同名复选框（默认不勾选）。
       验收：三套测试全绿；`scene.build(l1_rnd2)` 默认 22×22、native 1409×832，
       `dirt_border:true` 54×54，两者 `walkable=387` / `special=36` / 0 透明像素一致。
+- [x] **地牢 `dSpecial` 精灵光照修复（2026-11-12）**：对照 DevilutionX
+      `scrollrt.cpp:912-935`（非城镇 `dSpecial` 走 `ClxDrawLight(..., lightTableIndex)`，
+      城镇走 `ClxDraw`），`level_render.cpp` 原先直接贴用原始调色板解码的 special CEL
+      RGBA 帧、完全绕过 `LightTables`，导致 `lighting:true` 时门/拱门（其 micro 10/11
+      SOL=0，即可走的门洞/通道）保持全亮、与变暗的地形脱节。现由 `loadSceneAssets`
+      按 `LightTables[0..15]` 预解码 16 套 special 帧，经 `MapRenderOptions.specialSpritesLit`
+      透传，`renderMap` 按该格 `res.light` 选套；城镇不生成副本（保持 `ClxDraw` 不着色）。
+      `meta.special_lit_levels` 暴露副本数（地牢 16 / 城镇 0），缓存 key 升 `v4`。
+      验收：三套测试全绿；单测断言 level 15 把 special 精灵着成全黑、无 lit 集时保持原亮；
+      同参数 A/B 像素对比 5.4% 像素变化且**全部变暗、零变亮**；`ambient=15,
+      auto_light=false` 全暗场景平均亮度 0.000（地形/通道/门全部着色）。
 - [x] **动态地图规则与导出/渲染桥接（2026-11-09）**：新增 `docs/MAP_GENERATION.md`，记录
       `DungeonSeeds`/`LevelSeeds`、Borland LCG（`0x015A4E35`+1）、`CreateDungeon` 分派、
       L1–L4 与 Hellfire L5/L6 生成流程、主题/任务/miniset 依赖，以及用 DevilutionX 调试版
@@ -849,6 +860,7 @@ DiabloHFConverter/
 | `level.inspect` 关卡 tile 查看器（megatile/micro/block/frame/组装） | ✅ |
 | `level.generate` 动态 Cathedral L1–L4 原生生成（14 个 DevilutionX fixture 0 差异） | ✅ |
 | `dSpecial` 城镇树木/拱门覆盖层 + Tristram FillTile（水池/传送入口） | ✅ |
+| `dSpecial` 地牢门/拱门覆盖层（L1/L2 `l1s`/`l2s` CEL）+ 按 `dLight` 着色 | ✅ |
 | tile 纵向翻转修复（triangle/trapezoid 与 square 统一 top-down） | ✅ |
 | 前端场景查看器 + 关卡 tile 查看器（`web/`） | ✅ |
 | 单元 / 集成 / core 三套测试 + mcp-server 构建 | ✅ |

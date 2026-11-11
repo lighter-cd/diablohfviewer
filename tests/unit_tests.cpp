@@ -1362,6 +1362,48 @@ static void testLevelRender()
     lvlChk(mapLit.light[0] == 0 && mapLit.light[3] == 0,
            "level.render light level 0 stored");
 
+    // dungeon dSpecial overlays must be shaded by the cell's dLight
+    // (DevilutionX scrollrt.cpp ClxDrawLight). At level 15 the tiles are black,
+    // so a bright unlit overlay would be the only visible pixels.
+    decoders::SpriteFrameRGBA bright;
+    bright.width = 4; bright.height = 4;
+    bright.rgba.assign(4 * 4 * 4, 255); // opaque white
+    decoders::SpriteFrameRGBA darkSpr = bright;
+    for (size_t i = 0; i + 3 < darkSpr.rgba.size(); i += 4) {
+        darkSpr.rgba[i] = 0; darkSpr.rgba[i + 1] = 0; darkSpr.rgba[i + 2] = 0;
+    }
+    // A single-cell grid: the overlay is drawn last, so no later cell can
+    // overpaint it (which would hide the difference in a multi-cell grid).
+    const int sgw = 1, sgh = 1;
+    std::vector<uint16_t> sgrid(1, 0);
+    std::vector<uint8_t> ssol(1379, 0);
+    decoders::MapRenderOptions spDark;
+    spDark.lightLevels.assign(1, 15);
+    spDark.special.assign(1, 1);
+    spDark.specialSprites = { bright };
+    spDark.specialSpritesLit.assign(
+        decoders::kNumLightLevels,
+        std::vector<decoders::SpriteFrameRGBA>{ darkSpr });
+    auto mapSpDark = decoders::renderMap(re, micros, sgrid, sgw, sgh, ssol,
+                                         std::vector<int8_t>{}, pal.data(), 10, spDark);
+    size_t spBright = 0;
+    for (size_t i = 0; i < mapSpDark.rgba.size(); i += 4)
+        if (mapSpDark.rgba[i] || mapSpDark.rgba[i + 1] || mapSpDark.rgba[i + 2]) ++spBright;
+    lvlChk(spBright == 0,
+           "level.render dungeon dSpecial overlay shaded by dLight (level 15 -> black)");
+
+    // Without the lit set (town ClxDraw / FullyLit) the overlay stays bright.
+    decoders::MapRenderOptions spUnlit = spDark;
+    spUnlit.specialSpritesLit.clear();
+    auto mapSpUnlit = decoders::renderMap(re, micros, sgrid, sgw, sgh, ssol,
+                                          std::vector<int8_t>{}, pal.data(), 10, spUnlit);
+    size_t spUnlitBright = 0;
+    for (size_t i = 0; i < mapSpUnlit.rgba.size(); i += 4)
+        if (mapSpUnlit.rgba[i] || mapSpUnlit.rgba[i + 1] || mapSpUnlit.rgba[i + 2])
+            ++spUnlitBright;
+    lvlChk(spUnlitBright > 0,
+           "level.render unlit dSpecial overlay stays bright (town / FullyLit fallback)");
+
     // kNoMicro cells are filled from prefillMicro -> still no transparent gaps.
     std::vector<uint16_t> holeGrid(4, decoders::kNoMicro);
     decoders::MapRenderOptions opts;
