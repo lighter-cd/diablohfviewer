@@ -363,3 +363,7 @@
 ## 2026-11-11 08:30:00
 - 关卡瓦片集归 level 家族并跳关卡查看器：levels\l<d>data\l<d>.cel / nlevels\... 是关卡瓦片集（非帧精灵），原 classifySprite 无对应分支，被收进目录树 (unknown)/(unknown)，点击 sprite.decode 必报 cel requires a positive integer 'width'；新增 levels/nlevels 分支 → 家族 level、class=L1..L6、条目带 tileset(l1..l6，对应 web/src/level.js 的 TILESETS)、width 固定 0，sprite.list 同步跳过 autoWidth 并下发 tileset；前端 onSelectSprite 检测 family==="level" 时 window.open("level.html?tileset=lN") 跳关卡查看器，level.js 读 ?tileset= 预填并在连接后自动 inspect；6 个 tileset(l1..l6) 的 level.inspect 均验证可渲染。
 - 涉及: src/tools/sprite_tools.cpp, web/src/main.js, web/src/level.js, web/index.html, web/level.html, README.md, web/README.md, docs/ARCHITECTURE.md, docs/PROJECT.md
+
+## 2026-11-11 09:05:00
+- 修复目录浏览中 PCX 用错调色板：sprite.list(kind=ui) 的 PCX 叶子 palette="embedded"（PCX 自带 256 色调色板存于文件尾 0x0C+768 字节），但 web/src/main.js 的 buildDecodeArgs 把 embedded 排除后落到全局下拉调色板，sprite.decode 的 resolvePalette 优先级 palette_name(下拉) 高于 embeddedPal，于是用游戏调色板套 PCX 像素索引 → 颜色全错且随下拉变；而 clx/cel 叶子 palette 是真实路径故一直正确、下拉被忽略（用户现象"其他 ui/ 文件不受调色板影响"）。修正：palette==="embedded" 时不再传 palette_name，让后端回退到 PCX 自带调色板；index.html 缓存戳 20261111c→d。实测 mainmenu.pcx 不传 palette_name 解出 640x480 且 palette_resolved=true，传 cut2.pal 则逐像素不同（错）。
+- 涉及: web/src/main.js, web/index.html, changed-history.txt

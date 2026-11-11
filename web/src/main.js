@@ -698,7 +698,13 @@ function buildDecodeArgs(sprite, nameOverride, opts = {}) {
   // .pcx, "ui_art\\diablo.pal" for menu/dialog .clx, "levels\\towndata\\town.pal"
   // for in-game .cel/.clx). Prefer it over the global palette dropdown so the
   // Catalog browser can render UI leaves without forcing a manual palette pick.
-  const ownPalette = (sprite && sprite.palette && sprite.palette !== "embedded")
+  // A PCX leaf carries palette:"embedded" — its colours live INSIDE the file, so
+  // we must NOT pass palette_name (which resolvePalette would apply BEFORE the
+  // embedded one, recolouring the PCX with a game palette and rendering garbage).
+  // For embedded PCX we omit palette_name entirely and let sprite.decode fall back
+  // to the PCX's own embedded palette; the global dropdown is then ignored.
+  const isEmbeddedPcx = !!(sprite && sprite.palette === "embedded");
+  const ownPalette = (!isEmbeddedPcx && sprite && sprite.palette)
     ? sprite.palette : "";
   const palette = ownPalette || $("palette").value;
   const paletteArchive = paletteArchives.get(palette) || "";
@@ -725,8 +731,8 @@ function buildDecodeArgs(sprite, nameOverride, opts = {}) {
     // explicit frame width), prefer that over "auto" so decode succeeds.
     width: opts.width !== undefined ? opts.width
           : (sprite && sprite.width ? sprite.width : "auto"),
-    palette_name: palette,
   };
+  if (!isEmbeddedPcx) args.palette_name = palette;
   // Per-frame widths for CELs whose frames differ in width (data\inv\objcurs*.cel
   // inventory icons). sprite.list does not ship the 179/61-wide arrays (too big
   // for the WS payload); the backend resolves them from a built-in table when
