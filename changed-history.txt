@@ -464,3 +464,7 @@
 ## 2026-11-13 14:10:00
 - P1 前端 MPQ 入口精简：移除「清除」按钮（选错重新浏览即可）；选中目录若不含预期的 DIABDAT.MPQ/hellfire.mpq 等正版 MPQ 文件，则用醒目红色错误提示「✗ 错误：所选目录未找到…正版 MPQ 文件，请重新点浏览选择正确目录」替代正常提示，且不会保存无效目录（保留原有有效配置）。
 - 涉及: web/index.html, web/src/main.js, web/styles.css
+
+## 2026-11-13 14:20:00
+- P1 前端 MPQ 入口回退为「输入框 + 保存」最简方案：移除无效的浏览按钮（纯浏览器拿不到完整路径，形同虚设），输入框 placeholder 改为「输入或者粘贴你的正版MPQ所在目录」，按钮变回「保存」；提示词精简为「自备官方正版 Hellfire/Diablo 文件（含 DIABDAT.MPQ/hellfire.mpq 等）」并与输入目录写在同一行。
+- 涉及: web/index.html, web/src/main.js, web/styles.css

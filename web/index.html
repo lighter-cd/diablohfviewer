@@ -37,7 +37,7 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta http-equiv="Pragma" content="no-cache" />
   <title>DiabloHFConverter · Sprite & Scene Viewer</title>
-  <link rel="stylesheet" href="styles.css?v=20261113b" />
+  <link rel="stylesheet" href="styles.css?v=20261113c" />
 </head>
 <body>
   <header>
@@ -66,13 +66,11 @@
     <div class="mpq-row">
       <span id="mpqStatus" class="mpq-status bad">MPQ尚未配置</span>
       <label class="mpq-label">MPQ 目录 / 主档案
-        <input id="mpqDir" type="text" placeholder="点击「浏览」选择你的正版 MPQ 目录（如 C:\Games\Diablo\Hellfire）" size="52" />
+        <input id="mpqDir" type="text" placeholder="输入或者粘贴你的正版MPQ所在目录" size="52" />
       </label>
-      <button id="mpqBrowse" type="button">浏览</button>
+      <button id="mpqSave" type="button">保存</button>
       <span id="mpqPickMsg" class="mpq-pick-msg"></span>
-    </div>
-    <div class="mpq-note">
-      自备<strong>官方正版</strong> Hellfire/Diablo 文件（含 <code>DIABDAT.MPQ</code>/<code>hellfire.mpq</code> 等）。点「浏览」选目录即<strong>自动保存</strong>，后端直接读取、不上传；不满意可「清除」。
+      <span class="mpq-hint">自备官方正版 Hellfire/Diablo 文件（含 DIABDAT.MPQ/hellfire.mpq 等）</span>
     </div>
   </section>
 
@@ -332,6 +330,6 @@
     </div>
   </div>
 
-  <script type="module" src="src/main.js?v=20261113b"></script>
+  <script type="module" src="src/main.js?v=20261113c"></script>
 </body>
 </html>

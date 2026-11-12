@@ -181,25 +181,10 @@ function hideError() {
 // The backend itself reads a pre-generated recovered.json (absolute MPQ paths),
 // so the directory here is the user-facing anchor that gates auto-loading.
 const MPQ_DIR_KEY = "dhfc.mpqDir";
-const MPQ_ROOT_KEY = "dhfc.mpqRoot"; // remembered parent dir to auto-complete browse
-// Canonical Hellfire / Diablo archive names we expect inside the chosen dir.
-const EXPECTED_MPQ = ["DIABDAT.MPQ", "hellfire.mpq", "hfmonk.mpq",
-  "hfopt1.mpq", "hfopt2.mpq", "devilutionx.mpq"];
 
 function getMpqDir() {
   try { return (localStorage.getItem(MPQ_DIR_KEY) || "").trim(); }
   catch { return ""; }
-}
-function getMpqRoot() {
-  try { return (localStorage.getItem(MPQ_ROOT_KEY) || "").trim(); }
-  catch { return ""; }
-}
-
-// Browsers refuse to expose the real local path of a picked folder, so we only
-// treat a string as usable once it is an absolute path (drive letter or /).
-function looksAbsolute(p) {
-  if (!p) return false;
-  return /^[a-zA-Z]:[\\/]/.test(p) || /^[\\/]/.test(p);
 }
 
 function setMpqStatusConfigured(dir) {
@@ -230,16 +215,18 @@ function reflectMpqConfig() {
   }
 }
 
-// Commit a directory: persist, update badge, remember its parent as the root for
-// future browse auto-completion, and (only if it actually changed) connect +
-// load the catalog so the MPQ is read right away.
-async function commitMpqDir(dir) {
-  dir = (dir || "").trim();
-  if (!dir) { clearMpqDir(); return; }
+// Save the directory the user typed / pasted: persist it, update the badge, and
+// (only if it changed) connect + load the catalog so the MPQ is read right away.
+async function saveMpqDir() {
+  const dir = ($("mpqDir").value || "").trim();
+  if (!dir) {
+    try { localStorage.removeItem(MPQ_DIR_KEY); } catch {}
+    $("mpqDir").value = "";
+    setMpqStatusUnconfigured();
+    return;
+  }
   const prev = getMpqDir();
   try { localStorage.setItem(MPQ_DIR_KEY, dir); } catch {}
-  const i = Math.max(dir.lastIndexOf("\\"), dir.lastIndexOf("/"));
-  if (i > 0) { try { localStorage.setItem(MPQ_ROOT_KEY, dir.slice(0, i)); } catch {} }
   setMpqStatusConfigured(dir);
   if (dir === prev) return;
   setMeta("已保存 MPQ 目录：" + dir);
@@ -255,103 +242,13 @@ async function commitMpqDir(dir) {
   }
 }
 
-function clearMpqDir() {
-  try { localStorage.removeItem(MPQ_DIR_KEY); } catch {}
-  $("mpqDir").value = "";
-  setMpqStatusUnconfigured();
-  setMpqPickMsg("");
-}
-
-// Show a hard error (replaces the normal prompt) when the picked directory does
-// not contain the expected legitimate MPQ files. We do NOT save an invalid dir,
-// so any previously valid configuration is kept intact.
-function rejectBadMpqDir(name) {
-  setMpqPickMsg(
-    "✗ 错误：所选目录「" + (name || "") +
-    "」未找到 DIABDAT.MPQ / hellfire.mpq 等正版 MPQ 文件，请重新点「浏览」选择正确目录",
-    "error");
-}
-
-// Open a native directory picker. On Chromium/Edge (localhost is a secure
-// context) we use the File System Access API, which validates the chosen folder
-// actually contains the MPQ files. We cannot read the absolute path from a
-// browser, so we reconstruct it from a remembered root; if none, we pre-fill the
-// folder name and ask the user to complete the absolute path once.
-async function browseMpqDir() {
-  setMpqPickMsg("");
-  if (typeof window.showDirectoryPicker === "function") {
-    try {
-      const handle = await window.showDirectoryPicker();
-      const name = handle.name || "";
-      const found = [];
-      try {
-        for await (const [entryName, h] of handle.entries()) {
-          if (h.kind === "file" && EXPECTED_MPQ.includes(entryName.toUpperCase()))
-            found.push(entryName);
-        }
-      } catch {}
-      const root = getMpqRoot();
-      const candidate = root ? (root.replace(/[\\/]$/, "") + "/" + name) : name;
-      $("mpqDir").value = candidate;
-      if (found.length === 0) {
-        rejectBadMpqDir(name);
-        return;
-      }
-      setMpqPickMsg("✓ 已选择「" + name + "」，检测到 " + found.length + " 个正版 MPQ", "ok");
-      if (looksAbsolute(candidate)) {
-        await commitMpqDir(candidate);
-      } else {
-        setMpqPickMsg("✓ 已选「" + name + "」；浏览器不暴露完整路径，请补全（如 C:\\Games\\Diablo\\" + name + "）后回车", "warn");
-        const inp = $("mpqDir");
-        inp.focus();
-        inp.setSelectionRange(0, candidate.length);
-      }
-    } catch (e) {
-      if (e && e.name === "AbortError") return; // user cancelled
-      setMpqPickMsg("选择失败：" + (e.message || e), "warn");
-    }
-    return;
-  }
-  // Fallback for browsers without showDirectoryPicker (also hides the path).
-  const pick = document.createElement("input");
-  pick.type = "file";
-  pick.webkitdirectory = true;
-  pick.addEventListener("change", () => {
-    const files = pick.files ? [...pick.files] : [];
-    const nameSet = new Set(files.map((f) => (f.name || "").toUpperCase()));
-    const found = EXPECTED_MPQ.filter((n) => nameSet.has(n));
-    const f0 = files[0];
-    const rel = f0 && (f0.webkitRelativePath || f0.relativePath || "");
-    const slash = rel ? rel.indexOf("/") : -1;
-    const name = slash >= 0 ? rel.slice(0, slash) : (f0 && f0.name) || "";
-    const root = getMpqRoot();
-    const candidate = root ? (root.replace(/[\\/]$/, "") + "/" + name) : name;
-    $("mpqDir").value = candidate;
-    if (found.length === 0) { rejectBadMpqDir(name); return; }
-    if (looksAbsolute(candidate)) {
-      commitMpqDir(candidate);
-    } else {
-      setMpqPickMsg("浏览器不暴露完整路径，请补全（如 C:\\Games\\Diablo\\" + name + "）后回车", "warn");
-      $("mpqDir").focus();
-    }
-  });
-  pick.click();
-}
-
-// Auto-save when the user finishes editing the path by hand (blur / Enter).
-function onMpqDirEdited() {
-  const v = ($("mpqDir").value || "").trim();
-  if (looksAbsolute(v)) commitMpqDir(v);
-}
-
-// Wire the global MPQ directory controls. Browse auto-saves on a valid selection;
-// the text box auto-saves on blur/Enter. No 保存 / 清除 buttons — re-pick to change.
+// Wire the global MPQ directory controls: a 保存 button (and Enter) commits the
+// typed / pasted directory. No browse / clear — the path is entered directly.
 function wireMpqSetup() {
-  $("mpqBrowse").addEventListener("click", browseMpqDir);
+  $("mpqSave").addEventListener("click", saveMpqDir);
   const inp = $("mpqDir");
-  inp.addEventListener("change", onMpqDirEdited);
   inp.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { e.preventDefault(); onMpqDirEdited(); }
+    if (e.key === "Enter") { e.preventDefault(); saveMpqDir(); }
   });
 }
 
