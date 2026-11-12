@@ -437,6 +437,10 @@
 - 新增 docs/COMPLIANCE.md：合规文档（核心底线不提供资源；AI 高清化三层风险——输出物版权/模型权重出处/超分vs生成；GitHub 平台风控；实现护栏清单；多游戏插件额外注意；声明文案）。README 资源声明处加链接指向该文档。
 - 涉及: docs/COMPLIANCE.md, README.md
 
+## 2026-11-12 19:43:02
+- 新增 docs/UPSCALE_PLAN.md：AI 高清化（补值超分）实现规划（架构决策：前端超分/零权重/仅超分；P-U0 导出管线 → P-U1 算法超分 → P-U2 ONNX Runtime Web+用户自备模型 → P-U3 对齐方向A；合规护栏与测试）。在 docs/RELEASE_PLAN.md 新增「功能方向 A」小节链接该文档，并更新优先级说明两者可并行。
+- 涉及: docs/UPSCALE_PLAN.md, docs/RELEASE_PLAN.md
+
 ## 2026-11-12 19:03:47
 - README.md 项目介绍补充「为什么做这个项目」：说明本项目旨在解决 Hellfire 资料与工具碎片化问题，将其集中到统一 Web 界面。
 - 涉及: README.md
