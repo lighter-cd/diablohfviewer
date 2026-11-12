@@ -33,3 +33,14 @@
 ## 单元测试
   - 所有源码中的各单元，包括cpp的类，c中的文件级别模块，可以被其他类和模块引用的内容，都必须配合完整的测试用例。
   - 每轮源码 创建、改动、删除后，都必须完整运行所有的测试用例。
+
+## 构建与运行 mcp-server（不可违反）
+
+- 当 `src/` 中的 C / C++ 等源码发生改动、需要重新 `build` 出新的 `mcp-server.exe` 时，
+  **必须先停掉当前正在运行的 `build-mcp\mcp-server.exe` 进程，再重新构建并启动它**。
+  - 原因：Windows 下正在运行的 exe 文件被 OS 锁定，链接器无法覆盖写入，会导致
+    `cannot open output file mcp-server.exe: Permission denied` 的链接失败。
+  - 因此重新构建前，务必先在启动它的终端（如 PowerShell）按 `Ctrl+C` 结束该进程；
+    若进程已脱离终端，则通过任务管理器 / `taskkill /f /im mcp-server.exe` 结束后再构建。
+  - 构建成功、必要文件（含 `web/`）同步到 `build-mcp/` 后，再重新启动
+    `.\build-mcp\mcp-server.exe --ws 18765` 供前端连接。

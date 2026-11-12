@@ -452,3 +452,7 @@
 ## 2026-11-12 22:23:00
 - 修复 mcp-server --ws 访问前端 404：根因是 CMake 构建未把 web/ 复制到 exe 同级目录（webRoot 默认 = exeDir()/web = build-mcp/web），导致 / → index.html 找不到。新增 CMake POST_BUILD 步骤 copy_directory web/ 到构建输出目录；并立即手动同步一次供当前运行实例刷新即用。
 - 涉及: CMakeLists.txt
+
+## 2026-11-12 22:40:00
+- AGENTS.md 新增铁律「构建与运行 mcp-server（不可违反）」：src 下 C/C++ 源码改动需重新 build 出新的 mcp-server.exe 时，须先停掉正在运行的 build-mcp/mcp-server.exe 进程（Ctrl+C 或 taskkill），再重建并启动；否则 Windows 文件锁导致链接器无法覆盖写、报 Permission denied。
+- 涉及: AGENTS.md
