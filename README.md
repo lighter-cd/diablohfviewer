@@ -4,6 +4,8 @@
 
 这是一份写给 **Diablo 1 / Hellfire 研究者、工具作者与 AI Agent** 的开源工具集。
 
+本项目的初衷，在于**解决 Hellfire 的资料与工具长期碎片化的问题**——精灵、调色板、关卡、场景、界面布局等研究素材散落各处，对应的查看与解码工具也各自孤立。DiabloHFConverter 把这些资料与工具**集中到一个统一的 Web 界面中**：浏览器前端（`web/`）通过 WebSocket 桥调用同一套本地 C/C++ 解码能力，让研究者无需在多个零散工具间来回切换，即可在同一个页面里浏览、对照与探索 Hellfire 的全部美术与关卡资产。
+
 ## 这是什么
 
 DiabloHFConverter 是一个 **纯 C/C++ 原生 `mcp-server`**（不依赖 Node.js 运行时），用于**读取、解码与研究 Diablo 1 / Hellfire 的 MPQ 资源档案**，并以两种方式对外提供能力：
