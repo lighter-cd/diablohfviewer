@@ -15,10 +15,9 @@
 
   Browse modes:
     - 目录浏览 (Catalog): pick any sprite from the recovered-name tree.
-    - 角色查看器 (Character): assemble a player sprite by Class → Action →
-      Armor/Weapon via the plrgfx filename formula, then decode + play it
-      with 8-direction animation.
-    - 怪物 / NPC 查看器 (Monster): synthesized monster / towner catalogs.
+    - 实体查看器 (Entity): merged player / monster / NPC viewer. A left
+      dropdown switches between 玩家角色 (Character), 怪物 (Monster) and
+      NPC (Towner); all three share the same decode + 8-direction playback.
     - 技能 / 战斗查看器 (Combat): staged spell / monster-attack timeline.
     - 场景查看器 (Scene): render a COMPLETE Diablo 1 / Hellfire level scene
       (Tristram town, L1 presets) via scene.list / scene.build, with zoom,
@@ -51,8 +50,7 @@
     <div class="toolbar">
       <span class="tb-label">浏览模式</span>
       <label><input type="radio" name="mode" value="catalog" checked> 目录浏览</label>
-      <label><input type="radio" name="mode" value="character"> 角色查看器</label>
-      <label><input type="radio" name="mode" value="monster"> 怪物 / NPC 查看器</label>
+      <label><input type="radio" name="mode" value="entity"> 实体查看器</label>
       <label><input type="radio" name="mode" value="combat"> 技能 / 战斗查看器</label>
       <label><input type="radio" name="mode" value="scene"> 场景查看器</label>
       <label><input type="radio" name="mode" value="gui"> 界面布局查看器</label>
@@ -89,48 +87,53 @@
       </aside>
     </aside>
 
-    <aside class="char-pane" id="charPane" hidden>
-      <div class="char-bar">角色查看器（按公式 plrgfx\{职业}\{c}{a}{w}\{c}{a}{w}{动作}.cl2 拼路径）</div>
+    <aside class="entity-pane" id="entityPane" hidden>
+      <div class="char-bar">实体查看器（左侧下拉切换 玩家角色 / 怪物 / NPC）</div>
       <div class="char-controls">
-        <label>职业
-          <select id="charClass"></select>
-        </label>
-        <label>动作
-          <select id="charAction"></select>
-        </label>
-        <label>盔甲
-          <select id="charArmor"></select>
-        </label>
-        <label>武器
-          <select id="charWeapon"></select>
-        </label>
-      </div>
-      <div class="char-hint">选职业/动作后自动列出该职业真实存在的盔甲与武器组合；切换即解码并播放。</div>
-    </aside>
-
-    <aside class="monster-pane" id="monsterPane" hidden>
-      <div class="char-bar">怪物 / NPC 查看器（数据表枚举：monstdat.tsv / towners.tsv）</div>
-      <div class="char-controls">
-        <label>类型
-          <select id="monsterType">
+        <label>实体类型
+          <select id="entityType">
+            <option value="character">玩家角色 (Player)</option>
             <option value="monster">怪物 (Monster)</option>
             <option value="npc">NPC (Towner)</option>
           </select>
         </label>
-        <label>MPQ
+        <label id="entArchiveWrap">MPQ
           <select id="monsterArchive"></select>
         </label>
-        <label id="monsterSelWrap">怪物
-          <select id="monsterSel"></select>
-        </label>
-        <label id="monsterAnimWrap">动作
-          <select id="monsterAnim"></select>
-        </label>
-        <label id="npcSelWrap" hidden>NPC
-          <select id="npcSel"></select>
-        </label>
       </div>
-      <div class="char-hint">怪物按 monstdat 的动画字母枚举（Stand/Walk/Attack/Hit/Death/Special）；NPC 为单方向 .cel 精灵。选择即解码并播放，方向数取自解码返回的 directions。</div>
+
+      <div id="charSub" class="entity-sub">
+        <div class="char-controls">
+          <label>职业
+            <select id="charClass"></select>
+          </label>
+          <label>动作
+            <select id="charAction"></select>
+          </label>
+          <label>盔甲
+            <select id="charArmor"></select>
+          </label>
+          <label>武器
+            <select id="charWeapon"></select>
+          </label>
+        </div>
+        <div class="char-hint">选职业/动作后自动列出该职业真实存在的盔甲与武器组合；切换即解码并播放。</div>
+      </div>
+
+      <div id="monsterSub" class="entity-sub" hidden>
+        <div class="char-controls">
+          <label id="monsterSelWrap">怪物
+            <select id="monsterSel"></select>
+          </label>
+          <label id="monsterAnimWrap">动作
+            <select id="monsterAnim"></select>
+          </label>
+          <label id="npcSelWrap" hidden>NPC
+            <select id="npcSel"></select>
+          </label>
+        </div>
+        <div class="char-hint">怪物按 monstdat 的动画字母枚举（Stand/Walk/Attack/Hit/Death/Special）；NPC 为单方向 .cel 精灵。选择即解码并播放，方向数取自解码返回的 directions。</div>
+      </div>
     </aside>
 
     <aside class="combat-pane" id="combatPane" hidden>

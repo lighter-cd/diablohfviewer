@@ -3,13 +3,13 @@
 // Glue: connect to the mcp-server WS bridge, load the sprite catalog via
 // sprite.list, and decode sprites via sprite.decode for Canvas rendering.
 //
-// Six browse modes; the Catalog / Character / Monster / Combat modes share the
-// canvas / palette / direction / playback controls, while Scene and GUI each
-// own a dedicated PNG viewport:
+// Browse modes; Catalog / Entity / Combat share the canvas / palette / direction
+// / playback controls, while Scene and GUI each own a dedicated PNG viewport:
 //   - Catalog (目录浏览): pick any sprite from the recovered-name tree.
-//   - Character (角色查看器): assemble a player sprite by Class -> Action ->
-//     Armor/Weapon via the plrgfx filename formula, then decode + play it with
-//     8-direction animation.
+//   - Entity (实体查看器): merged player / monster / NPC viewer. A left
+//     #entityType dropdown switches between 玩家角色 (Character), 怪物 (Monster)
+//     and NPC (Towner); each shows only its own parameter panel and all three
+//     share the same sprite.decode + 8-direction playback.
 //   - Scene (场景查看器): scene.list / scene.build complete level renders.
 //   - GUI (界面布局查看器, 6th): ui.list / ui.build reconstruct DiabloUI
 //     screens from real MPQ art + an approximate-font text layer.
@@ -284,9 +284,15 @@ function extOf(p) {
   return i >= 0 ? p.slice(i + 1).toLowerCase() : "";
 }
 
-function isCharMode() {
+function isEntityMode() {
   const r = document.querySelector('input[name="mode"]:checked');
-  return !!r && r.value === "character";
+  return !!r && r.value === "entity";
+}
+
+// The three entity sub-types all live inside the single "entity" browse mode;
+// which one is active is decided by the #entityType dropdown on the left.
+function isCharMode() {
+  return isEntityMode() && $("entityType").value === "character";
 }
 
 // Scene mode owns the view instead of the shared canvas: two stacked PNG
@@ -619,15 +625,16 @@ function showNpcSprite() {
   onSelectSprite({ name, archive_path: archive, family: "towners", class: "npc" });
 }
 
-// Enter the monster/NPC viewer: populate the MPQ + monster/NPC dropdowns, then
-// decode the first entry.
+// Enter the monster/NPC sub-area (within the merged entity viewer): populate the
+// MPQ + monster/NPC dropdowns, then decode the first entry. Which sub-type
+// (monster vs NPC) is decided by the #entityType dropdown, not a nested control.
 async function showMonsterView() {
   if (!allArchives.length) {
     showError("尚无 MPQ 列表（请先在 目录浏览 模式加载目录）。");
     return;
   }
   populateMonsterArchive();
-  const wantNpc = $("monsterType").value === "npc";
+  const wantNpc = isNpcMode();
   $("monsterSelWrap").hidden = wantNpc;
   $("monsterAnimWrap").hidden = wantNpc;
   $("npcSelWrap").hidden = !wantNpc;
@@ -640,14 +647,34 @@ async function showMonsterView() {
   }
 }
 
+// Switch the entity viewer's parameter panel based on the left #entityType
+// dropdown: each of 玩家角色 / 怪物 / NPC shows ONLY its own controls (they are
+// never shown together). Also triggers the first decode for the selected type.
+async function syncEntityType() {
+  const t = $("entityType").value;
+  const isChar = (t === "character");
+  const isNpc = (t === "npc");
+  // Per-type parameter panel: only one sub is visible at a time. The MPQ
+  // selector only matters for monster/NPC (their entries carry no archive_path),
+  // so hide it for the player-character sub-type.
+  $("charSub").hidden = !isChar;
+  $("monsterSub").hidden = isChar;
+  $("entArchiveWrap").hidden = isChar;
+  if (isChar) {
+    showCharacterSprite();
+    return;
+  }
+  // monster / npc share the #monsterSub shell; toggle its inner rows.
+  await showMonsterView();
+}
+
 // ---- Effect-overlay layers (alpha compositing) ------------------------------
 
 function isMonsterMode() {
-  const r = document.querySelector('input[name="mode"]:checked');
-  return !!r && r.value === "monster";
+  return isEntityMode() && $("entityType").value === "monster";
 }
 function isNpcMode() {
-  return isMonsterMode() && $("monsterType").value === "npc";
+  return isEntityMode() && $("entityType").value === "npc";
 }
 
 // Character skill-effect sprite names for the current class + equipment prefix
@@ -2292,20 +2319,19 @@ function wireControls() {
     }
   });
 
-  // Browse-mode toggle: Catalog vs Character vs Monster/NPC panes.
+  // Browse-mode toggle: Catalog vs merged Entity (character / monster / NPC)
+  // vs Combat vs Scene vs GUI panes.
   document.querySelectorAll('input[name="mode"]').forEach((r) => {
     r.addEventListener("change", (e) => {
       if (!e.target.checked) return;
-      const character = e.target.value === "character";
-      const monster = e.target.value === "monster";
+      const entity = e.target.value === "entity";
       const combat = e.target.value === "combat";
       const scene = e.target.value === "scene";
       const gui = e.target.value === "gui";
       const viewOwned = scene || gui;
       stopPlay();
-      $("catalogPane").hidden = character || monster || combat || viewOwned;
-      $("charPane").hidden = !character;
-      $("monsterPane").hidden = !monster;
+      $("catalogPane").hidden = entity || combat || viewOwned;
+      $("entityPane").hidden = !entity;
       $("combatPane").hidden = !combat;
       $("combatDetailPane").hidden = !combat;
       $("scenePane").hidden = !scene;
@@ -2314,7 +2340,9 @@ function wireControls() {
       $("canvasWrap").hidden = viewOwned;
       $("sceneView").hidden = !scene;
       $("guiView").hidden = !gui;
-      $("overlaysPanel").hidden = viewOwned;
+      // The effect-overlay (alpha compositing) panel is removed from the merged
+      // entity viewer; it remains available in Catalog mode.
+      $("overlaysPanel").hidden = viewOwned || entity;
       // The shared sprite/character control bar (palette / TRN / directions /
       // frame / zoom / play / fps / #meta) does not apply to the GUI layout
       // viewer or the scene viewer, both of which have their own controls
@@ -2330,10 +2358,9 @@ function wireControls() {
         $("directions").disabled = false;
         $("dir").max = String(Math.max(0, currentDirections - 1));
       }
-      // Character / monster / combat all want level palettes (correct colours).
-      applyPaletteFilter(character || monster || combat);
-      if (character) showCharacterSprite();
-      if (monster) showMonsterView();
+      // Entity / combat all want level palettes (correct colours).
+      applyPaletteFilter(entity || combat);
+      if (entity) syncEntityType();
       if (combat) showCombatView();
       if (scene) showSceneView();
       if (gui) showGuiView();
@@ -2426,10 +2453,11 @@ function wireControls() {
     });
   });
 
-  // Monster / NPC viewer controls.
-  $("monsterType").addEventListener("change", () => showMonsterView());
+  // Entity viewer controls. The left #entityType dropdown swaps the parameter
+  // panel (玩家角色 / 怪物 / NPC); the inner controls are wired per-type below.
+  $("entityType").addEventListener("change", () => syncEntityType());
   $("monsterArchive").addEventListener("change", () => {
-    if ($("monsterType").value === "npc") showNpcSprite();
+    if (isNpcMode()) showNpcSprite();
     else showMonsterSprite();
   });
   $("monsterSel").addEventListener("change", () => {

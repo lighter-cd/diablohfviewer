@@ -200,7 +200,7 @@ canvas { background: transparent; image-rendering: pixelated; }
 .zoom #zoomNo { color: #ffd479; min-width: 24px; text-align: right; }
 
 /* Character / monster / combat / scene / gui viewer panes */
-.char-pane, .monster-pane, .combat-pane, .scene-pane, .gui-pane {
+.char-pane, .monster-pane, .combat-pane, .scene-pane, .gui-pane, .entity-pane {
   width: 320px;
   flex: 0 0 320px;
   display: flex;
@@ -210,7 +210,8 @@ canvas { background: transparent; image-rendering: pixelated; }
   padding: 10px 12px;
   overflow: auto;
 }
-.char-pane[hidden], .monster-pane[hidden], .combat-pane[hidden], .scene-pane[hidden], .gui-pane[hidden] { display: none; }
+.char-pane[hidden], .monster-pane[hidden], .combat-pane[hidden], .scene-pane[hidden], .gui-pane[hidden], .entity-pane[hidden] { display: none; }
+.entity-sub { display: flex; flex-direction: column; gap: 10px; }
 .char-bar {
   padding: 8px 10px; margin: -10px -12px 10px;
   background: #2a2a32; border-bottom: 1px solid #3a3a42;

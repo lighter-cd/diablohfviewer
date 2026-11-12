@@ -423,9 +423,11 @@ DiabloHFConverter/
       `sprite.list` 取目录 → 点击即 `sprite.decode` 取 RGBA → Canvas 绘制；先做"选精灵→看单帧"
       （Frame 滑块翻帧）。环境无 TypeScript 工具链，故用纯 JS ES Module（模块划分与计划一致，
       需静态服务器托管，不能用 file://）。详 `web/README.md`、`docs/ARCHITECTURE.md` §10.3。
-- [x] **前端：独立「角色查看器」面板 + 8 方向动画播放（2026-11-07 落地）**：在 `web/` 新增
-      **浏览模式切换**（目录浏览 / 角色查看器）。角色面板按 `职业 → 动作 → 盔甲/武器` 选择器
-      拼 `plrgfx\{class}\{c}{a}{w}\{c}{a}{w}{type}.cl2` 解码（装备组合即文件名枚举，无合成）。
+- [x] **前端：合并「实体查看器」面板 + 8 方向动画播放**：在 `web/` 新增
+      **浏览模式切换**（目录浏览 / 实体查看器 / 技能·战斗 / 场景 / 界面布局）。实体查看器内以
+      左侧 **`实体类型` 下拉**在 **玩家角色 / 怪物 / NPC** 间切换，每类只显示各自的参数面板
+      （玩家角色：`职业 → 动作 → 盔甲/武器`；怪物：`MPQ → 怪物 → 动作`；NPC：`MPQ → NPC`），
+      三者共用同一 `sprite.list` + `sprite.decode` 解码链路与 Canvas/调色板/方向/播放控件。
       玩家 CL2 为方向优先（8 方向 × N 帧），前端按 `帧数/8` 切分，提供方向滑块 + ▶播放/⏸ +
       fps 速度控制；索引由 `sprite.list(family:"plrgfx")` 一次性构建，仅暴露 MPQ 真实存在的组合。
       改动 `web/index.html` + `web/src/main.js` + `web/styles.css`，后端无改动。详见 `web/README.md`
@@ -446,23 +448,20 @@ DiabloHFConverter/
 - [x] 装备组合浏览（前缀 `c+a+w` 枚举：武器/护甲变化 = 不同文件名，直接枚举即可）：角色面板的
       盔甲/武器下拉仅列出该职业当前动作真实存在的组合。
 - [x] 角色施法动作层渲染（`lm`/`fm`/`qm` 是**角色举手/发光动作**，不是火球之类攻击效果；
-      真正的攻击效果在 `missiles\` 家族，见阶段 3.5）：`web/` 新增通用
-      **特效叠加层（alpha 合成）**面板——选好基础精灵后，可把任意特效精灵解码为独立图层，按
-      `(dir, frame)` 对齐后 alpha 叠加到底图上（见下方「特效叠加层」小节）。该面板覆盖三种浏览模式：
-      角色（技能 `lm`/`fm`/`qm` 一键加）、怪物（Special `s` 动画一键加）、以及通用「任意精灵」选取器。
-- [x] 产出：按“职业 × 动作 × 装备 × 技能特效”组合的查看数据（浏览器内实时查看；非合成位图）。
+      真正的攻击效果在 `missiles\` 家族，见阶段 3.5）。**「特效叠加层（alpha 合成）」面板已从实体查看器移除**
+      （保留于 目录浏览 模式）：实体查看器只做纯精灵查看，不再承载角色技能/怪物 Special 的图层叠加。
+- [x] 产出：按“职业 × 动作 × 装备”组合的查看数据（浏览器内实时查看；非合成位图）。
 
-### 阶段 3：怪物 / NPC 查看器（目标 3）
+### 阶段 3：怪物 / NPC 查看器（目标 3，已并入实体查看器）
 - [x] 枚举怪物/NPC 精灵与动画模式：`sprite.list(family:"monsters"/"towners")` 由 DevilutionX 数据表
       （`monstdat.tsv` / `towners.tsv`）**合成**目录——因怪物/NPC 无 MPQ listfile，无法靠哈希恢复，
       故从数据表推导精灵名。怪物按动画字母 `n/w/a/h/d/s`（Stand/Walk/Attack/Hit/Death/Special，
       来自 `frames[6]` 与 `Animletter="nwahds"`）枚举，每条带 `frames_per_dir` 与自动查表宽度；
-      NPC 为单方向 `.cel`（含硬编码的 `towners/animals/cow.cel`）。见 `web/` 新增「怪物 / NPC 查看器」
-      模式：选 MPQ → 选怪物 → 选动作即解码并播放，方向数取自解码返回的 `directions`。
-- [x] 怪物技能动作与特效叠加：动画模式已枚举并按 8 方向播放；特效叠加层（如 Special `s` 动画、`lm`/`fm`
-      类）现已通过通用「特效叠加层（alpha 合成）」面板做 alpha 合成到怪物/NPC 帧上（与角色查看器共用同一
-      叠加子系统，覆盖用户要求的四类作用域：怪物查看器里的怪物、角色查看器里的技能、通用底图+叠加选取器、
-      monster 的 Special 动画）。
+      NPC 为单方向 `.cel`（含硬编码的 `towners/animals/cow.cel`）。原独立的「怪物 / NPC 查看器」
+      浏览模式已合并进「实体查看器」（左侧 `实体类型` 下拉选 `怪物` / `NPC`），不再是单独的
+      `#monsterPane` 面板；选 MPQ → 选怪物 → 选动作即解码并播放，方向数取自解码返回的 `directions`。
+- [x] 怪物技能动作与特效叠加：动画模式已枚举并按 8 方向播放；**「特效叠加层（alpha 合成）」面板已从实体查看器移除**
+      （保留于 目录浏览 模式）——原角色技能 `lm`/`fm`/`qm` 与怪物 Special `s` 的图层叠加不再在实体查看器内提供。
 - [x] 产出：怪物/NPC 查看数据（浏览器内实时查看；后端 `directions` 字段由 `monstdat.tsv` 的
       `frames[6]` 切分方向，如僵尸 Stand=11 帧/方向 × 8 方向 = 88 帧 → `directions=8`）。
 - [x] 修复 Hellfire 怪物批量解码失败（`extract failed (name not found?)`）：根因是前端只把

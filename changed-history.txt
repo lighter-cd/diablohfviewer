@@ -468,3 +468,7 @@
 ## 2026-11-13 14:20:00
 - P1 前端 MPQ 入口回退为「输入框 + 保存」最简方案：移除无效的浏览按钮（纯浏览器拿不到完整路径，形同虚设），输入框 placeholder 改为「输入或者粘贴你的正版MPQ所在目录」，按钮变回「保存」；提示词精简为「自备官方正版 Hellfire/Diablo 文件（含 DIABDAT.MPQ/hellfire.mpq 等）」并与输入目录写在同一行。
 - 涉及: web/index.html, web/src/main.js, web/styles.css
+
+## 2026-11-13 02:08:53
+- 合并前端「角色查看器」与「怪物 / NPC 查看器」为单一「实体查看器」浏览模式：顶部工具栏以 entity 单选代替原 character/monster 两个单选；新增左侧「实体类型」下拉在 玩家角色 / 怪物 / NPC 间切换，且每类只显示各自的参数面板（玩家角色：职业/动作/盔甲/武器；怪物：MPQ/怪物/动作；NPC：MPQ/NPC），三类不会同时出现；按用户要求从实体查看器移除「特效叠加层（alpha 合成）」功能及其面板（保留于目录浏览模式）。后端协议与 sprite.decode 链路完全复用，无需改动。
+- 涉及: web/index.html, web/src/main.js, web/styles.css, docs/ARCHITECTURE.md, docs/PROJECT.md, docs/UPSCALE_PLAN.md

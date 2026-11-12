@@ -22,8 +22,9 @@
 - 解码：`src/tools/sprite_tools.cpp` 的 `sprite.decode` 把 `.clx` / `.cel` / `.cl2` / `.pcx`
   解出 RGBA 帧（base64 回传）；`src/decoders/*` 为各格式解码器。
 - 前端渲染：`web/src/viewer.js` 已是 `rgba_base64 → atob → ImageData → putImageData` 的
-  最近邻绘制；`web/index.html` 提供 6 种浏览模式，sprite 类模式（catalog / character /
-  monster / combat）已能拿到逐帧 RGBA。
+  最近邻绘制；`web/index.html` 提供 5 种浏览模式，sprite 类模式（catalog / entity /
+  combat）已能拿到逐帧 RGBA——其中 **entity（实体查看器）** 以左侧下拉在 玩家角色 /
+  怪物 / NPC 间切换，三者共用同一 `sprite.decode` 链路。
 - 后端 PNG 编码：`src/decoders/png.cpp` 的 `encodePNG` 用于场景导出；前端导出直接走
   Canvas `toBlob`，无需后端参与。
 - 合规护栏见 `docs/COMPLIANCE.md` §4 实现护栏清单。

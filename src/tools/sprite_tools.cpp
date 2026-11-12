@@ -777,6 +777,26 @@ mcp::ToolResult toolSpriteList(const mcp::json& params)
     mcp::json dict;
     f >> dict;
 
+    // P1: redirect every archive's absolute path into the user-supplied MPQ
+    // directory. The frontend passes the directory the user pointed at (their own
+    // legitimate copy); the recovered names are copy-independent, so only the path
+    // needs to change — the backend then reads the MPQ files directly from there.
+    if (params.contains("mpq_dir") && params["mpq_dir"].is_string()) {
+        std::string dir = params["mpq_dir"].get<std::string>();
+        if (!dir.empty()) {
+            for (char& c : dir) if (c == '\\') c = '/';
+            if (dir.back() != '/') dir += '/';
+            if (dict.contains("archives") && dict["archives"].is_array()) {
+                for (auto& arch : dict["archives"]) {
+                    std::string name = arch.value("name", "");
+                    if (name.empty()) continue;
+                    for (char& c : name) if (c == '\\') c = '/';
+                    arch["path"] = dir + name;
+                }
+            }
+        }
+    }
+
     std::filesystem::path devRoot =
         (params.contains("devilutionx_root") && params["devilutionx_root"].is_string())
             ? std::filesystem::path(params["devilutionx_root"].get<std::string>())
@@ -1167,7 +1187,10 @@ void registerSpriteTools(ToolRegistry& reg)
                               { "description", "filter by class (classPath, assetsSuffix, or sprite name; empty = all)" } } },
                       { "kind",
                         json{ { "type", "string" },
-                              { "description", "what to enumerate: 'sprite' (default, CL2/CEL) | 'palette' (.pal files) | 'ui' (UI layout art) | 'all' (sprite + palette)" } } } } },
+                              { "description", "what to enumerate: 'sprite' (default, CL2/CEL) | 'palette' (.pal files) | 'ui' (UI layout art) | 'all' (sprite + palette)" } } },
+                      { "mpq_dir",
+                        json{ { "type", "string" },
+                              { "description", "read MPQ files from this directory instead of the paths baked into recovered.json. Recovered names are copy-independent, so only the archive paths are redirected to <mpq_dir>/<name> (e.g. DIABDAT.MPQ). Point this at the user's own legitimate MPQ folder." } } } } },
               { "required", json::array({}) } },
         toolSpriteList });
 
