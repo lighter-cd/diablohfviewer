@@ -421,6 +421,10 @@
 - 在 README_EN.md 顶部补充英文版仓库简介（Repository summary），与 GitHub About 文案一致。
 - 涉及: README_EN.md
 
+## 2026-11-12 19:08:16
+- 在 README.md 顶部补充中文版仓库简介（与 GitHub 中文 About 文案一致），与英文版 README_EN 对称。
+- 涉及: README.md
+
 ## 2026-11-12 19:03:47
 - README.md 项目介绍补充「为什么做这个项目」：说明本项目旨在解决 Hellfire 资料与工具碎片化问题，将其集中到统一 Web 界面。
 - 涉及: README.md
