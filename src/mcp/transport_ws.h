@@ -17,6 +17,13 @@ namespace mcp {
 
 // Run a WebSocket server bound to 127.0.0.1:<port>. Blocks, accepting clients
 // (each served on its own thread). Shares handleRequest() with the stdio path.
-void runWs(const ToolRegistry& reg, int port);
+//
+// The same port also serves plain HTTP GETs: scene artifacts under /scenes/
+// (mapped to out/scenes/) and the static frontend files under `webRoot`
+// (default "web", normally the exe's sibling web/ directory). This lets a single
+// self-contained executable both host the browser viewer and bridge it to the
+// JSON-RPC tools — no separate static server (e.g. python http.server) needed.
+void runWs(const ToolRegistry& reg, int port,
+           const std::string& webRoot = "web");
 
 } // namespace mcp

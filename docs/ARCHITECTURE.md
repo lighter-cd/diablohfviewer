@@ -691,7 +691,10 @@ web/                              # 浏览器前端（不读 MPQ/文件，仅 We
 └── README.md                     # 开发者说明 + 运行步骤 + 与后端契约
 ```
 
-- 前端**不引入 Node 作为运行服务**：`web/` 是纯静态文件，用任意静态服务器
+- 前端**不引入 Node 作为运行服务**：`web/` 是纯静态文件。最简便的方式是让 `mcp-server`
+  自己托管——在 `--ws <port>` 模式下它**同端口提供 HTTP 静态服务**，浏览器打开
+  `http://localhost:<port>/` 即可连同端口的 `ws://localhost:<port>` 后端（`web` 根目录默认取
+  程序同级 `web/`，亦可用 `--web-root <dir>` 指定）。也可用任意独立静态服务器
   （`python -m http.server 8000`，从 `web/` 目录起；或 `npx serve .`）托管，浏览器
   打开 `http://localhost:8000/`，连 `ws://localhost:18765`（后端 `mcp-server --ws 18765`）。
 - `ES module`（`type="module"`）不能在 `file://` 下加载，必须经 http 托管；

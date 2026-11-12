@@ -139,11 +139,118 @@ void sendHttpStatus(SOCKET s, int code, const char* reason) {
     sendAll(s, resp.data(), (int)resp.size());
 }
 
-// Serve a static file for a plain HTTP GET. Only the /scenes/ prefix is allowed
-// (mapped to the scene build output dir out/scenes/); everything else is 404.
-// Paths are restricted to a bare filename (no slash/backslash/"..") so a client
-// cannot escape the scenes directory.
-void serveHttp(SOCKET s, const std::string& head) {
+// ---- static-file helpers ---------------------------------------------------
+std::string toLower(std::string s) {
+    for (char& c : s)
+        if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+    return s;
+}
+
+// Minimal URL percent-decode (handles %XX; leaves everything else untouched).
+std::string percentDecode(const std::string& in) {
+    std::string out;
+    out.reserve(in.size());
+    for (size_t i = 0; i < in.size(); i++) {
+        if (in[i] == '%' && i + 2 < in.size()) {
+            auto hexVal = [](char c) -> int {
+                if (c >= '0' && c <= '9') return c - '0';
+                if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+                if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+                return -1;
+            };
+            int hi = hexVal(in[i + 1]), lo = hexVal(in[i + 2]);
+            if (hi >= 0 && lo >= 0) {
+                out.push_back((char)((hi << 4) | lo));
+                i += 2;
+                continue;
+            }
+        }
+        out.push_back(in[i]);
+    }
+    return out;
+}
+
+// Canonicalize a URL path relative to a web root. Returns false if it would
+// escape the root via "..". On success `out` holds the normalized relative path
+// (no leading slash; empty string means the root).
+bool canonicalRel(const std::string& in, std::string& out) {
+    std::vector<std::string> parts;
+    std::string cur;
+    for (char c : in) {
+        if (c == '/' || c == '\\') {
+            if (!cur.empty()) {
+                if (cur == "..") {
+                    if (parts.empty()) return false;
+                    parts.pop_back();
+                } else if (cur != ".") {
+                    parts.push_back(cur);
+                }
+                cur.clear();
+            }
+        } else {
+            cur += c;
+        }
+    }
+    if (!cur.empty()) {
+        if (cur == "..") {
+            if (parts.empty()) return false;
+            parts.pop_back();
+        } else if (cur != ".") {
+            parts.push_back(cur);
+        }
+    }
+    out.clear();
+    for (size_t i = 0; i < parts.size(); i++) {
+        out += parts[i];
+        if (i + 1 < parts.size()) out += '/';
+    }
+    return true;
+}
+
+// Choose a Content-Type from the file extension.
+std::string mimeFor(const std::string& p) {
+    size_t dot = p.find_last_of('.');
+    if (dot == std::string::npos) return "application/octet-stream";
+    std::string ext = toLower(p.substr(dot));
+    if (ext == ".html" || ext == ".htm") return "text/html; charset=utf-8";
+    if (ext == ".js" || ext == ".mjs")   return "text/javascript; charset=utf-8";
+    if (ext == ".css")                    return "text/css; charset=utf-8";
+    if (ext == ".json" || ext == ".map") return "application/json; charset=utf-8";
+    if (ext == ".png")                    return "image/png";
+    if (ext == ".svg")                    return "image/svg+xml";
+    if (ext == ".ico")                    return "image/x-icon";
+    if (ext == ".wasm")                   return "application/wasm";
+    if (ext == ".txt")                    return "text/plain; charset=utf-8";
+    return "application/octet-stream";
+}
+
+// Send a small 200 response with a binary/utf-8 body read from disk.
+bool sendFile(SOCKET s, const std::string& fsPath, const std::string& contentType,
+              bool withBody) {
+    std::ifstream f(fsPath, std::ios::binary);
+    if (!f) return false;
+    std::vector<uint8_t> body((std::istreambuf_iterator<char>(f)),
+                              std::istreambuf_iterator<char>());
+    f.close();
+    std::string header =
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: " + contentType + "\r\n"
+        "Content-Length: " + std::to_string(body.size()) + "\r\n"
+        "Access-Control-Allow-Origin: *\r\n"
+        "Cache-Control: no-store\r\n"
+        "Connection: close\r\n\r\n";
+    sendAll(s, header.data(), (int)header.size());
+    if (withBody)
+        sendAll(s, (const char*)body.data(), (int)body.size());
+    return true;
+}
+
+// Serve a static file for a plain HTTP GET. Two namespaces share this port:
+//   - /scenes/...  -> out/scenes/  (scene build artifacts, legacy mapping)
+//   - everything else -> webRoot   (the browser frontend: index.html, *.js,
+//                                    *.css, *.png, ...). Path traversal is
+//                                    blocked by canonicalRel().
+void serveHttp(SOCKET s, const std::string& head, const std::string& webRoot) {
     size_t sp1 = head.find(' ');
     if (sp1 == std::string::npos) { sendHttpStatus(s, 400, "Bad Request"); return; }
     std::string method = head.substr(0, sp1);
@@ -156,41 +263,56 @@ void serveHttp(SOCKET s, const std::string& head) {
         return;
     }
 
-    const std::string prefix = "/scenes/";
-    if (path.size() < prefix.size() || path.compare(0, prefix.size(), prefix) != 0) {
-        sendHttpStatus(s, 404, "Not Found");
+    // Drop any query string (?token=...).
+    size_t q = path.find('?');
+    if (q != std::string::npos) path = path.substr(0, q);
+
+    // --- /scenes/ artifact namespace (unchanged behavior) ---
+    const std::string scenesPrefix = "/scenes/";
+    if (path.size() >= scenesPrefix.size() &&
+        path.compare(0, scenesPrefix.size(), scenesPrefix) == 0) {
+        std::string rel = path.substr(scenesPrefix.size());
+        if (rel.empty() || rel.find("..") != std::string::npos ||
+            rel.find('/') != std::string::npos || rel.find('\\') != std::string::npos) {
+            sendHttpStatus(s, 403, "Forbidden");
+            return;
+        }
+        std::string ct = "application/octet-stream";
+        if (rel.size() >= 4 && rel.compare(rel.size() - 4, 4, ".png") == 0)
+            ct = "image/png";
+        else if (rel.size() >= 5 && rel.compare(rel.size() - 5, 5, ".json") == 0)
+            ct = "application/json";
+        bool ok = sendFile(s, "out/scenes/" + rel, ct, method == "GET");
+        if (!ok) sendHttpStatus(s, 404, "Not Found");
         return;
     }
-    std::string rel = path.substr(prefix.size());
-    if (rel.empty() || rel.find("..") != std::string::npos ||
-        rel.find('/') != std::string::npos || rel.find('\\') != std::string::npos) {
+
+    // --- web frontend namespace (webRoot) ---
+    if (path == "/" || path.empty()) path = "/index.html";
+    if (!path.empty() && (path[0] == '/' || path[0] == '\\'))
+        path = path.substr(1);
+
+    std::string decoded = percentDecode(path);
+    std::string norm;
+    if (!canonicalRel(decoded, norm)) {
         sendHttpStatus(s, 403, "Forbidden");
         return;
     }
 
-    std::string contentType = "application/octet-stream";
-    if (rel.size() >= 4 && rel.compare(rel.size() - 4, 4, ".png") == 0)
-        contentType = "image/png";
-    else if (rel.size() >= 5 && rel.compare(rel.size() - 5, 5, ".json") == 0)
-        contentType = "application/json";
+    std::string fsPath = webRoot;
+    if (!fsPath.empty() && fsPath.back() != '/' && fsPath.back() != '\\')
+        fsPath += '/';
+    fsPath += norm;
 
-    std::string fsPath = "out/scenes/" + rel;
-    std::ifstream f(fsPath, std::ios::binary);
-    if (!f) { sendHttpStatus(s, 404, "Not Found"); return; }
-    std::vector<uint8_t> body((std::istreambuf_iterator<char>(f)),
-                              std::istreambuf_iterator<char>());
-    f.close();
-
-    std::string header =
-        "HTTP/1.1 200 OK\r\n"
-        "Content-Type: " + contentType + "\r\n"
-        "Content-Length: " + std::to_string(body.size()) + "\r\n"
-        "Access-Control-Allow-Origin: *\r\n"
-        "Cache-Control: no-store\r\n"
-        "Connection: close\r\n\r\n";
-    sendAll(s, header.data(), (int)header.size());
-    if (method == "GET")
-        sendAll(s, (const char*)body.data(), (int)body.size());
+    bool ok = sendFile(s, fsPath, mimeFor(fsPath), method == "GET");
+    if (!ok) {
+        // Treat as a directory request: try <path>/index.html.
+        std::string idx = fsPath;
+        if (!idx.empty() && idx.back() != '/' && idx.back() != '\\') idx += '/';
+        idx += "index.html";
+        ok = sendFile(s, idx, "text/html; charset=utf-8", method == "GET");
+    }
+    if (!ok) sendHttpStatus(s, 404, "Not Found");
 }
 
 // Perform the WS handshake. Returns true on success (101 Switching Protocols
@@ -301,7 +423,7 @@ bool readMessage(SOCKET s, std::string& outText, bool& isText) {
     }
 }
 
-void handleClient(SOCKET s, const ToolRegistry* reg) {
+void handleClient(SOCKET s, const ToolRegistry* reg, const std::string& webRoot) {
     // Read the request head once, then decide: a plain HTTP GET (no WebSocket
     // Upgrade) is served as a static file; an Upgrade request proceeds to the WS
     // handshake.
@@ -315,7 +437,7 @@ void handleClient(SOCKET s, const ToolRegistry* reg) {
         isWs = hl.find("upgrade: websocket") != std::string::npos;
     }
     if (!isWs) {
-        serveHttp(s, head);
+        serveHttp(s, head, webRoot);
         closesocket(s);
         return;
     }
@@ -352,7 +474,7 @@ void handleClient(SOCKET s, const ToolRegistry* reg) {
 
 } // namespace
 
-void runWs(const ToolRegistry& reg, int port) {
+void runWs(const ToolRegistry& reg, int port, const std::string& webRoot) {
     WSADATA wsa;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
         fprintf(stderr, "[ws] WSAStartup failed\n");
@@ -387,7 +509,8 @@ void runWs(const ToolRegistry& reg, int port) {
         return;
     }
 
-    fprintf(stderr, "[ws] WebSocket bridge listening on ws://127.0.0.1:%d\n", port);
+    fprintf(stderr, "[ws] bridge listening on http://127.0.0.1:%d/ (WebSocket + static web root \"%s\")\n",
+            port, webRoot.c_str());
 
     while (true) {
         SOCKET client = accept(listenSock, nullptr, nullptr);
@@ -395,7 +518,7 @@ void runWs(const ToolRegistry& reg, int port) {
             fprintf(stderr, "[ws] accept() failed\n");
             continue;
         }
-        std::thread(handleClient, client, &reg).detach();
+        std::thread(handleClient, client, &reg, webRoot).detach();
     }
 
     // Unreachable for a long-running local server; kept for completeness.

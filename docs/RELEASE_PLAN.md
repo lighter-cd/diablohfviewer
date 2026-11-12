@@ -25,7 +25,7 @@
 
 ---
 
-## P0 让单个 exe 自包含（去掉 Python 依赖）—— 最大杠杆
+## P0 让单个 exe 自包含（去掉 Python 依赖）—— 最大杠杆 ✅ 已实现
 
 - **P0-1** 扩展 `src/mcp/transport_ws.cpp` 的 `serveHttp`：支持从一个可配置 web 根
   （默认 `web/`，相对 exe 或新增 `--web-root` 参数）取文件；保留现有 `/scenes/`
@@ -37,6 +37,7 @@
 - **P0-5** 启动参数：确认 `--ws 18765` 默认即开 HTTP 静态服务；`--stdio` 单独用时不开端口。
 
 > **验收**：双击 exe 后浏览器开 `http://localhost:18765/` 即出现查看器，且 WS 自动连上，无需任何 Python。
+> **状态（2026-11-12）**：已实现并验证——`runWs` 新增 `webRoot` 参数（默认 exe 同级 `web/`），`serveHttp` 托管 `web/` 并提供 `.html/.js/.css/.png/.json` 等 MIME，含目录穿越防护（`--path-as-is` 下的 `..` 与 `%2e%2e` 均返回 403）；`/scenes/` 原有映射保留；三套测试全绿。
 
 ---
 

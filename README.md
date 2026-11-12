@@ -82,15 +82,20 @@ build-mcp/mcp-server.exe --ws 18765              # 给浏览器前端
 build-mcp/mcp-server.exe --stdio --ws 18765      # 同时启用
 ```
 
-### Web 精灵查看器（阶段 2）
+### Web 查看器（自包含，无需 Python）
 
-后端起 WS 桥后，用静态服务器托管 `web/` 目录即可在浏览器查看精灵（前端不读 MPQ）：
+`mcp-server` 在 `--ws <port>` 模式下**同时在该端口提供 HTTP 静态服务**：浏览器前端
+（`web/`）由同一进程托管，前端再通过同端口的 WebSocket 连接后端。因此只需一条命令：
 
 ```bash
-build-mcp/mcp-server.exe --ws 18765          # 1) 后端 WS 桥（端口 18765）
-cd web && python -m http.server 8000        # 2) 静态托管（ES Module 需经 http，不能用 file://）
-#    浏览器打开 http://localhost:8000/ ，点 Connect → 选精灵 → 看帧
+build-mcp/mcp-server.exe --ws 18765          # 同端口同时提供 HTTP 页面 + WS 桥
+#    浏览器打开 http://localhost:18765/ ，点 Connect → 选精灵 → 看帧
 ```
+
+- web 根目录默认取**可执行文件所在目录的 `web/` 子目录**，所以把 `mcp-server.exe`
+  与 `web/` 放在同一文件夹即可，无需关心当前工作目录；也可用 `--web-root <dir>` 显式指定。
+- 仍可用独立静态服务器：`cd web && python -m http.server 8000` 后开 `http://localhost:8000/`
+  （ES Module 必须经 http，不能用 file://）。
 
 查看器结构见 `web/README.md`；与后端契约、已知限制见 `docs/ARCHITECTURE.md` §10.3。
 

@@ -24,14 +24,28 @@
 #include <thread>
 #include <vector>
 
+#include <windows.h>
+
 namespace {
 
 void printUsage() {
     fprintf(stderr,
         "usage:\n"
-        "  mcp-server --stdio                 serve JSON-RPC over stdin/stdout\n"
-        "  mcp-server --ws <port>             serve WebSocket bridge on port\n"
-        "  mcp-server --stdio --ws <port>     serve both\n");
+        "  mcp-server --stdio                  serve JSON-RPC over stdin/stdout\n"
+        "  mcp-server --ws <port>              serve WebSocket bridge on port\n"
+        "  mcp-server --stdio --ws <port>      serve both\n"
+        "  mcp-server --ws <port> --web-root <dir>   serve frontend from <dir>\n");
+}
+
+// Directory containing the running executable (used to locate the sibling web/
+// folder so the viewer works regardless of the current working directory).
+std::string exeDir() {
+    char buf[MAX_PATH];
+    DWORD n = GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    if (n == 0) return ".";
+    std::string s(buf, n);
+    size_t p = s.find_last_of("\\/");
+    return p == std::string::npos ? "." : s.substr(0, p);
 }
 
 } // namespace
@@ -40,6 +54,7 @@ int main(int argc, char** argv) {
     bool useStdio = false;
     bool useWs    = false;
     int  wsPort   = 18765;
+    std::string webRoot = exeDir() + "/web";   // default: exe's sibling web/
 
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i];
@@ -50,6 +65,8 @@ int main(int argc, char** argv) {
             if (i + 1 < argc) {
                 try { wsPort = std::stoi(argv[++i]); } catch (...) { }
             }
+        } else if (a == "--web-root") {
+            if (i + 1 < argc) webRoot = argv[++i];
         } else if (a == "-h" || a == "--help") {
             printUsage();
             return 0;
@@ -77,7 +94,7 @@ int main(int argc, char** argv) {
 
     if (useWs) {
         // Run WS on a background thread so --stdio can share the process.
-        std::thread wsThread([&reg, wsPort]() { mcp::runWs(reg, wsPort); });
+        std::thread wsThread([&reg, wsPort, webRoot]() { mcp::runWs(reg, wsPort, webRoot); });
         if (useStdio) {
             mcp::runStdio(reg);     // blocks on stdin
             // stdio EOF: let the process exit; detach WS thread.
