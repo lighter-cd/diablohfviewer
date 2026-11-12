@@ -460,3 +460,7 @@
 ## 2026-11-13 14:05:00
 - P1 前端 MPQ 入口改为「浏览」优先：新增浏览按钮（File System Access API 的 showDirectoryPicker，localhost 安全上下文可用），选中目录即自动保存并触发后端读取 MPQ；选择时校验文件夹是否含 DIABDAT.MPQ/hellfire.mpq 等正版档案。移除冗余的「保存」按钮，文本框改在失焦/回车时自动保存，仅保留「清除」重置。记住父目录作为下次浏览自动补全的根（dhfc.mpqRoot）。提示文案精简为同行短句。
 - 涉及: web/index.html, web/src/main.js, web/styles.css
+
+## 2026-11-13 14:10:00
+- P1 前端 MPQ 入口精简：移除「清除」按钮（选错重新浏览即可）；选中目录若不含预期的 DIABDAT.MPQ/hellfire.mpq 等正版 MPQ 文件，则用醒目红色错误提示「✗ 错误：所选目录未找到…正版 MPQ 文件，请重新点浏览选择正确目录」替代正常提示，且不会保存无效目录（保留原有有效配置）。
+- 涉及: web/index.html, web/src/main.js, web/styles.css

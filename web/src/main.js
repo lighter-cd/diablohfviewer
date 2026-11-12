@@ -262,6 +262,16 @@ function clearMpqDir() {
   setMpqPickMsg("");
 }
 
+// Show a hard error (replaces the normal prompt) when the picked directory does
+// not contain the expected legitimate MPQ files. We do NOT save an invalid dir,
+// so any previously valid configuration is kept intact.
+function rejectBadMpqDir(name) {
+  setMpqPickMsg(
+    "✗ 错误：所选目录「" + (name || "") +
+    "」未找到 DIABDAT.MPQ / hellfire.mpq 等正版 MPQ 文件，请重新点「浏览」选择正确目录",
+    "error");
+}
+
 // Open a native directory picker. On Chromium/Edge (localhost is a secure
 // context) we use the File System Access API, which validates the chosen folder
 // actually contains the MPQ files. We cannot read the absolute path from a
@@ -284,10 +294,10 @@ async function browseMpqDir() {
       const candidate = root ? (root.replace(/[\\/]$/, "") + "/" + name) : name;
       $("mpqDir").value = candidate;
       if (found.length === 0) {
-        setMpqPickMsg("⚠ 未检测到 DIABDAT.MPQ/hellfire.mpq 等正版档案，请确认目录", "warn");
-      } else {
-        setMpqPickMsg("✓ 已选择「" + name + "」，检测到 " + found.length + " 个正版 MPQ", "ok");
+        rejectBadMpqDir(name);
+        return;
       }
+      setMpqPickMsg("✓ 已选择「" + name + "」，检测到 " + found.length + " 个正版 MPQ", "ok");
       if (looksAbsolute(candidate)) {
         await commitMpqDir(candidate);
       } else {
@@ -307,13 +317,17 @@ async function browseMpqDir() {
   pick.type = "file";
   pick.webkitdirectory = true;
   pick.addEventListener("change", () => {
-    const f = pick.files && pick.files[0];
-    const rel = f && (f.webkitRelativePath || f.relativePath || "");
+    const files = pick.files ? [...pick.files] : [];
+    const nameSet = new Set(files.map((f) => (f.name || "").toUpperCase()));
+    const found = EXPECTED_MPQ.filter((n) => nameSet.has(n));
+    const f0 = files[0];
+    const rel = f0 && (f0.webkitRelativePath || f0.relativePath || "");
     const slash = rel ? rel.indexOf("/") : -1;
-    const name = slash >= 0 ? rel.slice(0, slash) : (f && f.name) || "";
+    const name = slash >= 0 ? rel.slice(0, slash) : (f0 && f0.name) || "";
     const root = getMpqRoot();
     const candidate = root ? (root.replace(/[\\/]$/, "") + "/" + name) : name;
     $("mpqDir").value = candidate;
+    if (found.length === 0) { rejectBadMpqDir(name); return; }
     if (looksAbsolute(candidate)) {
       commitMpqDir(candidate);
     } else {
@@ -330,11 +344,10 @@ function onMpqDirEdited() {
   if (looksAbsolute(v)) commitMpqDir(v);
 }
 
-// Wire the global MPQ directory controls. Browse auto-saves on selection; the
-// text box auto-saves on blur/Enter; Clear resets. No explicit 保存 button.
+// Wire the global MPQ directory controls. Browse auto-saves on a valid selection;
+// the text box auto-saves on blur/Enter. No 保存 / 清除 buttons — re-pick to change.
 function wireMpqSetup() {
   $("mpqBrowse").addEventListener("click", browseMpqDir);
-  $("mpqClear").addEventListener("click", clearMpqDir);
   const inp = $("mpqDir");
   inp.addEventListener("change", onMpqDirEdited);
   inp.addEventListener("keydown", (e) => {
