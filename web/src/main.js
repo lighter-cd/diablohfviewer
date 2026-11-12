@@ -168,6 +168,126 @@ function hideError() {
   $("errorBanner").hidden = true;
 }
 
+// ---- Global MPQ entry (P1) --------------------------------------------------
+//
+// The user points at their own legitimate Hellfire / Diablo MPQ directory. This
+// is the SINGLE shared entry for all six browse modes. The directory is persisted
+// to localStorage. Behaviour:
+//   - Not configured  -> show a clear "MPQ尚未配置" badge and DO NOT auto-read
+//                         the MPQ. The viewer waits for the user to provide it.
+//   - Configured      -> on the next frontend entry, auto-connect + auto-load the
+//                         catalog (i.e. automatically read the MPQ for the
+//                         directory listing) instead of waiting for a click.
+// The backend itself reads a pre-generated recovered.json (absolute MPQ paths),
+// so the directory here is the user-facing anchor that gates auto-loading.
+const MPQ_DIR_KEY = "dhfc.mpqDir";
+
+function getMpqDir() {
+  try { return (localStorage.getItem(MPQ_DIR_KEY) || "").trim(); }
+  catch { return ""; }
+}
+
+function setMpqStatusConfigured(dir) {
+  const s = $("mpqStatus");
+  s.textContent = "MPQ已配置：" + dir;
+  s.className = "mpq-status ok";
+}
+function setMpqStatusUnconfigured() {
+  const s = $("mpqStatus");
+  s.textContent = "MPQ尚未配置";
+  s.className = "mpq-status bad";
+}
+
+// Reflect the persisted directory into the input + badge. Called on load.
+function reflectMpqConfig() {
+  const dir = getMpqDir();
+  if (dir) {
+    $("mpqDir").value = dir;
+    setMpqStatusConfigured(dir);
+  } else {
+    $("mpqDir").value = "";
+    setMpqStatusUnconfigured();
+  }
+}
+
+function saveMpqDir() {
+  const dir = ($("mpqDir").value || "").trim();
+  if (!dir) { clearMpqDir(); return; }
+  try { localStorage.setItem(MPQ_DIR_KEY, dir); } catch {}
+  setMpqStatusConfigured(dir);
+  setMeta("已保存 MPQ 目录：" + dir);
+  // The user just finished configuring — read the MPQ right away so the catalog
+  // appears, instead of forcing a page reload. (Same action initMpqEntry runs on
+  // the next entry; doing it now gives immediate feedback.)
+  if (!client.ws || client.ws.readyState !== WebSocket.OPEN) {
+    (async () => {
+      try {
+        await client.connect($("wsUrl").value.trim());
+        await loadCatalog();
+        if (isSceneMode() && !sceneState.loaded) await showSceneView();
+        if (isGuiMode() && !guiState.loaded) await showGuiView();
+      } catch (e) {
+        setMeta("自动连接/加载失败：" + (e.message || e), true);
+      }
+    })();
+  }
+}
+
+function clearMpqDir() {
+  try { localStorage.removeItem(MPQ_DIR_KEY); } catch {}
+  $("mpqDir").value = "";
+  setMpqStatusUnconfigured();
+}
+
+// Wire the global MPQ directory controls (browse / save / clear).
+function wireMpqSetup() {
+  $("mpqSave").addEventListener("click", saveMpqDir);
+  $("mpqClear").addEventListener("click", clearMpqDir);
+  const pick = $("mpqDirPick");
+  $("mpqBrowse").addEventListener("click", () => pick.click());
+  pick.addEventListener("change", () => {
+    const files = pick.files;
+    if (!files || !files.length) return;
+    const f = files[0];
+    // Electron / Node webview: a full local path is exposed on File.path.
+    if (f && typeof f.path === "string" && f.path) {
+      const i = Math.max(f.path.lastIndexOf("\\"), f.path.lastIndexOf("/"));
+      $("mpqDir").value = i >= 0 ? f.path.slice(0, i) : f.path;
+    } else {
+      // Plain browser: security hides the absolute path. Fall back to the chosen
+      // folder name and ask the user to type the full directory path.
+      const rel = (f && f.webkitRelativePath) || "";
+      const slash = rel.indexOf("/");
+      const name = slash >= 0 ? rel.slice(0, slash) : rel;
+      $("mpqDir").value = name;
+      showError("浏览器出于安全限制无法直接读取本地路径，请在输入框中补全完整目录（例如 C:\\Games\\Hellfire）。");
+    }
+  });
+}
+
+// On frontend entry: if a directory is already configured, automatically connect
+// and load the catalog (auto-read the MPQ to fetch the directory listing). If not,
+// show "MPQ尚未配置" and deliberately do NOT read the MPQ — the user must fill it
+// in first. Manual Connect still works in either case.
+async function initMpqEntry() {
+  const dir = getMpqDir();
+  if (!dir) {
+    setMpqStatusUnconfigured();
+    return;
+  }
+  $("mpqDir").value = dir;
+  setMpqStatusConfigured(dir);
+  setMeta("检测到已配置 MPQ 目录，自动连接并加载目录…");
+  try {
+    await client.connect($("wsUrl").value.trim());
+    await loadCatalog();
+    if (isSceneMode() && !sceneState.loaded) await showSceneView();
+    if (isGuiMode() && !guiState.loaded) await showGuiView();
+  } catch (e) {
+    setMeta("自动连接/加载失败：" + (e.message || e), true);
+  }
+}
+
 function basename(p) {
   const i = Math.max(p.lastIndexOf("\\"), p.lastIndexOf("/"));
   return i >= 0 ? p.slice(i + 1) : p;
@@ -2374,6 +2494,12 @@ function wireControls() {
 
   wireSceneControls();
   wireGuiControls();
+  wireMpqSetup();
 }
 
 wireControls();
+// P1: reflect the persisted MPQ directory (badge + input) and, if configured,
+// auto-connect + auto-load the catalog. If unconfigured, stay in "MPQ尚未配置"
+// and do NOT auto-read the MPQ.
+reflectMpqConfig();
+initMpqEntry();

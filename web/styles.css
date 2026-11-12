@@ -142,6 +142,36 @@ main { display: flex; height: calc(100vh - 52px); }
 }
 .error-banner[hidden] { display: none; }
 
+/* Global MPQ entry bar (P1): unified directory config + configured/unconfigured
+   state. When unconfigured the red badge makes the "MPQ尚未配置" state obvious
+   and the frontend does NOT auto-read the MPQ; when configured the green badge
+   confirms the directory is set and the frontend may auto-load the catalog. */
+.mpq-setup {
+  padding: 8px 16px;
+  background: #21212a;
+  border-bottom: 1px solid #3a3a42;
+}
+.mpq-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mpq-status {
+  padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600;
+  white-space: nowrap;
+}
+.mpq-status.ok { background: #1f5132; color: #b6f0c8; }
+.mpq-status.bad { background: #5a1f1f; color: #f0b6b6; }
+.mpq-label { display: flex; align-items: center; gap: 6px; color: #c9c9d2; }
+.mpq-label input[type="text"] {
+  background: #15151a; color: #e6e6e6; border: 1px solid #3a3a42;
+  border-radius: 4px; padding: 4px 8px; font-family: ui-monospace, Menlo, Consolas, monospace;
+  min-width: 380px;
+}
+.mpq-setup button {
+  background: #2c2c34; color: #e6e6e6; border: 1px solid #3a3a42;
+  border-radius: 4px; padding: 4px 12px; cursor: pointer; font-size: 13px;
+}
+.mpq-setup button:hover { background: #3a3a44; }
+.mpq-note { margin-top: 6px; font-size: 12px; color: #b9b9c2; line-height: 1.5; }
+.mpq-note strong { color: #f0c080; font-weight: 700; }
+
 #palette {
   background: #15151a; color: #e6e6e6; border: 1px solid #3a3a42;
   border-radius: 4px; padding: 3px 6px; max-width: 320px;

@@ -37,7 +37,7 @@
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta http-equiv="Pragma" content="no-cache" />
   <title>DiabloHFConverter · Sprite & Scene Viewer</title>
-  <link rel="stylesheet" href="styles.css?v=20261111b" />
+  <link rel="stylesheet" href="styles.css?v=20261112a" />
 </head>
 <body>
   <header>
@@ -58,6 +58,26 @@
       <label><input type="radio" name="mode" value="gui"> 界面布局查看器</label>
     </div>
   </header>
+
+  <!-- 全局 MPQ 入口（P1）：用户指向自带的正版 Hellfire/Diablo MPQ 目录。
+       未配置时明确标识「MPQ尚未配置」且不自动读取；配置后持久化到
+       localStorage，下次进入前端自动连接并加载目录（自动读取 MPQ）。 -->
+  <section id="mpqSetup" class="mpq-setup">
+    <div class="mpq-row">
+      <span id="mpqStatus" class="mpq-status bad">MPQ尚未配置</span>
+      <label class="mpq-label">MPQ 目录 / 主档案
+        <input id="mpqDir" type="text" placeholder="例如 C:\Games\Diablo\Hellfire 或 /games/diablo/hellfire" size="46" />
+      </label>
+      <button id="mpqBrowse" type="button">浏览…</button>
+      <button id="mpqSave" type="button">保存</button>
+      <button id="mpqClear" type="button">清除</button>
+      <input id="mpqDirPick" type="file" webkitdirectory hidden />
+    </div>
+    <div class="mpq-note">
+      必须自备<strong>官方正版</strong> Hellfire / Diablo 文件。本项目<strong>不提供任何游戏资源</strong>
+      （MPQ / 调色板 / 精灵 / 音频等）；仅在你的本机已有正版文件的前提下，用它来浏览、导出、放大自己的素材。
+    </div>
+  </section>
 
   <main>
     <aside class="catalog-pane" id="catalogPane">
@@ -315,6 +335,6 @@
     </div>
   </div>
 
-  <script type="module" src="src/main.js?v=20261112a"></script>
+  <script type="module" src="src/main.js?v=20261112b"></script>
 </body>
 </html>

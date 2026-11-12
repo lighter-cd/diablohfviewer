@@ -444,3 +444,7 @@
 ## 2026-11-12 19:03:47
 - README.md 项目介绍补充「为什么做这个项目」：说明本项目旨在解决 Hellfire 资料与工具碎片化问题，将其集中到统一 Web 界面。
 - 涉及: README.md
+
+## 2026-11-12 21:51:31
+- 推进 P1 统一 MPQ 入口：前端首次打开且 MPQ 尚未配置时，顶部醒目显示红色「MPQ尚未配置」徽标且绝不自动读取 MPQ；用户在设置区填入正版 MPQ 目录并保存后，该目录持久化到 localStorage（键 dhfc.mpqDir），下次进入前端自动连接并加载精灵目录（自动读取 MPQ 获取目录），保存当时也立即自动加载。level.js 的 mpqDir() 复用同一键作默认目录。
+- 涉及: web/index.html, web/src/main.js, web/src/level.js, web/styles.css, docs/RELEASE_PLAN.md

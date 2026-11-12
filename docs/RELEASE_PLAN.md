@@ -52,6 +52,20 @@
 
 > **验收**：填一次目录，6 种模式都能正确打开自有 MPQ 里的精灵 / 场景 / 界面。
 
+> **状态（2026-11-12）**：P1-1 / P1-3 / P1-4 已实现，P1-2 部分落地（目录作为统一
+> 入口并持久化，且 `level.js` 的 `mpqDir()` 已复用同一 `localStorage` 键作为默认目录）。
+> 核心行为：**首次打开前端、MPQ 尚未配置时，顶部醒目显示红色「MPQ尚未配置」徽标，
+> 且前端绝不自动读取 MPQ**；用户在设置区填入自己的正版 MPQ 目录并「保存」后，该目录
+> 持久化到 `localStorage`，下次进入前端会**自动连接并加载精灵目录**（即自动读取 MPQ
+> 获取目录）；保存当时也会立即自动连接加载，无需刷新。
+> 实现要点：`web/index.html` 顶部新增 `#mpqSetup` 设置区（状态徽标 + 目录输入框 +
+> 「浏览…」「保存」「清除」按钮 + 资源合规声明）；`web/src/main.js` 新增
+> `getMpqDir/saveMpqDir/clearMpqDir/reflectMpqConfig/wireMpqSetup/initMpqEntry`
+> （`MPQ_DIR_KEY="dhfc.mpqDir"`），并在启动时 `reflectMpqConfig()` + `initMpqEntry()`；
+> `web/src/level.js` 的 `mpqDir()` 复用同一键作默认目录。注意：当前后端 `sprite.list`
+> 仍读预生成的 `recovered.json`（绝对路径），前端「目录」是用户侧锚点、用于门控自动加载；
+> 真正「指向目录即扫描」的后端支持属后续任务，不在本次范围。
+
 ---
 
 ## P2 一键构建 + 打包（Windows）

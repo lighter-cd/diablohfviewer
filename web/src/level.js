@@ -29,6 +29,15 @@ const TILESETS = [
 ];
 
 function mpqDir() {
+  // Reuse the global MPQ entry (P1) persisted by index.html so the directory is
+  // configured once and shared across both viewers. Falls back to the archive
+  // field's folder, then to the built-in default.
+  let stored = "";
+  try { stored = (localStorage.getItem("dhfc.mpqDir") || "").trim(); } catch {}
+  if (stored) {
+    const norm = stored.replace(/\\/g, "/");
+    return norm.endsWith("/") ? norm : norm + "/";
+  }
   const p = ($("archive").value || "").replace(/\\/g, "/");
   const slash = p.lastIndexOf("/");
   return slash >= 0 ? p.slice(0, slash + 1) : "D:/work/xt/diablo/DevilutionX-Hell Fire/";
