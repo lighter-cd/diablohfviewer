@@ -46,5 +46,17 @@ target_link_libraries(mcp-server
   wininet
 )
 
+# ---- Copy the web frontend next to the executable ---------------------------
+# The WebSocket bridge serves the static frontend from <exe-dir>/web (see
+# src/main.cpp: webRoot = exeDir() + "/web"). Without this step the built
+# mcp-server reports an empty web root and every HTTP GET 404s. Copy the whole
+# web/ tree into the build output dir on every build so the viewer is reachable
+# immediately after a build (also required for the self-contained release zip).
+add_custom_command(TARGET mcp-server POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_directory
+          "${CMAKE_SOURCE_DIR}/web"
+          "$<TARGET_FILE_DIR:mcp-server>/web"
+  COMMENT "Copying web frontend to build output (web/)")
+
 # Quiet noisy MinGW warnings from StormLib's bundled code is not needed here
 # (we only include headers); link warnings are fine.
