@@ -425,6 +425,10 @@
 - 在 README.md 顶部补充中文版仓库简介（与 GitHub 中文 About 文案一致），与英文版 README_EN 对称。
 - 涉及: README.md
 
+## 2026-11-12 19:15:44
+- 新增 docs/RELEASE_PLAN.md：预编译包实现规划（P0 单 exe 托管 web/ 去 Python 依赖 → P1 统一 MPQ 入口 → P2 一键构建打包 → P3 自包含校验 → P4 发布版本），含实际代码文件引用与验收标准。
+- 涉及: docs/RELEASE_PLAN.md
+
 ## 2026-11-12 19:03:47
 - README.md 项目介绍补充「为什么做这个项目」：说明本项目旨在解决 Hellfire 资料与工具碎片化问题，将其集中到统一 Web 界面。
 - 涉及: README.md
