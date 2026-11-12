@@ -46,6 +46,7 @@
       <input id="wsUrl" value="ws://localhost:18765" size="28" />
       <button id="connectBtn">Connect</button>
       <span id="status" class="status">disconnected</span>
+      <button id="mpqConfigBtn" class="mpq-config-btn bad" type="button">mpq配置</button>
     </div>
     <div class="toolbar">
       <span class="tb-label">浏览模式</span>
@@ -57,20 +58,27 @@
     </div>
   </header>
 
-  <!-- 全局 MPQ 入口（P1）：用户指向自带的正版 Hellfire/Diablo MPQ 目录。
-       未配置时明确标识「MPQ尚未配置」且不自动读取；配置后持久化到
-       localStorage，下次进入前端自动连接并加载目录（自动读取 MPQ）。 -->
-  <section id="mpqSetup" class="mpq-setup">
-    <div class="mpq-row">
+  <!-- 全局 MPQ 入口（P1）：折叠进顶部 connected 右侧的「mpq配置」按钮，点击弹出
+       本对话框配置目录。按钮背景 红=未配置 / 绿=已配置。未配置时前端绝不自动读取
+       MPQ；配置后持久化到 localStorage，下次进入自动连接并加载目录。 -->
+  <dialog id="mpqModal" class="mpq-modal" aria-labelledby="mpqModalTitle">
+    <div class="mpq-modal-head">
+      <strong id="mpqModalTitle">MPQ 配置</strong>
+      <button id="mpqClose" class="mpq-x" type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="mpq-modal-body">
       <span id="mpqStatus" class="mpq-status bad">MPQ尚未配置</span>
       <label class="mpq-label">MPQ 目录 / 主档案
         <input id="mpqDir" type="text" placeholder="输入或者粘贴你的正版MPQ所在目录" size="52" />
       </label>
-      <button id="mpqSave" type="button">保存</button>
       <span id="mpqPickMsg" class="mpq-pick-msg"></span>
-      <span class="mpq-hint">自备官方正版 Hellfire/Diablo 文件（含 DIABDAT.MPQ/hellfire.mpq 等）</span>
+      <p class="mpq-hint">自备官方正版 Hellfire/Diablo 文件（含 DIABDAT.MPQ/hellfire.mpq 等）</p>
     </div>
-  </section>
+    <div class="mpq-modal-foot">
+      <button id="mpqSave" type="button">保存</button>
+      <button id="mpqCancel" type="button">取消</button>
+    </div>
+  </dialog>
 
   <main>
     <aside class="catalog-pane" id="catalogPane">

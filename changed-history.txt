@@ -484,3 +484,7 @@
 ## 2026-11-13 03:11:55
 - 彻底删除前端「特效叠加层（alpha 合成）」功能与面板：按用户要求从 目录浏览 / 技能战斗查看器（连同此前已从实体查看器移除的部分）一并清除——删除 index.html 的 #overlaysPanel、styles.css 整段 .overlays/.overlay-* 样式、main.js 的 overlayLayers/lastDecodeArgs/characterEffectNames/monsterSpecialNames/populateOverlayQuick/populateOverlayPick/addOverlay/renderOverlayList 及全部监听器与引用；viewer.js 的 drawComposite 简化为单帧绘制、去掉 overlays 形参，等价冗余的 drawFrame 一并删除，调用点改为传空。所有查看器今后只做纯精灵查看。同步清理 web/README.md 中指向已删除小节与合并前 6 种独立模式的旧描述（改为 5 种模式 / 实体查看器三面板结构、章节编号顺延），并把 ARCHITECTURE/PROJECT 里“保留于目录浏览”等残留表述统一改为“已整体移除”。场景/界面布局查看器自带的 #sceneOverlay/#guiOverlay（后端生成的网格/SOL 与元素框叠加）属不同功能，保留。三套测试 core/unit/integration 全绿、node --check 通过；已用 sync-web.sh 重新同步 build-mcp/web 并升缓存号 20261113031133。
 - 涉及: web/index.html, web/src/main.js, web/src/viewer.js, web/styles.css, web/README.md, docs/ARCHITECTURE.md, docs/PROJECT.md, build-mcp/web/(构建产物)
+
+## 2026-11-13 03:49:24
+- 把前端「MPQ配置」功能从顶部常驻设置条收入到 connected 状态右侧的「mpq配置」按钮：点击弹出原生 <dialog> 配置 MPQ 目录，按钮背景 未配置红 / 已配置绿（沿用 bad/ok 配色）；删除原 #mpqSetup 常驻横条。弹窗保留状态徽标、目录输入框、保存/取消与正版资源声明，打开时从 localStorage 回灌已存目录（取消过的编辑不会被误显示为已保存），支持 Esc / 取消 / 遮罩点击关闭；保存后立即关闭弹窗并由 saveMpqDir 异步自动连接加载。main.js 新增 setMpqButton 同步按钮配色，把 wireMpqSetup 重构为 wireMpqConfig 统一绑定弹窗交互。同步更新 docs/RELEASE_PLAN.md 的 P1 状态与 web/README.md 运行说明；三套测试 core/unit/integration 全绿、node --check 与 HTML id 唯一性检查通过；已用 sync-web.sh 重新同步 build-mcp/web 并升缓存号 20261113034748。
+- 涉及: web/index.html, web/src/main.js, web/styles.css, docs/RELEASE_PLAN.md, web/README.md, build-mcp/web/(构建产物)

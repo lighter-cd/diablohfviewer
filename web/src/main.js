@@ -164,13 +164,14 @@ function hideError() {
 // ---- Global MPQ entry (P1) --------------------------------------------------
 //
 // The user points at their own legitimate Hellfire / Diablo MPQ directory. This
-// is the SINGLE shared entry for all six browse modes. The directory is persisted
-// to localStorage. Behaviour:
-//   - Not configured  -> show a clear "MPQ尚未配置" badge and DO NOT auto-read
-//                         the MPQ. The viewer waits for the user to provide it.
-//   - Configured      -> on the next frontend entry, auto-connect + auto-load the
-//                         catalog (i.e. automatically read the MPQ for the
-//                         directory listing) instead of waiting for a click.
+// is the SINGLE shared entry for all five browse modes. The directory is persisted
+// to localStorage. The config UI lives in a <dialog> opened by the "mpq配置"
+// button beside the connection status; that button is red when unconfigured and
+// green when configured. Behaviour:
+//   - Not configured  -> red button, DO NOT auto-read the MPQ. The viewer waits
+//                         for the user to provide it.
+//   - Configured      -> green button; on the next frontend entry, auto-connect +
+//                         auto-load the catalog instead of waiting for a click.
 // The backend itself reads a pre-generated recovered.json (absolute MPQ paths),
 // so the directory here is the user-facing anchor that gates auto-loading.
 const MPQ_DIR_KEY = "dhfc.mpqDir";
@@ -180,15 +181,22 @@ function getMpqDir() {
   catch { return ""; }
 }
 
+function setMpqButton(configured) {
+  const b = $("mpqConfigBtn");
+  b.className = "mpq-config-btn " + (configured ? "ok" : "bad");
+  b.title = configured ? "MPQ 已配置（点击修改）" : "MPQ 尚未配置（点击配置）";
+}
 function setMpqStatusConfigured(dir) {
   const s = $("mpqStatus");
   s.textContent = "MPQ已配置：" + dir;
   s.className = "mpq-status ok";
+  setMpqButton(true);
 }
 function setMpqStatusUnconfigured() {
   const s = $("mpqStatus");
   s.textContent = "MPQ尚未配置";
   s.className = "mpq-status bad";
+  setMpqButton(false);
 }
 function setMpqPickMsg(text, kind) {
   const m = $("mpqPickMsg");
@@ -196,7 +204,8 @@ function setMpqPickMsg(text, kind) {
   m.className = "mpq-pick-msg" + (kind ? " " + kind : "");
 }
 
-// Reflect the persisted directory into the input + badge. Called on load.
+// Reflect the persisted directory into the input + dialog badge + button colour.
+// Called on load.
 function reflectMpqConfig() {
   const dir = getMpqDir();
   if (dir) {
@@ -208,8 +217,9 @@ function reflectMpqConfig() {
   }
 }
 
-// Save the directory the user typed / pasted: persist it, update the badge, and
-// (only if it changed) connect + load the catalog so the MPQ is read right away.
+// Save the directory the user typed / pasted: persist it, update the badge + button
+// colour, and (only if it changed) connect + load the catalog so the MPQ is read
+// right away.
 async function saveMpqDir() {
   const dir = ($("mpqDir").value || "").trim();
   if (!dir) {
@@ -235,20 +245,43 @@ async function saveMpqDir() {
   }
 }
 
-// Wire the global MPQ directory controls: a 保存 button (and Enter) commits the
-// typed / pasted directory. No browse / clear — the path is entered directly.
-function wireMpqSetup() {
-  $("mpqSave").addEventListener("click", saveMpqDir);
-  const inp = $("mpqDir");
-  inp.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { e.preventDefault(); saveMpqDir(); }
+// Wire the "mpq配置" button + its dialog. Opening always re-syncs the input from
+// the saved value, so a previously cancelled edit is never shown as if saved.
+// Saving persists the directory (and, when changed, triggers auto-connect/load
+// inside saveMpqDir) then closes the dialog immediately; Esc / the header × /
+// 取消 / a backdrop click all close without saving.
+function wireMpqConfig() {
+  const modal = $("mpqModal");
+  const close = () => { if (modal.open) modal.close(); };
+
+  $("mpqConfigBtn").addEventListener("click", () => {
+    $("mpqDir").value = getMpqDir();
+    setMpqPickMsg("");
+    modal.showModal();
+    $("mpqDir").focus();
+  });
+  $("mpqClose").addEventListener("click", close);
+  $("mpqCancel").addEventListener("click", close);
+  modal.addEventListener("click", (e) => {
+    const r = modal.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right ||
+        e.clientY < r.top || e.clientY > r.bottom) close();
+  });
+
+  const save = () => {
+    saveMpqDir();   // fire-and-forget: handles its own errors, may auto-connect/load
+    close();
+  };
+  $("mpqSave").addEventListener("click", save);
+  $("mpqDir").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); save(); }
   });
 }
 
 // On frontend entry: if a directory is already configured, automatically connect
 // and load the catalog (auto-read the MPQ to fetch the directory listing). If not,
-// show "MPQ尚未配置" and deliberately do NOT read the MPQ — the user must fill it
-// in first. Manual Connect still works in either case.
+// keep the button red and deliberately do NOT read the MPQ — the user must fill
+// it in first (via the "mpq配置" dialog). Manual Connect works in either case.
 async function initMpqEntry() {
   const dir = getMpqDir();
   if (!dir) {
@@ -2293,12 +2326,12 @@ function wireControls() {
 
   wireSceneControls();
   wireGuiControls();
-  wireMpqSetup();
+  wireMpqConfig();
 }
 
 wireControls();
-// P1: reflect the persisted MPQ directory (badge + input) and, if configured,
-// auto-connect + auto-load the catalog. If unconfigured, stay in "MPQ尚未配置"
-// and do NOT auto-read the MPQ.
+// P1: reflect the persisted MPQ directory (dialog badge + input + button colour)
+// and, if configured, auto-connect + auto-load the catalog. If unconfigured, keep
+// the button red and do NOT auto-read the MPQ.
 reflectMpqConfig();
 initMpqEntry();

@@ -43,28 +43,29 @@
 
 ## P1 统一 MPQ 入口（用户指向自己的正版文件）
 
-- **P1-1** 在 `web/index.html` 顶部加一个**全局「MPQ 目录 / 主档案」设置区**
-  （输入框 + 浏览按钮），所有 6 种模式共用；各模式现有独立输入框作为「覆盖项」保留。
+- **P1-1** 在 `web/index.html` 顶部 `connected` 状态右侧加一个**全局「mpq配置」按钮**
+  （未配置红色 / 已配置绿色），点击弹出 `#mpqModal` 对话框配置「MPQ 目录 / 主档案」，
+  所有 5 种模式共用；各模式现有独立输入框作为「覆盖项」保留。
 - **P1-2** 该目录作为档案栈基准：让 `web/src/level.js:82` 的 `archiveStack()`
   基于该目录拼全路径（当前应相对主档案目录解析，需确认）。
 - **P1-3** 路径持久化到 `localStorage`，刷新不丢。
-- **P1-4** 设置区**再次醒目展示**「必须自备官方正版 Hellfire 文件，本项目不提供任何资源」声明（与 README 口径一致）。
+- **P1-4** 配置对话框**再次醒目展示**「必须自备官方正版 Hellfire 文件，本项目不提供任何资源」声明（与 README 口径一致）。
 
-> **验收**：填一次目录，6 种模式都能正确打开自有 MPQ 里的精灵 / 场景 / 界面。
+> **验收**：填一次目录，5 种模式都能正确打开自有 MPQ 里的精灵 / 场景 / 界面。
 
-> **状态（2026-11-12）**：P1-1 / P1-3 / P1-4 已实现，P1-2 部分落地（目录作为统一
+> **状态（2026-11-13 更新）**：P1-1 / P1-3 / P1-4 已实现，P1-2 部分落地（目录作为统一
 > 入口并持久化，且 `level.js` 的 `mpqDir()` 已复用同一 `localStorage` 键作为默认目录）。
-> 核心行为：**首次打开前端、MPQ 尚未配置时，顶部醒目显示红色「MPQ尚未配置」徽标，
-> 且前端绝不自动读取 MPQ**；用户在设置区填入自己的正版 MPQ 目录并「保存」后，该目录
-> 持久化到 `localStorage`，下次进入前端会**自动连接并加载精灵目录**（即自动读取 MPQ
-> 获取目录）；保存当时也会立即自动连接加载，无需刷新。
-> 实现要点：`web/index.html` 顶部新增 `#mpqSetup` 设置区（状态徽标 + 目录输入框 +
-> 「浏览…」「保存」「清除」按钮 + 资源合规声明）；`web/src/main.js` 新增
-> `getMpqDir/saveMpqDir/clearMpqDir/reflectMpqConfig/wireMpqSetup/initMpqEntry`
-> （`MPQ_DIR_KEY="dhfc.mpqDir"`），并在启动时 `reflectMpqConfig()` + `initMpqEntry()`；
-> `web/src/level.js` 的 `mpqDir()` 复用同一键作默认目录。注意：当前后端 `sprite.list`
-> 仍读预生成的 `recovered.json`（绝对路径），前端「目录」是用户侧锚点、用于门控自动加载；
-> 真正「指向目录即扫描」的后端支持属后续任务，不在本次范围。
+> 核心行为：**首次打开前端、MPQ 尚未配置时，顶部「mpq配置」按钮为红色，且前端绝不
+> 自动读取 MPQ**；点击按钮在弹窗中填入自己的正版 MPQ 目录并「保存」后按钮转为绿色，
+> 该目录持久化到 `localStorage`，下次进入前端会**自动连接并加载精灵目录**（即自动读取
+> MPQ 获取目录）；保存当时也会立即自动连接加载，无需刷新。
+> 实现要点：`web/index.html` 顶部 `.conn` 内 `#mpqConfigBtn`（`bad`/`ok` 类切红/绿背景）
+> + 原生 `<dialog id="mpqModal">`（状态徽标 + 目录输入框 + 保存/取消 + 资源合规声明）；
+> `web/src/main.js` 的 `getMpqDir/saveMpqDir/reflectMpqConfig/wireMpqConfig/initMpqEntry`
+> （`MPQ_DIR_KEY="dhfc.mpqDir"`）在启动时 `reflectMpqConfig()` + `initMpqEntry()`；
+> `web/src/level.js` 的 `mpqDir()` 复用同一键作默认目录。后端 `sprite.list` 接受
+> `mpq_dir` 参数：把预生成 `recovered.json` 里的档案路径重定向到 `<mpq_dir>/<name>`，
+> 从而真正读取用户自备的正版 MPQ；`sprite.decode` 的 `archives` 全栈同理。
 
 ---
 
