@@ -1,3 +1,5 @@
+[🇬🇧 English version / 英文版](README_EN.md)
+
 # DiabloHFConverter
 
 > 《暗黑破坏神：地狱火》（Diablo: Hellfire）是 1997 年 Diablo 初代最具野心的资料片——它在原版教堂、墓穴、地狱之外，添入了隐秘的 Crypt（墓窖）与 Nest（巢穴）两层，带来了独树一帜的僧侣（Monk）职业，也沉淀下一整套被岁月尘封的精灵、关卡与界面美术。这份被遗忘的宝藏，值得被认真地研究与欣赏。
