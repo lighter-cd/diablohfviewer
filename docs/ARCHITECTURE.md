@@ -567,8 +567,13 @@ scene.path {id,archive,archives?,from:{x,y},to:{x,y},max_steps?=1024,preview_max
   `l1.min` 里还带 2 层墙块，画出来比 Floor 地板高；整层导出时这片实心土块会把房间
   压在下面、遮住全貌。因此 `scene.build` 默认把地牢网格裁到 `.dun` bbox（房间完整可见），
   `dirt_border:true` 才恢复 32 微格边框 + (16,16) 偏移，供忠实复原 `dPiece` 用。
-  Tristram 另外应用非任务态 `FillTile`（水井/喷泉、传送入口）。地牢 DUN object layer
-  （`AddL1Objs` 门物件）与 `dTransVal`/`TransList` 透明遮挡尚未实现。
+  **L2 关闭门板**：DevilutionX `LoadL2Dungeon` 在 `Pass3()` 后调 `AddL2Objs`
+  （`drlg_l2.cpp:2855`），门 object 经 `SetDoorStateClosed`（`objects.cpp:1138-1147`）
+  把门洞 micro `12/540→537`、`16/541→539` 并清 `dSpecial`；`.dun` 的 object 层本身全 0。
+  `buildDungeonScene` 对 Catacombs 模拟这一步（仅关闭态的 `dPiece` 结果），用 `l2.min`
+  的实心门板帧补上缺口，否则 `blind1.dun` 的 micro 12 只剩空门框。
+  Tristram 另外应用非任务态 `FillTile`（水井/喷泉、传送入口）。地牢 object layer 的
+  其余物件（箱子/火把等 `objects/*.cel`）与 `dTransVal`/`TransList` 透明遮挡仍未实现。
 - **tile 纵向翻转修复（2026-11-09）**：`DecodeLeft/RightTriangle` 与
   `DecodeLeft/RightTrapezoid` 输出 top-down RGBA，而 `DecodeSquare/TransparentSquare`
   输出 bottom-up（源 CEL 行 0 为底）；`blitFrame` 又统一翻转一次，导致三角/梯形 tile

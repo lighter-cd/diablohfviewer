@@ -1619,6 +1619,25 @@ static void testSceneTools(const std::string& mpq) {
               "scene.path dirt_border grid matches scene.build");
     }
 
+    // L2 catacombs: AddL2Objs + SetDoorStateClosed turns the doorway micros
+    // 12/16 into closed door-leaf micros 537/539 (SOL Solid).
+    json l2args = json{{"id", "l2_blind"}, {"archive", archives[0]},
+                       {"archives", stack}, {"preview_max_width", 200}};
+    ToolResult l2r = reg.dispatch("scene.build", l2args);
+    CHECK(l2r.ok, "scene.build L2 blind dispatch ok");
+    if (l2r.ok) {
+        const json& m = l2r.value["meta"];
+        const int g2 = l2r.value.value("grid_width", 0);
+        // Doorway cells (8,6) and (12,14) carry micro 12 in blind1.dun.
+        CHECK(g2 == 22 && m["walkable"][6 * g2 + 8] == 0 &&
+                  m["walkable"][14 * g2 + 12] == 0,
+              "L2 blind doorways render closed door leaves (Solid)");
+        CHECK(l2r.value.value("special_count", 0) > 0,
+              "L2 blind keeps its dSpecial arch overlays");
+        CHECK(l2r.value.value("transparent_pixel_count", 1) == 0,
+              "L2 blind has 0 transparent pixels");
+    }
+
     // L4 uses 12 microLen / 16 blocks and the hell light style.
     json l4args = json{{"id", "l4_diab1"}, {"archive", archives[0]},
                        {"archives", stack}, {"preview_max_width", 200}};
@@ -1633,7 +1652,7 @@ static void testSceneTools(const std::string& mpq) {
               "L4 has 0 transparent pixels");
         CHECK(l4r.value.value("frame_count", 0) > 0, "L4 reencoded CEL frames");
     }
-    printf("scene.* (tristram + lighting + L4 + path + dirt_border): %s\n",
+    printf("scene.* (tristram + lighting + L2 + L4 + path + dirt_border): %s\n",
            allOk ? "PASS" : "FAIL");
 }
 

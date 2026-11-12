@@ -806,6 +806,18 @@ DiabloHFConverter/
       验收：三套测试全绿；单测断言 level 15 把 special 精灵着成全黑、无 lit 集时保持原亮；
       同参数 A/B 像素对比 5.4% 像素变化且**全部变暗、零变亮**；`ambient=15,
       auto_light=false` 全暗场景平均亮度 0.000（地形/通道/门全部着色）。
+- [x] **L2 门洞门板补全（2026-11-12）**：`l2_blind` 门洞处缺一块，根因不是
+      `dSpecial`/special CEL，而是 DevilutionX `LoadL2Dungeon` 在 `Pass3()` 后调
+      `AddL2Objs`（`drlg_l2.cpp:2855`），门 object 的 `SetDoorStateClosed`
+      （`objects.cpp:1138-1147`）把门洞 micro `12/540→537`、`16/541→539`（实心门板）
+      并清 `dSpecial`；`blind1.dun` 的 object 层全 0，门完全靠运行时生成。本项目
+      `scene.build` 只读 tile 层、无 object 状态机，那 2 格停留在 micro 12 空门框。
+      最小改法：`buildDungeonScene` 对 Catacombs 在 `applyDungeonSpecial` 之后模拟
+      该最终 `dPiece`（12/540→537、16/541→539 + 清 `dSpecial`），直接复用 `l2.min`
+      的门板 CEL 帧，不引入整套 object 精灵系统；缓存 key 升 `v5`。
+      验收：三套测试全绿；`scene.build(l2_blind)` 门洞格 `(8,6)`/`(12,14)` 变
+      Solid、`walkable` 376→374、`special_count` 仍 2、0 透明像素，同参数 A/B
+      0.62% 像素变化集中在两处门洞。完整 object 层（箱子/火把/门状态机）仍延后。
 - [x] **动态地图规则与导出/渲染桥接（2026-11-09）**：新增 `docs/MAP_GENERATION.md`，记录
       `DungeonSeeds`/`LevelSeeds`、Borland LCG（`0x015A4E35`+1）、`CreateDungeon` 分派、
       L1–L4 与 Hellfire L5/L6 生成流程、主题/任务/miniset 依赖，以及用 DevilutionX 调试版
@@ -850,6 +862,7 @@ DiabloHFConverter/
 | `level.generate` 动态 Cathedral L1–L4 原生生成（14 个 DevilutionX fixture 0 差异） | ✅ |
 | `dSpecial` 城镇树木/拱门覆盖层 + Tristram FillTile（水池/传送入口） | ✅ |
 | `dSpecial` 地牢门/拱门覆盖层（L1/L2 `l1s`/`l2s` CEL）+ 按 `dLight` 着色 | ✅ |
+| L2 关闭门板（`AddL2Objs` / `SetDoorStateClosed` 的 `dPiece` 模拟） | ✅ |
 | tile 纵向翻转修复（triangle/trapezoid 与 square 统一 top-down） | ✅ |
 | 前端场景查看器 + 关卡 tile 查看器（`web/`） | ✅ |
 | 单元 / 集成 / core 三套测试 + mcp-server 构建 | ✅ |

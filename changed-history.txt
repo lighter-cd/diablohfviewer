@@ -408,6 +408,9 @@
 ## 2026-11-12 07:36:50
 - 修复固定房间场景开启光照时门/通道不受光照影响：对照 DevilutionX scrollrt.cpp:912-935（非城镇 dSpecial 用 ClxDrawLight 按 lightTableIndex 着色），level_render.cpp 原先直接贴用原始调色板解码的 special CEL RGBA 帧、绕过 LightTables；现由 loadSceneAssets 按 16 个 LightTables 级别预解码 special 帧，renderMap 按每格 dLight 选套，城镇依 ClxDraw 仍不着色；meta 新增 special_lit_levels，缓存 key 升 v4。三套测试全绿，同参数 A/B 像素对比 5.4% 像素变化且全部变暗、零变亮，ambient=15/auto_light=false 全暗场景平均亮度 0.000。
 - 涉及: src/decoders/level.h, src/decoders/level_render.cpp, src/tools/scene_tools.cpp, tests/unit_tests.cpp, tests/integration_tests.cpp, README.md, docs/ARCHITECTURE.md, docs/PROJECT.md, web/README.md
+## 2026-11-13 04:40:22
+- 补齐 l2_blind 门洞缺失（最小改法）：对照 DevilutionX LoadL2Dungeon→AddL2Objs→SetDoorStateClosed，门不在 .dun object 层（该层全 0）而是运行时把门洞 micro 12/540→537、16/541→539（实心门板）并清 dSpecial；buildDungeonScene 对 Catacombs 在 applyDungeonSpecial 之后模拟该最终 dPiece，直接复用 l2.min 门板 CEL 帧，不引入 object 精灵系统；缓存 key 升 v5。三套测试全绿，scene.build(l2_blind) 门洞格 (8,6)/(12,14) 变 Solid、walkable 376→374、special_count 仍 2、0 透明像素，同参数 A/B 0.62% 像素变化集中于两处门洞。完整 object 层仍延后。
+- 涉及: src/decoders/level_scene.cpp, src/tools/scene_tools.cpp, tests/unit_tests.cpp, tests/integration_tests.cpp, README.md, docs/ARCHITECTURE.md, docs/PROJECT.md, web/README.md
 
 ## 2026-11-12 19:00:58
 - 于 README.md 开头新增中文项目介绍：称赞 Diablo: Hellfire 资料片，明确说明本项目「是什么 / 不是什么」，并郑重声明使用者须自备官方正版 Hellfire 文件、本项目不提供任何游戏资源。

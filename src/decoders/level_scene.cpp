@@ -72,6 +72,29 @@ void applyDungeonSpecial(SceneGrid& g, DungeonSpecialTable table)
     }
 }
 
+// DevilutionX LoadL2Dungeon (drlg_l2.cpp:2855) calls AddL2Objs() AFTER Pass3().
+// AddL2Objs (objects.cpp:3786-3797) creates OBJ_L2LDOOR / OBJ_L2RDOOR for the
+// doorway micros; AddDoor -> SetDoorStateClosed (objects.cpp:1138-1147) then
+// replaces dPiece with the CLOSED door-leaf micro and clears dSpecial.
+// scene.build has no object layer, so emulate just that final dPiece state:
+// micro 12/540 (left doorway) -> 537, 16/541 (right doorway) -> 539.
+// Without this the .dun's doorway stubs stay empty (no door leaf).
+void applyL2ClosedDoors(SceneGrid& g)
+{
+    for (size_t i = 0; i < g.micro.size(); ++i) {
+        const uint16_t mi = g.micro[i];
+        uint16_t door = 0;
+        if (mi == 12 || mi == 540)
+            door = 537; // OBJ_L2LDOOR
+        else if (mi == 16 || mi == 541)
+            door = 539; // OBJ_L2RDOOR
+        if (door == 0)
+            continue;
+        g.micro[i] = door;
+        g.special[i] = 0; // SetDoorStateClosed clears overlapping arches
+    }
+}
+
 // Copy a megatile's four micro indices into a 2x2 block at (x, y). `mega` is
 // the 1-based megatile id written to SceneGrid.megaId (0 = none / prefill).
 void putMega(SceneGrid& g, int x, int y, const MegaTile& mt, uint16_t mega)
@@ -224,6 +247,10 @@ SceneGrid buildDungeonScene(const SceneSpec& spec,
     // Pass3() -> InitDungeonPieces(): mark arch / door cells for the special
     // CEL overlay (town does the equivalent via townSpecialFrameId).
     applyDungeonSpecial(g, spec.specialTable);
+    // AddL2Objs() -> SetDoorStateClosed(): catacombs doorways become closed
+    // door leaves. This must follow InitDungeonPieces (which marks 540/541).
+    if (spec.specialTable == DungeonSpecialTable::Catacombs)
+        applyL2ClosedDoors(g);
     return g;
 }
 

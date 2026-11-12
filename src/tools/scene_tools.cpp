@@ -388,12 +388,12 @@ std::string buildCacheKey(const std::string& id,
                           const std::string& outDir) {
     std::string a;
     for (size_t i = 0; i < archives.size(); ++i) { if (i) a += ";"; a += archives[i]; }
-    // v4: dungeon dSpecial sprites are now shaded by the cell's dLight
-    // (ClxDrawLight), so lit renders differ from the old unlit overlays.
-    // Earlier: v3 cropped presets to the .dun bbox (dirt_border restores the
-    // border); assembly inputs and switches are all in the key so catalog
-    // changes / toggles invalidate cached PNGs automatically.
-    return "v4|" + id + "|" + a + "|" +
+    // v5: catacombs doorways now render CLOSED door leaves (AddL2Objs /
+    // SetDoorStateClosed), so their dPiece micro changed. Earlier: v4 shaded
+    // dungeon dSpecial sprites by dLight (ClxDrawLight); v3 cropped presets
+    // to the .dun bbox. Assembly inputs and switches are all in the key so
+    // catalog changes / toggles invalidate cached PNGs automatically.
+    return "v5|" + id + "|" + a + "|" +
            std::to_string(spec.floorMegaTile) + "|" + spec.specialCel + "|" +
            std::to_string(static_cast<int>(spec.specialTable)) + "|" +
            (params.value("dirt_border", false) ? "B1" : "B0") + "|" +

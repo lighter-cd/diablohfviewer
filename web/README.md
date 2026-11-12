@@ -317,6 +317,8 @@ web/
 `l2_blind`、`l3_anvil`、`l4_diab1`）。地牢预设里 DUN 值为 0 的格按 DevilutionX
 `PlaceDunTiles(floorId)` 铺成可走地板/通道，L1/L2 的门与拱门由 `dSpecial` +
 `l1s/l2s.cel` 叠加还原，因此房间内部是完整地面而非实心墙，SOL/寻路网格与画面一致。
+L2 的门由 `AddL2Objs`/`SetDoorStateClosed` 在运行时生成，`scene.build` 模拟其关闭态把
+门洞 micro 换成实心门板，故 `l2_blind` 的门洞也是完整的（object 层其余物件仍未渲染）。
 地牢场景默认裁到 `.dun` bbox（房间完整可见），「绘制 Dirt 边框」复选框可恢复完整的
 Dirt 预填边框用于忠实复原（默认关闭，见上）。`scene.path` 可在同一 SOL 网格上做 A* 寻路并返回
 与预览对齐的路径坐标（供后续前端叠加）。原理与资产路径见

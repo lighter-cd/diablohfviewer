@@ -1565,6 +1565,26 @@ static void testLevelScene()
                sg.special[ov + sg.gw] == 3,
            "buildDungeonScene marks Cathedral arch/door micros in dSpecial");
 
+    // L2 catacombs: AddL2Objs + SetDoorStateClosed replaces the doorway
+    // micros 12/540 -> 537 and 16/541 -> 539, clearing their dSpecial.
+    std::vector<decoders::MegaTile> l2mega = {
+        decoders::MegaTile{12, 16, 540, 541}, decoders::MegaTile{0, 0, 0, 0},
+    };
+    decoders::SceneSpec l2spec;
+    l2spec.specialTable = decoders::DungeonSpecialTable::Catacombs;
+    l2spec.prefillMegaTile = 2;
+    std::vector<uint8_t> l2buf(4 + 2 * 2, 0);
+    WriteLE16(&l2buf[0], 1); WriteLE16(&l2buf[2], 1);
+    WriteLE16(&l2buf[4], 1);
+    auto lg = decoders::buildDungeonScene(l2spec, l2mega, decoders::loadDun(l2buf));
+    lvlChk(lg.gw == 2 && lg.gh == 2, "L2 scene grid dims");
+    lvlChk(lg.micro[0] == 537 && lg.micro[1] == 539 &&
+               lg.micro[lg.gw] == 537 && lg.micro[lg.gw + 1] == 539,
+           "buildDungeonScene L2 replaces doorway micros with closed door leaves");
+    lvlChk(lg.special[0] == 0 && lg.special[1] == 0 &&
+               lg.special[lg.gw] == 0 && lg.special[lg.gw + 1] == 0,
+           "buildDungeonScene L2 clears dSpecial on closed door cells");
+
     // Catalog + projection.
     auto& cat = decoders::sceneCatalog();
     lvlChk(cat.size() >= 6 && decoders::findScene("tristram") != nullptr,
