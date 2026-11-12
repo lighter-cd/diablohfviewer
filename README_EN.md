@@ -1,3 +1,5 @@
+> **Repository summary:** Diablo 1 / Hellfire MPQ research & sprite·level·UI viewer — a pure C/C++ native mcp-server (stdio for AI Agents, WebSocket for the browser front-end). You must supply your own legitimate Hellfire files; this project provides no game assets.
+
 # DiabloHFConverter
 
 > *Diablo: Hellfire* is the most ambitious expansion of the original 1997 *Diablo*. Beyond the original cathedral, catacombs and hell, it adds the hidden Crypt and Nest levels, introduces the one-of-a-kind Monk class, and leaves behind a whole treasure trove of sprites, levels and UI art now buried by time. This forgotten treasure deserves to be studied and appreciated with care.
