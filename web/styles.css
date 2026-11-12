@@ -211,7 +211,21 @@ canvas { background: transparent; image-rendering: pixelated; }
   overflow: auto;
 }
 .char-pane[hidden], .monster-pane[hidden], .combat-pane[hidden], .scene-pane[hidden], .gui-pane[hidden], .entity-pane[hidden] { display: none; }
-.entity-sub { display: flex; flex-direction: column; gap: 10px; }
+/* Entity viewer: a single type selector on top, then exactly one of three
+   independent parameter panels (player / monster / NPC) — never shown together. */
+.entity-type-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; margin-bottom: 4px;
+  background: #2a2a32; border: 1px solid #3a3a42; border-radius: 4px;
+}
+.entity-type-row .entity-type-label { font-size: 12px; color: #c9c9d2; white-space: nowrap; }
+.entity-type-row select {
+  flex: 1; background: #15151a; color: #e6e6e6;
+  border: 1px solid #3a3a42; border-radius: 4px; padding: 4px 6px; font-size: 13px;
+}
+.entity-panel { display: flex; flex-direction: column; gap: 10px; padding-top: 10px; border-top: 1px solid #3a3a42; }
+.entity-panel[hidden] { display: none; }
+.entity-panel .char-bar.sub { margin: 0 0 2px; padding: 6px 8px; font-size: 12px; }
 .char-bar {
   padding: 8px 10px; margin: -10px -12px 10px;
   background: #2a2a32; border-bottom: 1px solid #3a3a42;

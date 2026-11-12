@@ -88,21 +88,21 @@
     </aside>
 
     <aside class="entity-pane" id="entityPane" hidden>
-      <div class="char-bar">实体查看器（左侧下拉切换 玩家角色 / 怪物 / NPC）</div>
-      <div class="char-controls">
-        <label>实体类型
-          <select id="entityType">
-            <option value="character">玩家角色 (Player)</option>
-            <option value="monster">怪物 (Monster)</option>
-            <option value="npc">NPC (Towner)</option>
-          </select>
-        </label>
-        <label id="entArchiveWrap">MPQ
-          <select id="monsterArchive"></select>
-        </label>
+      <div class="char-bar">实体查看器</div>
+
+      <!-- 唯一的实体切换器：在 玩家角色 / 怪物 / NPC 之间选择；下方只渲染对应面板 -->
+      <div class="entity-type-row">
+        <span class="entity-type-label">实体类型</span>
+        <select id="entityType">
+          <option value="character">玩家角色 (Player)</option>
+          <option value="monster">怪物 (Monster)</option>
+          <option value="npc">NPC (Towner)</option>
+        </select>
       </div>
 
-      <div id="charSub" class="entity-sub">
+      <!-- 玩家角色：仅 职业 / 动作 / 盔甲 / 武器（无 MPQ，路径取自精灵自身 archive_path） -->
+      <div id="panel-character" class="entity-panel" hidden>
+        <div class="char-bar sub">玩家角色</div>
         <div class="char-controls">
           <label>职业
             <select id="charClass"></select>
@@ -120,19 +120,35 @@
         <div class="char-hint">选职业/动作后自动列出该职业真实存在的盔甲与武器组合；切换即解码并播放。</div>
       </div>
 
-      <div id="monsterSub" class="entity-sub" hidden>
+      <!-- 怪物：MPQ / 怪物 / 动作 -->
+      <div id="panel-monster" class="entity-panel" hidden>
+        <div class="char-bar sub">怪物</div>
         <div class="char-controls">
-          <label id="monsterSelWrap">怪物
+          <label>MPQ
+            <select id="monsterArchive"></select>
+          </label>
+          <label>怪物
             <select id="monsterSel"></select>
           </label>
-          <label id="monsterAnimWrap">动作
+          <label>动作
             <select id="monsterAnim"></select>
           </label>
-          <label id="npcSelWrap" hidden>NPC
+        </div>
+        <div class="char-hint">怪物按 monstdat 的动画字母枚举（Stand/Walk/Attack/Hit/Death/Special）；选择即解码并播放，方向数取自解码返回的 directions。</div>
+      </div>
+
+      <!-- NPC：MPQ / NPC -->
+      <div id="panel-npc" class="entity-panel" hidden>
+        <div class="char-bar sub">NPC</div>
+        <div class="char-controls">
+          <label>MPQ
+            <select id="npcArchive"></select>
+          </label>
+          <label>NPC
             <select id="npcSel"></select>
           </label>
         </div>
-        <div class="char-hint">怪物按 monstdat 的动画字母枚举（Stand/Walk/Attack/Hit/Death/Special）；NPC 为单方向 .cel 精灵。选择即解码并播放，方向数取自解码返回的 directions。</div>
+        <div class="char-hint">NPC 为单方向 .cel 精灵（含硬编码 towners/animals/cow.cel）；选择即解码并播放。</div>
       </div>
     </aside>
 

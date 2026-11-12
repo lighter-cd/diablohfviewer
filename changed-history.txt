@@ -476,3 +476,7 @@
 ## 2026-11-13 02:33:20
 - 修复“前端改动未生效”问题：mcp-server 实际从 build-mcp/web/ 提供页面，而 build-mcp/ 被 .gitignore 忽略、仅构建时复制，导致只改 web/ 运行时无变化；且 index.html 的 ?v= 缓存号未变会使浏览器走缓存。新增前端构建脚本 sync-web.sh（复制 web/ → build-mcp/web/ 并自动刷新所有 ?v= 时间戳 token），并将「前端改动必须同步到 build-mcp/web」与「完整构建 = 编译 C++ + ./sync-web.sh」写入 AGENTS.md 作为铁律；已用该脚本重新同步并生成本轮缓存号。
 - 涉及: sync-web.sh(新), AGENTS.md, web/index.html, web/src/main.js, build-mcp/web/(构建产物，未入库)
+
+## 2026-11-13 02:42:25
+- 重构前端实体查看器参数面板：把原先“怪物/NPC 共用一个 monsterSub 壳、靠 hidden 切换行”的结构，改为 玩家角色/怪物/NPC 三块完全独立的参数面板（panel-character / panel-monster / panel-npc），切换实体类型时只渲染对应那一块，其余整块隐藏，杜绝参数堆砌混淆；MPQ 选择器分别归于怪物与 NPC 面板各自独立的 #monsterArchive / #npcArchive；删除 showMonsterView 死代码与 entArchiveWrap/charSub/monsterSub 等旧 id。已用 sync-web.sh 重新同步 build-mcp/web 并升缓存号；更新 ARCHITECTURE/PROJECT 文档对应描述。
+- 涉及: web/index.html, web/src/main.js, web/styles.css, docs/ARCHITECTURE.md, docs/PROJECT.md, build-mcp/web/(构建产物)

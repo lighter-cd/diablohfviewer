@@ -530,21 +530,25 @@ async function showCharacterSprite() {
 
 // ---- Monster / NPC viewer --------------------------------------------------
 
+// Fill the MPQ <select> in both the monster and NPC panels (they are separate
+// elements so each entity type owns its own control set).
 function populateMonsterArchive() {
-  const sel = $("monsterArchive");
-  sel.innerHTML = "";
-  for (const a of allArchives) {
-    const o = document.createElement("option");
-    o.value = a;
-    o.textContent = basename(a);
-    o.title = a;
-    sel.appendChild(o);
-  }
-  if (allArchives.length === 0) {
-    const o = document.createElement("option");
-    o.value = "";
-    o.textContent = "（无可用 MPQ）";
-    sel.appendChild(o);
+  for (const id of ["monsterArchive", "npcArchive"]) {
+    const sel = $(id);
+    sel.innerHTML = "";
+    for (const a of allArchives) {
+      const o = document.createElement("option");
+      o.value = a;
+      o.textContent = basename(a);
+      o.title = a;
+      sel.appendChild(o);
+    }
+    if (allArchives.length === 0) {
+      const o = document.createElement("option");
+      o.value = "";
+      o.textContent = "（无可用 MPQ）";
+      sel.appendChild(o);
+    }
   }
 }
 
@@ -617,55 +621,39 @@ function showMonsterSprite() {
   onSelectSprite({ name, archive_path: archive, family: "monsters", class: $("monsterSel").value });
 }
 
-// Decode the selected NPC (family towners, single direction).
+// Decode the selected NPC (family towners, single direction). NPC owns its own
+// #npcArchive select, distinct from the monster panel's #monsterArchive.
 function showNpcSprite() {
-  const archive = $("monsterArchive").value;
+  const archive = $("npcArchive").value;
   const name = $("npcSel").value;
   if (!name) return;
   onSelectSprite({ name, archive_path: archive, family: "towners", class: "npc" });
 }
 
-// Enter the monster/NPC sub-area (within the merged entity viewer): populate the
-// MPQ + monster/NPC dropdowns, then decode the first entry. Which sub-type
-// (monster vs NPC) is decided by the #entityType dropdown, not a nested control.
-async function showMonsterView() {
+// Switch the entity viewer to the selected type. The three entity types each own
+// ONE independent parameter panel (panel-character / panel-monster / panel-npc);
+// we show exactly the matching one and hide the other two, so a type's controls
+// are never mixed with another's. The first decode for that type is triggered too.
+async function syncEntityType() {
+  const t = $("entityType").value;
+  $("panel-character").hidden = (t !== "character");
+  $("panel-monster").hidden = (t !== "monster");
+  $("panel-npc").hidden = (t !== "npc");
   if (!allArchives.length) {
     showError("尚无 MPQ 列表（请先在 目录浏览 模式加载目录）。");
     return;
   }
-  populateMonsterArchive();
-  const wantNpc = isNpcMode();
-  $("monsterSelWrap").hidden = wantNpc;
-  $("monsterAnimWrap").hidden = wantNpc;
-  $("npcSelWrap").hidden = !wantNpc;
-  if (wantNpc) {
-    await populateNPCs();
-    showNpcSprite();
-  } else {
+  if (t === "character") {
+    showCharacterSprite();
+  } else if (t === "monster") {
+    populateMonsterArchive();
     await populateMonsters();
     showMonsterSprite();
+  } else { // npc
+    populateMonsterArchive();
+    await populateNPCs();
+    showNpcSprite();
   }
-}
-
-// Switch the entity viewer's parameter panel based on the left #entityType
-// dropdown: each of 玩家角色 / 怪物 / NPC shows ONLY its own controls (they are
-// never shown together). Also triggers the first decode for the selected type.
-async function syncEntityType() {
-  const t = $("entityType").value;
-  const isChar = (t === "character");
-  const isNpc = (t === "npc");
-  // Per-type parameter panel: only one sub is visible at a time. The MPQ
-  // selector only matters for monster/NPC (their entries carry no archive_path),
-  // so hide it for the player-character sub-type.
-  $("charSub").hidden = !isChar;
-  $("monsterSub").hidden = isChar;
-  $("entArchiveWrap").hidden = isChar;
-  if (isChar) {
-    showCharacterSprite();
-    return;
-  }
-  // monster / npc share the #monsterSub shell; toggle its inner rows.
-  await showMonsterView();
 }
 
 // ---- Effect-overlay layers (alpha compositing) ------------------------------
@@ -2454,12 +2442,10 @@ function wireControls() {
   });
 
   // Entity viewer controls. The left #entityType dropdown swaps the parameter
-  // panel (玩家角色 / 怪物 / NPC); the inner controls are wired per-type below.
+  // panel (玩家角色 / 怪物 / NPC); each panel owns its own controls wired below.
   $("entityType").addEventListener("change", () => syncEntityType());
-  $("monsterArchive").addEventListener("change", () => {
-    if (isNpcMode()) showNpcSprite();
-    else showMonsterSprite();
-  });
+  $("monsterArchive").addEventListener("change", () => showMonsterSprite());
+  $("npcArchive").addEventListener("change", () => showNpcSprite());
   $("monsterSel").addEventListener("change", () => {
     fillMonsterAnims();
     showMonsterSprite();

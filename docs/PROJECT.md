@@ -458,8 +458,9 @@ DiabloHFConverter/
       故从数据表推导精灵名。怪物按动画字母 `n/w/a/h/d/s`（Stand/Walk/Attack/Hit/Death/Special，
       来自 `frames[6]` 与 `Animletter="nwahds"`）枚举，每条带 `frames_per_dir` 与自动查表宽度；
       NPC 为单方向 `.cel`（含硬编码的 `towners/animals/cow.cel`）。原独立的「怪物 / NPC 查看器」
-      浏览模式已合并进「实体查看器」（左侧 `实体类型` 下拉选 `怪物` / `NPC`），不再是单独的
-      `#monsterPane` 面板；选 MPQ → 选怪物 → 选动作即解码并播放，方向数取自解码返回的 `directions`。
+      浏览模式已合并进「实体查看器」（左侧 `实体类型` 下拉选 `怪物` / `NPC`），并拆成
+      `panel-monster` / `panel-npc` 两块独立参数面板（外加 `panel-character`），切换实体类型时
+      只显示对应面板，互不混杂；选 MPQ → 选怪物 → 选动作即解码并播放，方向数取自解码返回的 `directions`。
 - [x] 怪物技能动作与特效叠加：动画模式已枚举并按 8 方向播放；**「特效叠加层（alpha 合成）」面板已从实体查看器移除**
       （保留于 目录浏览 模式）——原角色技能 `lm`/`fm`/`qm` 与怪物 Special `s` 的图层叠加不再在实体查看器内提供。
 - [x] 产出：怪物/NPC 查看数据（浏览器内实时查看；后端 `directions` 字段由 `monstdat.tsv` 的
