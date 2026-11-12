@@ -181,10 +181,25 @@ function hideError() {
 // The backend itself reads a pre-generated recovered.json (absolute MPQ paths),
 // so the directory here is the user-facing anchor that gates auto-loading.
 const MPQ_DIR_KEY = "dhfc.mpqDir";
+const MPQ_ROOT_KEY = "dhfc.mpqRoot"; // remembered parent dir to auto-complete browse
+// Canonical Hellfire / Diablo archive names we expect inside the chosen dir.
+const EXPECTED_MPQ = ["DIABDAT.MPQ", "hellfire.mpq", "hfmonk.mpq",
+  "hfopt1.mpq", "hfopt2.mpq", "devilutionx.mpq"];
 
 function getMpqDir() {
   try { return (localStorage.getItem(MPQ_DIR_KEY) || "").trim(); }
   catch { return ""; }
+}
+function getMpqRoot() {
+  try { return (localStorage.getItem(MPQ_ROOT_KEY) || "").trim(); }
+  catch { return ""; }
+}
+
+// Browsers refuse to expose the real local path of a picked folder, so we only
+// treat a string as usable once it is an absolute path (drive letter or /).
+function looksAbsolute(p) {
+  if (!p) return false;
+  return /^[a-zA-Z]:[\\/]/.test(p) || /^[\\/]/.test(p);
 }
 
 function setMpqStatusConfigured(dir) {
@@ -196,6 +211,11 @@ function setMpqStatusUnconfigured() {
   const s = $("mpqStatus");
   s.textContent = "MPQ尚未配置";
   s.className = "mpq-status bad";
+}
+function setMpqPickMsg(text, kind) {
+  const m = $("mpqPickMsg");
+  m.textContent = text || "";
+  m.className = "mpq-pick-msg" + (kind ? " " + kind : "");
 }
 
 // Reflect the persisted directory into the input + badge. Called on load.
@@ -210,26 +230,28 @@ function reflectMpqConfig() {
   }
 }
 
-function saveMpqDir() {
-  const dir = ($("mpqDir").value || "").trim();
+// Commit a directory: persist, update badge, remember its parent as the root for
+// future browse auto-completion, and (only if it actually changed) connect +
+// load the catalog so the MPQ is read right away.
+async function commitMpqDir(dir) {
+  dir = (dir || "").trim();
   if (!dir) { clearMpqDir(); return; }
+  const prev = getMpqDir();
   try { localStorage.setItem(MPQ_DIR_KEY, dir); } catch {}
+  const i = Math.max(dir.lastIndexOf("\\"), dir.lastIndexOf("/"));
+  if (i > 0) { try { localStorage.setItem(MPQ_ROOT_KEY, dir.slice(0, i)); } catch {} }
   setMpqStatusConfigured(dir);
+  if (dir === prev) return;
   setMeta("已保存 MPQ 目录：" + dir);
-  // The user just finished configuring — read the MPQ right away so the catalog
-  // appears, instead of forcing a page reload. (Same action initMpqEntry runs on
-  // the next entry; doing it now gives immediate feedback.)
   if (!client.ws || client.ws.readyState !== WebSocket.OPEN) {
-    (async () => {
-      try {
-        await client.connect($("wsUrl").value.trim());
-        await loadCatalog();
-        if (isSceneMode() && !sceneState.loaded) await showSceneView();
-        if (isGuiMode() && !guiState.loaded) await showGuiView();
-      } catch (e) {
-        setMeta("自动连接/加载失败：" + (e.message || e), true);
-      }
-    })();
+    try {
+      await client.connect($("wsUrl").value.trim());
+      await loadCatalog();
+      if (isSceneMode() && !sceneState.loaded) await showSceneView();
+      if (isGuiMode() && !guiState.loaded) await showGuiView();
+    } catch (e) {
+      setMeta("自动连接/加载失败：" + (e.message || e), true);
+    }
   }
 }
 
@@ -237,31 +259,86 @@ function clearMpqDir() {
   try { localStorage.removeItem(MPQ_DIR_KEY); } catch {}
   $("mpqDir").value = "";
   setMpqStatusUnconfigured();
+  setMpqPickMsg("");
 }
 
-// Wire the global MPQ directory controls (browse / save / clear).
-function wireMpqSetup() {
-  $("mpqSave").addEventListener("click", saveMpqDir);
-  $("mpqClear").addEventListener("click", clearMpqDir);
-  const pick = $("mpqDirPick");
-  $("mpqBrowse").addEventListener("click", () => pick.click());
-  pick.addEventListener("change", () => {
-    const files = pick.files;
-    if (!files || !files.length) return;
-    const f = files[0];
-    // Electron / Node webview: a full local path is exposed on File.path.
-    if (f && typeof f.path === "string" && f.path) {
-      const i = Math.max(f.path.lastIndexOf("\\"), f.path.lastIndexOf("/"));
-      $("mpqDir").value = i >= 0 ? f.path.slice(0, i) : f.path;
-    } else {
-      // Plain browser: security hides the absolute path. Fall back to the chosen
-      // folder name and ask the user to type the full directory path.
-      const rel = (f && f.webkitRelativePath) || "";
-      const slash = rel.indexOf("/");
-      const name = slash >= 0 ? rel.slice(0, slash) : rel;
-      $("mpqDir").value = name;
-      showError("浏览器出于安全限制无法直接读取本地路径，请在输入框中补全完整目录（例如 C:\\Games\\Hellfire）。");
+// Open a native directory picker. On Chromium/Edge (localhost is a secure
+// context) we use the File System Access API, which validates the chosen folder
+// actually contains the MPQ files. We cannot read the absolute path from a
+// browser, so we reconstruct it from a remembered root; if none, we pre-fill the
+// folder name and ask the user to complete the absolute path once.
+async function browseMpqDir() {
+  setMpqPickMsg("");
+  if (typeof window.showDirectoryPicker === "function") {
+    try {
+      const handle = await window.showDirectoryPicker();
+      const name = handle.name || "";
+      const found = [];
+      try {
+        for await (const [entryName, h] of handle.entries()) {
+          if (h.kind === "file" && EXPECTED_MPQ.includes(entryName.toUpperCase()))
+            found.push(entryName);
+        }
+      } catch {}
+      const root = getMpqRoot();
+      const candidate = root ? (root.replace(/[\\/]$/, "") + "/" + name) : name;
+      $("mpqDir").value = candidate;
+      if (found.length === 0) {
+        setMpqPickMsg("⚠ 未检测到 DIABDAT.MPQ/hellfire.mpq 等正版档案，请确认目录", "warn");
+      } else {
+        setMpqPickMsg("✓ 已选择「" + name + "」，检测到 " + found.length + " 个正版 MPQ", "ok");
+      }
+      if (looksAbsolute(candidate)) {
+        await commitMpqDir(candidate);
+      } else {
+        setMpqPickMsg("✓ 已选「" + name + "」；浏览器不暴露完整路径，请补全（如 C:\\Games\\Diablo\\" + name + "）后回车", "warn");
+        const inp = $("mpqDir");
+        inp.focus();
+        inp.setSelectionRange(0, candidate.length);
+      }
+    } catch (e) {
+      if (e && e.name === "AbortError") return; // user cancelled
+      setMpqPickMsg("选择失败：" + (e.message || e), "warn");
     }
+    return;
+  }
+  // Fallback for browsers without showDirectoryPicker (also hides the path).
+  const pick = document.createElement("input");
+  pick.type = "file";
+  pick.webkitdirectory = true;
+  pick.addEventListener("change", () => {
+    const f = pick.files && pick.files[0];
+    const rel = f && (f.webkitRelativePath || f.relativePath || "");
+    const slash = rel ? rel.indexOf("/") : -1;
+    const name = slash >= 0 ? rel.slice(0, slash) : (f && f.name) || "";
+    const root = getMpqRoot();
+    const candidate = root ? (root.replace(/[\\/]$/, "") + "/" + name) : name;
+    $("mpqDir").value = candidate;
+    if (looksAbsolute(candidate)) {
+      commitMpqDir(candidate);
+    } else {
+      setMpqPickMsg("浏览器不暴露完整路径，请补全（如 C:\\Games\\Diablo\\" + name + "）后回车", "warn");
+      $("mpqDir").focus();
+    }
+  });
+  pick.click();
+}
+
+// Auto-save when the user finishes editing the path by hand (blur / Enter).
+function onMpqDirEdited() {
+  const v = ($("mpqDir").value || "").trim();
+  if (looksAbsolute(v)) commitMpqDir(v);
+}
+
+// Wire the global MPQ directory controls. Browse auto-saves on selection; the
+// text box auto-saves on blur/Enter; Clear resets. No explicit 保存 button.
+function wireMpqSetup() {
+  $("mpqBrowse").addEventListener("click", browseMpqDir);
+  $("mpqClear").addEventListener("click", clearMpqDir);
+  const inp = $("mpqDir");
+  inp.addEventListener("change", onMpqDirEdited);
+  inp.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); onMpqDirEdited(); }
   });
 }
 
@@ -324,15 +401,20 @@ function isViewOwnedMode() {
 
 async function loadCatalog() {
   setMeta("loading catalog…");
+  // P1: tell the backend which directory to read the MPQ files from. The backend
+  // redirects every archive path in recovered.json into this directory, so the
+  // viewer reads the user's own legitimate copy — nothing is uploaded anywhere.
+  const mpqDir = getMpqDir();
+  const listArgs = mpqDir ? { mpq_dir: mpqDir } : {};
   try {
-    const res = await client.callTool("sprite.list", {});
+    const res = await client.callTool("sprite.list", listArgs);
     const sprites = (res && res.sprites) || [];
     lastSprites = sprites.slice();
     // Also pull the UI layout's referenced art (ui_art\*.pcx, data\*.clx/.cel,
     // ctrlpan\spelicon.cel, ...) so the Catalog browser can show the same art the
     // GUI layout viewer composites, with frame info for playback.
     try {
-      const uiRes = await client.callTool("sprite.list", { kind: "ui" });
+      const uiRes = await client.callTool("sprite.list", { ...listArgs, kind: "ui" });
       const uiSprites = (uiRes && uiRes.sprites) || [];
       for (const s of uiSprites) if (!lastSprites.some((x) => x.name === s.name))
         lastSprites.push(s);

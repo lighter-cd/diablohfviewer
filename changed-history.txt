@@ -456,3 +456,7 @@
 ## 2026-11-12 22:40:00
 - AGENTS.md 新增铁律「构建与运行 mcp-server（不可违反）」：src 下 C/C++ 源码改动需重新 build 出新的 mcp-server.exe 时，须先停掉正在运行的 build-mcp/mcp-server.exe 进程（Ctrl+C 或 taskkill），再重建并启动；否则 Windows 文件锁导致链接器无法覆盖写、报 Permission denied。
 - 涉及: AGENTS.md
+
+## 2026-11-13 14:05:00
+- P1 前端 MPQ 入口改为「浏览」优先：新增浏览按钮（File System Access API 的 showDirectoryPicker，localhost 安全上下文可用），选中目录即自动保存并触发后端读取 MPQ；选择时校验文件夹是否含 DIABDAT.MPQ/hellfire.mpq 等正版档案。移除冗余的「保存」按钮，文本框改在失焦/回车时自动保存，仅保留「清除」重置。记住父目录作为下次浏览自动补全的根（dhfc.mpqRoot）。提示文案精简为同行短句。
+- 涉及: web/index.html, web/src/main.js, web/styles.css
