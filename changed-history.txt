@@ -472,3 +472,7 @@
 ## 2026-11-13 02:08:53
 - 合并前端「角色查看器」与「怪物 / NPC 查看器」为单一「实体查看器」浏览模式：顶部工具栏以 entity 单选代替原 character/monster 两个单选；新增左侧「实体类型」下拉在 玩家角色 / 怪物 / NPC 间切换，且每类只显示各自的参数面板（玩家角色：职业/动作/盔甲/武器；怪物：MPQ/怪物/动作；NPC：MPQ/NPC），三类不会同时出现；按用户要求从实体查看器移除「特效叠加层（alpha 合成）」功能及其面板（保留于目录浏览模式）。后端协议与 sprite.decode 链路完全复用，无需改动。
 - 涉及: web/index.html, web/src/main.js, web/styles.css, docs/ARCHITECTURE.md, docs/PROJECT.md, docs/UPSCALE_PLAN.md
+
+## 2026-11-13 02:33:20
+- 修复“前端改动未生效”问题：mcp-server 实际从 build-mcp/web/ 提供页面，而 build-mcp/ 被 .gitignore 忽略、仅构建时复制，导致只改 web/ 运行时无变化；且 index.html 的 ?v= 缓存号未变会使浏览器走缓存。新增前端构建脚本 sync-web.sh（复制 web/ → build-mcp/web/ 并自动刷新所有 ?v= 时间戳 token），并将「前端改动必须同步到 build-mcp/web」与「完整构建 = 编译 C++ + ./sync-web.sh」写入 AGENTS.md 作为铁律；已用该脚本重新同步并生成本轮缓存号。
+- 涉及: sync-web.sh(新), AGENTS.md, web/index.html, web/src/main.js, build-mcp/web/(构建产物，未入库)

@@ -44,3 +44,30 @@
     若进程已脱离终端，则通过任务管理器 / `taskkill /f /im mcp-server.exe` 结束后再构建。
   - 构建成功、必要文件（含 `web/`）同步到 `build-mcp/` 后，再重新启动
     `.\build-mcp\mcp-server.exe --ws 18765` 供前端连接。
+  - **完整构建 = 编译 C++（CMake 会自动把 `web/` 复制到 `build-mcp/web/`，见
+    `CMakeLists.txt` 的 POST_BUILD 步骤）+ 前端同步（`./sync-web.sh`，在复制基础上
+    自动刷新 `?v=` 缓存号）**。C++ 未改动、只动前端时，也**必须**跑 `.sync-web.sh`，
+    它就是“前端构建”这一步（详见下方「前端改动必须同步到 build-mcp/web」）。
+
+## 前端改动必须同步到 build-mcp/web（不可违反）
+
+- 运行中的 `mcp-server` 实际是从 **`build-mcp\web\`**（即 exe 同级 `web/` 目录）提供页面的，
+  **不是** 仓库里的 `web\` 源目录（`build-mcp/` 整体被 `.gitignore` 忽略，只在构建时由
+  `CMakeLists.txt` 的 `copy_directory` 步骤从 `web/` 复制而来）。因此**只改 `web/` 而不触发
+  构建，运行时页面不会变化**。
+- 每当改动 `web/`（含 `index.html`、`src/*.js`、`styles.css` 等）后，必须**立即把
+  `web/` 整体同步到 `build-mcp/web/`**。规范的“前端构建”命令是一条脚本，复制 + 自动刷新
+  缓存号一步完成：
+  - `./sync-web.sh` —— 把 `web/` 复制到 `build-mcp/web/`，并改写其中所有 `?v=<token>`
+    为新的时间戳 token（破除浏览器缓存）。**优先用它，不要手动 cp + 手改 ?v**。
+  - 手动等价命令（不推荐，易漏缓存号）：`cp -r web build-mcp/web` 后 `sed -i -E
+    's/\?v=[A-Za-z0-9]+/?v=NEWTOKEN/g' build-mcp/web/index.html build-mcp/web/src/main.js`。
+  - 该同步与是否重新编译 C++ 无关：即便只改了前端，也要同步；C++ 未改动时无需停 exe、也无需
+    重新构建，但静态文件已落盘，浏览器刷新即可加载。
+- **版本号防缓存（不可省略）**：`index.html` 与各 `src/*.js` 的 `<script>/import` 上都带
+  `?v=<token>` 查询串。前端文件每次变更后，必须让相关的 `?v=` token 变化。`sync-web.sh`
+  已自动处理；若手动改，必须把 `index.html` 引用的 `styles.css` 与 `src/main.js`、以及
+  `main.js` 内 `import` 的 `client.js/catalog.js/viewer.js` 的 token 一起刷新，否则浏览器
+  沿用旧缓存，即便 `build-mcp/web` 已更新也“刷不到”。
+- 校验：同步后用 `grep -nE 'id="entityType"|value="entity"' build-mcp/web/index.html`
+  （或对应本次改动的标志串）确认 `build-mcp/web` 已含最新内容；并在浏览器硬刷新（Ctrl+F5）。
