@@ -4,8 +4,9 @@
 只通过 WebSocket 调用本地 `mcp-server` 暴露的 `sprite.*` / `palette.*` / `scene.*` /
 `ui.*` 工具，拿到 RGBA 帧（Canvas）或把场景 / 界面 PNG 预览绘制到 Canvas。
 
-> 阶段 2/3/4/5 的浏览器查看器，共 **6 种浏览模式**：目录浏览、角色查看器、
-> 怪物 / NPC 查看器、技能 / 战斗查看器、**场景查看器**、**界面布局查看器**。
+> 阶段 2/3/4/5 的浏览器查看器，共 **5 种浏览模式**：目录浏览、**实体查看器**
+> （左侧 `实体类型` 下拉切换 玩家角色 / 怪物 / NPC）、技能 / 战斗查看器、
+> **场景查看器**、**界面布局查看器**。
 > 技能特效（`lm`/`fm`/`qm`）作为可浏览动画纳入；TRN 上色已实装为开关。
 > 场景查看器调用 `scene.list` / `scene.build` 复原**完整关卡场景**（Tristram 城镇 +
 > L1–L4 预设），支持缩放 / 平移 / 叠加层 / dLight 光照，见下方独立章节。
@@ -26,7 +27,7 @@ python -m http.server 8000        # 或： npx serve .
 # 3) 浏览器打开 http://localhost:8000/
 ```
 
-打开后点 **Connect**（默认 `ws://localhost:18765`），顶部「浏览模式」可在 6 种视图间切换：
+打开后点 **Connect**（默认 `ws://localhost:18765`），顶部「浏览模式」可在 5 种视图间切换：
 
 - **目录浏览**（默认）：左侧目录树由 `sprite.list` 构建；点任一精灵即调用 `sprite.decode`
   并绘制，用下方「方向 / 帧」滑块翻看，或点「▶ 播放」循环播放当前方向的动画。
@@ -40,8 +41,8 @@ python -m http.server 8000        # 或： npx serve .
   图标**（`objcurs.cel` 179 帧 / `objcurs2.cel` 61 帧，逐帧宽度不同），`panels` 类为
   物品栏背景（`inv*.cel`，单帧 320×352）。注意 `items` 分支是物品**掉落地面**的动画，
   不是背包里的图标；背包图标在 `inv` 分支。
-- **角色查看器**：见下方独立章节。
-- **怪物 / NPC 查看器**：见下方独立章节。怪物/NPC 没有 MPQ listfile，目录由后端按
+- **实体查看器**：见下方独立章节。左侧 `实体类型` 下拉切换 玩家角色 / 怪物 / NPC，切换后只显示
+  对应的一块独立参数面板，互不混杂。怪物/NPC 没有 MPQ listfile，目录由后端按
   DevilutionX 数据表（`monstdat.tsv` / `towners.tsv`）**合成**（`sprite.list(family:"monsters"/"towners")`）。
 - **技能 / 战斗查看器**：四阶段时间线（施法 → 投射 → 命中 → debuff）。
 - **场景查看器**：见下方独立章节，复原完整关卡地图。
@@ -66,10 +67,15 @@ python -m http.server 8000        # 或： npx serve .
 - **▶ 播放 / ⏸**：以「速度」框指定的 fps（默认 12）循环播放当前方向的帧。
 - 状态栏始终显示**当前帧**尺寸（如 `帧 96×128`），以及 `dir / 帧内` 位置。
 
-### 角色查看器（浏览模式）
+### 实体查看器（浏览模式）
 
-切到「角色查看器」后，左侧出现角色面板，由 `sprite.list(family:"plrgfx")` 一次性构建索引，
-仅列出 MPQ 中**真实存在**的组合：
+原「角色查看器」与「怪物 / NPC 查看器」已合并为**单一实体查看器**：左侧顶部 `实体类型`
+下拉切换 **玩家角色 / 怪物 / NPC**，切换后只渲染对应的一块独立参数面板
+（`panel-character` / `panel-monster` / `panel-npc`），其余两块隐藏，参数绝不堆在一起。
+三类共用同一 `sprite.list` + `sprite.decode` 链路，仅 `family` 不同。
+
+**玩家角色**（`panel-character`，无 MPQ 选择）：由 `sprite.list(family:"plrgfx")` 一次性构建
+索引，仅列出 MPQ 中**真实存在**的组合：
 
 1. **职业**：warrior / rogue / sorcerer / monk（及 Hellfire 的 barbarian / bard，按实际出现填充）。
 2. **动作**：Stand / Walk / Attack / Hit / Lightning / Fire / Magic / Death / Block（友好名后附
@@ -79,22 +85,19 @@ python -m http.server 8000        # 或： npx serve .
 
 切换任意一项即按公式 `plrgfx\{class}\{c}{a}{w}\{c}{a}{w}{type}.cl2` 拼路径并解码，
 再用上方 8 方向控件播放。装备（武器/盔甲）**不做 alpha 合成**——它们本就是独立精灵文件，
-「组合浏览」等价于枚举不同文件名（符合 D1 把武器/盔甲 bake 进文件名前缀的设计）。但**特效叠加层**
-支持 alpha 合成（见下方「特效叠加层（alpha 合成）」）。
+「组合浏览」等价于枚举不同文件名（符合 D1 把武器/盔甲 bake 进文件名前缀的设计）。
 
-### 怪物 / NPC 查看器（浏览模式）
+**怪物 / NPC**（`panel-monster` / `panel-npc`）：怪物（`monsters\`）与 NPC（`towners\`）
+精灵**没有 MPQ listfile**，后端无法靠哈希恢复其真实名，目录由后端从 DevilutionX 数据表
+**合成**：
 
-怪物（`monsters\`）与 NPC（`towners\`）精灵**没有 MPQ listfile**，后端无法靠哈希恢复其
-真实名，因此「怪物 / NPC 查看器」模式下的目录由后端从 DevilutionX 数据表**合成**：
-
-1. **类型**：怪物（Monster）/ NPC（Towner）二选一。
-2. **MPQ**：选解码所用的 MPQ 包（取自目录归档的 `archive_path`，怪物/NPC 真实存在于
+1. **MPQ**：选解码所用的 MPQ 包（取自目录归档的 `archive_path`，怪物/NPC 真实存在于
    `DIABDAT.MPQ` 等；合成条目本身不携带 `archive_path`）。
-3. **怪物**（选「怪物」时）：先选怪物（按 `monstdat.tsv` 的 `assetsSuffix` 分组，如
+2. **怪物**（`panel-monster`）：先选怪物（按 `monstdat.tsv` 的 `assetsSuffix` 分组，如
    `zombie\zombie`），再选**动作**——按动画字母 `n/w/a/h/d/s` 枚举，友好名为
    Stand / Walk / Attack / Hit / Death / Special（Special 仅当 `frames[6]` 末项 > 0 时存在），
    下拉项附 `帧/方向` 数。切换即 `sprite.decode(name,width:"auto")` 并播放。
-4. **NPC**（选「NPC」时）：列出 `towners.tsv` 的 `animPath`（如铁匠 Griswold、医师 Pepin…）
+3. **NPC**（`panel-npc`）：列出 `towners.tsv` 的 `animPath`（如铁匠 Griswold、医师 Pepin…）
    及硬编码的 `towners\animals\cow.cel`，均为单方向 `.cel`，解码后逐帧/播放。
 
 怪物方向数不再手填：后端 `sprite.decode` 按 `monstdat` 的 `frames[6]` 切分并返回
@@ -107,23 +110,9 @@ NPC 固定单方向。两者宽度均由后端自动查表（`monstdat.tsv` / `t
 正确解码（含所有 Hellfire 怪物）。MPQ 路径统一规范为 `/`，避免 `recovered.json` 里 `/` 与 `\`
 混用导致同一档案被重复打开而报 `cannot open archive`。
 
-### 特效叠加层（alpha 合成）
-
-画布下方有一块「特效叠加层」面板（默认折叠，点「展开」）。在**任一浏览模式**选中基础精灵后，
-可把任意特效精灵作为独立图层叠加到底图当前帧上，按 `(dir, frame)` 对齐并做源 alpha 合成：
-
-- **快速加**：面板自动按当前模式给出常用特效——
-  - 角色模式：当前职业的技能特效 `plrgfx\{c}\{caw}\{caw}{lm/fm/qm}.cl2`（闪电 / 火 / 魔法）；
-  - 怪物模式：该怪物的 Special `s` 动画（`..._{nwahd}.cl2` → `..._s.cl2`）。
-- **通用加**：下拉列出当前目录全部精灵，可任意选取做底图叠加（如把一件物品/技能特效叠到角色上）。
-- 每个叠加层可单独**启用/停用**、设 `x/y` 偏移、**移除**；元信息行显示「· 叠加层 N」。
-
-实现见 `web/src/viewer.js` 的 `drawComposite` 与 `web/src/main.js` 的 `overlayLayers` 状态
-（叠加层复用基础精灵的调色板 / TRN 上下文，由 `buildDecodeArgs` 统一构造解码参数）。
-
 ### 技能 / 战斗查看器（浏览模式）
 
-第 4 种浏览模式，以**施放者为中心**同屏显示 施放者 + 目标 + 攻击/施法效果：
+第 3 种浏览模式，以**施放者为中心**同屏显示 施放者 + 目标 + 攻击/施法效果：
 
 1. **来源**：三选一——玩家技能（51 个，来自 `spelldat.tsv`）、怪物远程攻击（25 条：16 类
    `GetMissileType` AI，含唯一怪带来的 `AcidUnique`/`LazarusSuccubus`；加 9 个「AI 函数内直接
@@ -166,7 +155,7 @@ NPC 固定单方向。两者宽度均由后端自动查表（`monstdat.tsv` / `t
 - 命中 / 爆炸阶段在数据表中无外键，按命名约定自动关联，其余进 `impact_catalog` 候选
   （标 `confidence:"catalog"`）。
 
-### 界面布局查看器（浏览模式，第 6 种）
+### 界面布局查看器（浏览模式，第 5 种）
 
 顶部「浏览模式」切到 **界面布局查看器**。左栏「界面」下拉由 `ui.list` 填充 **18 个
 DiabloUI 界面**（主菜单 / 标题 / 制作群 / 英雄·难度选择 / OK·YesNo / 设置 / 底部控制面板
@@ -268,7 +257,7 @@ web/
 - `sprite.list` 一并返回 `archive_path`（取自 recovered.json 的档案 `path`），`main.js`
   直接用它对 `sprite.decode` 解码——点选精灵即可直接解码，无需手填路径。
   （缺失时错误条会提示，便于排查 recovered.json 数据问题。）
-- 调色板下拉框在**角色查看器 / 怪物查看器模式**下已预筛选为「关卡调色板」（`levels\*`/`nlevels\*`），
+- 调色板下拉框在**实体查看器模式**下已预筛选为「关卡调色板」（`levels\*`/`nlevels\*`），
   目录浏览模式下列出全部 `.pal`；这是保真折中——玩家/怪物精灵只有在关卡调色板下颜色才正确。
 - **TRN 上色已实现（开关切换）**：控制条新增「应用 TRN」复选框 + TRN 预设下拉
   （职业默认 / infra 红外视觉 / stone 石化），默认关闭（原调色板模式）。开启后 `sprite.decode`
@@ -279,7 +268,7 @@ web/
 - 8 方向切分按 `总帧数 / 方向数` 整除近似；若某精灵并非严格方向优先（如部分非玩家精灵），
   可手动把「方向数」调为 1 退回逐帧浏览。
 
-## 场景查看器（第 5 种浏览模式）
+## 场景查看器（第 4 种浏览模式）
 
 切换到「场景查看器」后，共享 Canvas 被隐藏，改为一个可平移 / 缩放的视口，里面是两张
 绝对定位、像素级对齐的 `<canvas>`：场景底图 + SOL 叠加层。

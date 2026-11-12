@@ -480,3 +480,7 @@
 ## 2026-11-13 02:42:25
 - 重构前端实体查看器参数面板：把原先“怪物/NPC 共用一个 monsterSub 壳、靠 hidden 切换行”的结构，改为 玩家角色/怪物/NPC 三块完全独立的参数面板（panel-character / panel-monster / panel-npc），切换实体类型时只渲染对应那一块，其余整块隐藏，杜绝参数堆砌混淆；MPQ 选择器分别归于怪物与 NPC 面板各自独立的 #monsterArchive / #npcArchive；删除 showMonsterView 死代码与 entArchiveWrap/charSub/monsterSub 等旧 id。已用 sync-web.sh 重新同步 build-mcp/web 并升缓存号；更新 ARCHITECTURE/PROJECT 文档对应描述。
 - 涉及: web/index.html, web/src/main.js, web/styles.css, docs/ARCHITECTURE.md, docs/PROJECT.md, build-mcp/web/(构建产物)
+
+## 2026-11-13 03:11:55
+- 彻底删除前端「特效叠加层（alpha 合成）」功能与面板：按用户要求从 目录浏览 / 技能战斗查看器（连同此前已从实体查看器移除的部分）一并清除——删除 index.html 的 #overlaysPanel、styles.css 整段 .overlays/.overlay-* 样式、main.js 的 overlayLayers/lastDecodeArgs/characterEffectNames/monsterSpecialNames/populateOverlayQuick/populateOverlayPick/addOverlay/renderOverlayList 及全部监听器与引用；viewer.js 的 drawComposite 简化为单帧绘制、去掉 overlays 形参，等价冗余的 drawFrame 一并删除，调用点改为传空。所有查看器今后只做纯精灵查看。同步清理 web/README.md 中指向已删除小节与合并前 6 种独立模式的旧描述（改为 5 种模式 / 实体查看器三面板结构、章节编号顺延），并把 ARCHITECTURE/PROJECT 里“保留于目录浏览”等残留表述统一改为“已整体移除”。场景/界面布局查看器自带的 #sceneOverlay/#guiOverlay（后端生成的网格/SOL 与元素框叠加）属不同功能，保留。三套测试 core/unit/integration 全绿、node --check 通过；已用 sync-web.sh 重新同步 build-mcp/web 并升缓存号 20261113031133。
+- 涉及: web/index.html, web/src/main.js, web/src/viewer.js, web/styles.css, web/README.md, docs/ARCHITECTURE.md, docs/PROJECT.md, build-mcp/web/(构建产物)

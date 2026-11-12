@@ -19,7 +19,7 @@
 
 import { McpClient } from "./client.js?v=20261113d";
 import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js?v=20261113d";
-import { drawFrame, drawComposite, drawScene } from "./viewer.js?v=20261113d";
+import { drawComposite, drawScene } from "./viewer.js?v=20261113d";
 
 const $ = (id) => document.getElementById(id);
 
@@ -57,13 +57,6 @@ let allArchives = [];
 
 // Monster catalog grouped by class: class -> [{ name, anim, fpd, type }].
 let monsterMap = null;
-
-// Effect-overlay layers composited (alpha) onto the current sprite. Each entry:
-// { name, frames:[{rgba_base64,width,height}], directions, enabled, dx, dy }.
-let overlayLayers = [];
-// The decode args used for the current base sprite, so overlays reuse the same
-// archive / palette / TRN context.
-let lastDecodeArgs = null;
 
 // Skill / combat viewer: stage-ordered full-cast timeline (caster + target +
 // effect layers in one scene). spell.list supplies the catalog.
@@ -656,165 +649,11 @@ async function syncEntityType() {
   }
 }
 
-// ---- Effect-overlay layers (alpha compositing) ------------------------------
-
-function isMonsterMode() {
-  return isEntityMode() && $("entityType").value === "monster";
-}
-function isNpcMode() {
-  return isEntityMode() && $("entityType").value === "npc";
-}
-
-// Character skill-effect sprite names for the current class + equipment prefix
-// (plrgfx\{class}\{prefix}\{prefix}{type}.cl2, type ∈ lm/fm/qm).
-function characterEffectNames() {
-  if (!charIndex || !isCharMode()) return [];
-  const cp = $("charClass").value;
-  const e = charIndex.get(cp);
-  if (!e) return [];
-  const armor = $("charArmor").value || "l";
-  const weapon = $("charWeapon").value || "n";
-  const prefix = e.classChar + armor + weapon;
-  return [
-    { label: "闪电 lm", name: `plrgfx\\${cp}\\${prefix}\\${prefix}lm.cl2` },
-    { label: "火 fm", name: `plrgfx\\${cp}\\${prefix}\\${prefix}fm.cl2` },
-    { label: "魔法 qm", name: `plrgfx\\${cp}\\${prefix}\\${prefix}qm.cl2` },
-  ];
-}
-
-// Monster "Special" overlay name: replace the current animation letter with `s`
-// (e.g. monsters\zombie\zombien.cl2 -> monsters\zombie\zombies.cl2).
-function monsterSpecialNames() {
-  if (!monsterMap || !isMonsterMode() || isNpcMode()) return [];
-  const cls = $("monsterSel").value;
-  const list = monsterMap.get(cls) || [];
-  const base = list[0];
-  if (!base) return [];
-  const name = base.name.replace(/[nwahd]\.cl2$/, "s.cl2");
-  if (name === base.name) return [];
-  return [{ label: "Special (s)", name }];
-}
-
-// Quick-add buttons appropriate to the current browse mode.
-function populateOverlayQuick() {
-  const el = $("overlayQuick");
-  el.innerHTML = "";
-  if (isCombatMode()) { el.hidden = true; return; }
-  let items = [];
-  if (isCharMode()) items = characterEffectNames();
-  else if (isMonsterMode()) items = monsterSpecialNames();
-  for (const it of items) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.textContent = it.label;
-    b.title = it.name;
-    b.addEventListener("click", () => addOverlay(it.name));
-    el.appendChild(b);
-  }
-  el.hidden = items.length === 0;
-}
-
-// Generic overlay picker: any sprite from the current catalog can be added.
-function populateOverlayPick() {
-  const sel = $("overlayPick");
-  sel.innerHTML = "";
-  const opt0 = document.createElement("option");
-  opt0.value = "";
-  opt0.textContent = "（选择叠加精灵…）";
-  sel.appendChild(opt0);
-  for (const s of lastSprites) {
-    const o = document.createElement("option");
-    o.value = s.name;
-    o.textContent = s.name;
-    sel.appendChild(o);
-  }
-}
-
-// Decode an overlay sprite (reusing the base sprite's archive/palette/TRN context)
-// and append it to the overlay layer list, then re-render the current frame.
-async function addOverlay(name, archiveOverride) {
-  if (!name) return;
-  if (!lastDecodeArgs) {
-    showError("请先选择并解码一个基础精灵，再添加叠加层。");
-    return;
-  }
-  const baseSprite = { name, archive_path: archiveOverride || lastDecodeArgs.archive };
-  const args = buildDecodeArgs(baseSprite, name);
-  try {
-    setMeta("decoding overlay " + name + " …");
-    const res = await client.callTool("sprite.decode", args);
-    if (!res || !Array.isArray(res.frames) || res.frames.length === 0) {
-      showError("叠加精灵解码失败：" + name + " 未返回帧。");
-      return;
-    }
-    overlayLayers.push({
-      name,
-      frames: res.frames,
-      directions: res.directions || 1,
-      enabled: true,
-      dx: 0,
-      dy: 0,
-    });
-    renderOverlayList();
-    redrawCurrent();
-  } catch (e) {
-    showError("叠加精灵解码失败：" + name + " (" + (e.message || e) + ")");
-  }
-}
-
-// Render the list of current overlay layers with enable / offset / remove controls.
-function renderOverlayList() {
-  const el = $("overlayList");
-  el.innerHTML = "";
-  if (overlayLayers.length === 0) {
-    el.innerHTML = '<div class="overlay-empty">（暂无叠加层）</div>';
-    return;
-  }
-  overlayLayers.forEach((ov, i) => {
-    const row = document.createElement("div");
-    row.className = "overlay-item";
-
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.checked = ov.enabled;
-    cb.title = "启用/停用此叠加层";
-    cb.addEventListener("change", () => { ov.enabled = cb.checked; redrawCurrent(); });
-
-    const nm = document.createElement("span");
-    nm.className = "overlay-name";
-    nm.textContent = ov.name;
-    nm.title = ov.name;
-
-    const dxL = document.createElement("label");
-    dxL.className = "ov-off";
-    dxL.textContent = "x";
-    const dx = document.createElement("input");
-    dx.type = "number"; dx.value = ov.dx; dx.size = 3;
-    dx.addEventListener("change", () => { ov.dx = Number(dx.value) || 0; redrawCurrent(); });
-
-    const dyL = document.createElement("label");
-    dyL.className = "ov-off";
-    dyL.textContent = "y";
-    const dy = document.createElement("input");
-    dy.type = "number"; dy.value = ov.dy; dy.size = 3;
-    dy.addEventListener("change", () => { ov.dy = Number(dy.value) || 0; redrawCurrent(); });
-
-    const rm = document.createElement("button");
-    rm.type = "button";
-    rm.textContent = "✕";
-    rm.title = "移除";
-    rm.addEventListener("click", () => { overlayLayers.splice(i, 1); renderOverlayList(); redrawCurrent(); });
-
-    row.append(cb, nm, dxL, dx, dyL, dy, rm);
-    el.appendChild(row);
-  });
-}
-
 // ---- Decode + 8-direction playback -----------------------------------------
 
 // Build the sprite.decode argument object for `sprite` (optionally overriding the
-// sprite name, used when decoding an effect-overlay variant of the same base).
-// Reuses the current palette + TRN settings so overlays match the base sprite.
+// sprite name to decode a variant of the same base). Reuses the current palette +
+// TRN settings so the decoded frame matches the viewer's current color mode.
 function buildDecodeArgs(sprite, nameOverride, opts = {}) {
   // recovered.json stores archive paths with a mix of "/" and "\". Normalize
   // them: if the same MPQ reaches the backend under two spellings, StormLib is
@@ -904,14 +743,6 @@ async function onSelectSprite(sprite) {
   }
 
   $("combatInfo").hidden = true; $("combatInfo").textContent = "";
-  // Overlays are tied to the base sprite; clear them whenever a new one is picked.
-  overlayLayers = [];
-  renderOverlayList();
-  // Refresh the overlay pickers for the new context: quick-add buttons depend on
-  // the browse mode (character skill effects / monster Special), and the generic
-  // picker lists every sprite in the current catalog.
-  populateOverlayQuick();
-  populateOverlayPick();
 
   const ext = extOf(sprite.name);
   if (!DECODABLE.has(ext)) {
@@ -938,7 +769,6 @@ async function onSelectSprite(sprite) {
   stopPlay();
   try {
     const args = buildDecodeArgs(sprite);
-    lastDecodeArgs = args;
     const res = await client.callTool("sprite.decode", args);
     if (!res || !Array.isArray(res.frames) || res.frames.length === 0) {
       showError("解码失败：" + sprite.name + " 未返回任何帧。");
@@ -980,8 +810,6 @@ function setDirections(dirs) {
 }
 
 // Draw frame (dir, fin) where absolute index = dir * framesPerDir + fin.
-// Composites any enabled effect-overlay layers on top (alpha), aligning each
-// overlay's own (dir, fin) so multi-direction sprites stay in sync.
 function showFrame(dir, fin) {
   if (isCombatMode() || isViewOwnedMode()) return;   // those modes own the view
   if (!currentFrames) return;
@@ -991,17 +819,7 @@ function showFrame(dir, fin) {
   currentDir = dir;
   currentFin = fin;
 
-  const ovRender = [];
-  for (const ov of overlayLayers) {
-    if (!ov.enabled || !ov.frames || !ov.frames.length) continue;
-    const ovFpd = Math.max(1, Math.floor(ov.frames.length / (ov.directions || 1)));
-    let oi = dir * ovFpd + fin;
-    if (oi < 0 || oi >= ov.frames.length) oi = ov.frames.length - 1;
-    const of = ov.frames[oi];
-    if (of) ovRender.push({ rgba: of.rgba_base64, w: of.width, h: of.height, dx: ov.dx, dy: ov.dy, enabled: true });
-  }
-
-  drawComposite($("canvas"), f.rgba_base64, f.width, f.height, ovRender, zoom);
+  drawComposite($("canvas"), f.rgba_base64, f.width, f.height, zoom);
   $("dirNo").textContent = String(dir);
   $("frameNo").textContent = `dir ${dir} / ${currentDirections - 1}  · 帧 ${fin} / ${framesPerDir - 1}`;
   updateMeta(idx, dir, fin);
@@ -1021,9 +839,6 @@ function updateMeta(idx, dir, fin) {
          `dir ${dir} 帧内 ${fin}  ${currentFrames.length} frames`;
   if (lastRes.trn_applied)
     s += `  · TRN: ${lastRes.trn_name || "on"}`;
-  const ovCount = overlayLayers.filter((o) => o.enabled).length;
-  if (ovCount > 0)
-    s += `  · 叠加层 ${ovCount}`;
   setMeta(s);
 }
 
@@ -2328,9 +2143,6 @@ function wireControls() {
       $("canvasWrap").hidden = viewOwned;
       $("sceneView").hidden = !scene;
       $("guiView").hidden = !gui;
-      // The effect-overlay (alpha compositing) panel is removed from the merged
-      // entity viewer; it remains available in Catalog mode.
-      $("overlaysPanel").hidden = viewOwned || entity;
       // The shared sprite/character control bar (palette / TRN / directions /
       // frame / zoom / play / fps / #meta) does not apply to the GUI layout
       // viewer or the scene viewer, both of which have their own controls
@@ -2452,25 +2264,6 @@ function wireControls() {
   });
   $("monsterAnim").addEventListener("change", () => showMonsterSprite());
   $("npcSel").addEventListener("change", () => showNpcSprite());
-
-  // Effect-overlay panel: collapsed by default; expand refreshes the quick-add
-  // buttons (mode-aware) and the generic picker.
-  $("overlayToggle").addEventListener("click", () => {
-    const body = $("overlaysBody");
-    const open = body.hidden;
-    body.hidden = !open;
-    $("overlayToggle").setAttribute("aria-expanded", String(open));
-    $("overlayToggle").textContent = open ? "收起" : "展开";
-    if (open) {
-      populateOverlayQuick();
-      populateOverlayPick();
-    }
-  });
-  $("overlayAddBtn").addEventListener("click", () => {
-    const name = $("overlayPick").value;
-    if (!name) return;
-    addOverlay(name);
-  });
 
   // Skill / combat viewer controls.
   $("combatSource").addEventListener("change", () => {

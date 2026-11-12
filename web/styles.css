@@ -252,47 +252,6 @@ canvas { background: transparent; image-rendering: pixelated; }
 .trn-toggle { font-size: 12px; color: #c9c9d2; cursor: pointer; }
 .trn-toggle input { width: auto; }
 
-/* ---- Effect-overlay layers (alpha compositing) ---- */
-.overlays {
-  margin-top: 8px; border: 1px solid #2c2c34; border-radius: 6px;
-  background: #191920; padding: 6px 8px; font-size: 13px;
-}
-.overlays[hidden] { display: none; }
-.overlays-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.overlays-head span { color: #d6d6dd; font-weight: 600; }
-.overlays-head button {
-  background: #2c2c34; color: #e6e6e6; border: 1px solid #3a3a42;
-  border-radius: 4px; padding: 2px 10px; cursor: pointer; font-size: 12px;
-}
-.overlays-head button:hover { background: #3a3a44; }
-.overlays-body { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
-.overlays-body[hidden] { display: none; }
-.overlay-quick { display: flex; flex-wrap: wrap; gap: 6px; }
-.overlay-quick[hidden] { display: none; }
-.overlay-quick button {
-  background: #2c2c34; color: #cfe3ff; border: 1px solid #3a4a5a;
-  border-radius: 4px; padding: 3px 10px; cursor: pointer; font-size: 12px;
-}
-.overlay-quick button:hover { background: #34404c; }
-.overlay-add { display: flex; gap: 6px; align-items: center; }
-.overlay-add select { flex: 1; background: #15151a; color: #e6e6e6; border: 1px solid #3a3a42; border-radius: 4px; padding: 3px 6px; }
-.overlay-add button {
-  background: #2c2c34; color: #cfe3ff; border: 1px solid #3a4a5a;
-  border-radius: 4px; padding: 3px 12px; cursor: pointer; font-size: 12px;
-}
-.overlay-add button:hover { background: #34404c; }
-.overlay-list { display: flex; flex-direction: column; gap: 4px; }
-.overlay-empty { color: #888893; font-size: 12px; font-style: italic; }
-.overlay-item { display: flex; align-items: center; gap: 6px; background: #15151a; border: 1px solid #2c2c34; border-radius: 4px; padding: 3px 6px; }
-.overlay-item .overlay-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #d6d6dd; font-size: 12px; }
-.overlay-item .ov-off { color: #c9c9d2; font-size: 11px; }
-.overlay-item .ov-off input { width: 44px; background: #1f1f26; color: #e6e6e6; border: 1px solid #3a3a42; border-radius: 3px; padding: 1px 3px; }
-.overlay-item button {
-  background: #3a2c2c; color: #f0b0b0; border: 1px solid #5a3a3a;
-  border-radius: 4px; padding: 1px 8px; cursor: pointer; font-size: 12px;
-}
-.overlay-item button:hover { background: #4a3434; }
-
 /* ---- Skill / combat viewer stage stepper ---- */
 #stageNo { display: inline-block; min-width: 96px; text-align: center; color: #cfe3ff; font-size: 12px; }
 #stagePrev, #stageNext {

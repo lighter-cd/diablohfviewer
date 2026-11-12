@@ -660,18 +660,15 @@ scene.path {id,archive,archives?,from:{x,y},to:{x,y},max_steps?=1024,preview_max
      查找精灵/调色板。回归测试 `testSpriteDecodeCrossArchive`：单 MPQ 解码 Hellfire 怪物应失败、
      传入全栈应成功。修复前全量 325 条合成目录 137 条失败，修复后 116 条转为成功。
 
-5. **（特效叠加层 alpha 合成）**（已实现，2026-11-08）
-   - 通用叠加子系统：任一浏览模式选中基础精灵后，画布下方「特效叠加层」面板（默认折叠）可把任意
-     特效精灵解码为独立图层，按 `(dir, frame)` 对齐后 alpha 合成到底图当前帧上。
-     - 快速加：角色模式列出 `plrgfx\{c}\{caw}\{caw}{lm/fm/qm}.cl2`（闪电/火/魔法）；
-       怪物模式列出该怪物的 Special `s` 动画（把动画字母 `n/w/a/h/d` 换成 `s`）。
-     - 通用加：下拉列出当前目录全部精灵，可任意选取做底图叠加。
-     - 每层可启用/停用、设 `x/y` 偏移、移除；meta 行显示「· 叠加层 N」。
-   - 前端：`web/src/viewer.js` 的 `drawComposite(canvas, 底图RGBA, w, h, 叠加数组)`（每叠加层建离屏
-     Canvas 后 `drawImage` 源 alpha）；叠加层状态在 `web/src/main.js`（`overlayLayers`、`lastDecodeArgs`，
-     `buildDecodeArgs` 复用基础精灵的调色板/TRN 构造解码参数）。切换基础精灵时清空叠加并刷新快速加按钮。
-   - 覆盖用户要求的四类作用域：怪物查看器里的怪物、角色查看器里的技能、通用底图+叠加选取器、
-     monster 的 Special 动画。
+5. **（特效叠加层 alpha 合成）**（曾实现，2026-11-13 已整体移除）
+   - 原通用叠加子系统：任一浏览模式选中基础精灵后，画布下方「特效叠加层」面板可把任意特效精灵
+     解码为独立图层，按 `(dir, frame)` 对齐后 alpha 合成到底图当前帧上（角色 `lm/fm/qm`、怪物
+     Special `s`、通用底图+叠加选取器）。
+   - **该面板与功能已于 2026-11-13 从前端完全删除**（`index.html` 的 `#overlaysPanel`、`main.js`
+     的 `overlayLayers` / `addOverlay` / `populateOverlayQuick` / `renderOverlayList` 等全部移除，
+     `viewer.js` 的 `drawComposite` 简化为单帧绘制、去掉 `overlays` 形参，等价冗余的 `drawFrame`
+     一并删除）。用户认为该叠加层在各查看器里造成困惑，故移除，仅保留场景/界面布局查看器自带的
+     #sceneOverlay / #guiOverlay（后端生成的网格/SOL 与元素框叠加，属不同功能）。
 
 ### 10.3 前端目录结构（JS ES Module + Canvas，零构建，无 Node 运行服务）
 
@@ -743,9 +740,9 @@ Archive 输入框——点选精灵即可直接解码，无需用户手填路径
      提供方向滑块 + 帧滑块 + ▶播放/⏸ + fps 速度；方向数可选 1/2/4/8（plrgfx 默认 8）。
    - 装备**不做 alpha 合成**（D1 把武器/护甲 bake 进文件名前缀，组合浏览=枚举文件名）；
      角色施法动作（`lm`/`fm`/`qm`，**不是**火球类攻击效果）作为可浏览动画纳入动作下拉。
-   - **「特效叠加层（alpha 合成）」面板已从实体查看器移除**（保留于 目录浏览 模式）：
-     实体查看器只需纯精灵查看，不再承载角色技能/怪物 Special 的图层叠加；该子系统仍在
-     目录浏览模式可用（见 §10.2 第 5 项）。
+   - **「特效叠加层（alpha 合成）」子系统已整体移除**（2026-11-13）：原先在实体查看器 / 目录浏览 /
+     技能战斗查看器中提供的图层 alpha 合成功能及面板已全部删除，所有查看器只做纯精灵查看，不再承载
+     角色技能/怪物 Special 的图层叠加（见 §10.2 第 5 项）。
    - 改动 `web/index.html` + `web/src/main.js` + `web/styles.css`，**后端无改动**。
 6. 查看器能力复用（阶段 3 目标，已实现，现已并入第 5 项的实体查看器）：
    - 怪物/NPC 与角色共用同一 `sprite.list` + `sprite.decode` 链路，仅家族不同；

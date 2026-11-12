@@ -62,23 +62,14 @@ function blitScaled(ctx, img, x, y, w, h, alpha) {
   }
 }
 
-// Single frame + optional alpha overlays, magnified `zoom`x and centred.
-// Overlay dx/dy are native-pixel offsets from the base's top-left, so they scale
-// by the same factor and stay aligned with the base.
-export function drawComposite(canvas, baseRgba, baseW, baseH, overlays, zoom) {
+// Single frame magnified `zoom`x and centred.
+export function drawComposite(canvas, baseRgba, baseW, baseH, zoom) {
   const z = validZoom(zoom);
   const ctx = setupView(canvas);
   const sw = baseW * z, sh = baseH * z;
   const ox = Math.round((VIEW_W - sw) / 2);
   const oy = Math.round((VIEW_H - sh) / 2);
   blitScaled(ctx, rgbaToCanvas(baseRgba, baseW, baseH), ox, oy, sw, sh, 1);
-  for (const ov of overlays || []) {
-    if (!ov || !ov.enabled) continue;
-    const img = rgbaToCanvas(ov.rgba, ov.w, ov.h);
-    blitScaled(ctx, img,
-      ox + (ov.dx || 0) * z, oy + (ov.dy || 0) * z,
-      ov.w * z, ov.h * z, ov.alpha);
-  }
 }
 
 // Whole scene: actors at native scene coordinates, magnified `zoom`x and centred.
@@ -102,12 +93,3 @@ export function drawScene(canvas, sceneW, sceneH, actors, zoom) {
   }
 }
 
-// Single frame only, magnified `zoom`x and centred (kept for API completeness).
-export function drawFrame(canvas, rgbaBase64, w, h, zoom) {
-  const z = validZoom(zoom);
-  const ctx = setupView(canvas);
-  const sw = w * z, sh = h * z;
-  const ox = Math.round((VIEW_W - sw) / 2);
-  const oy = Math.round((VIEW_H - sh) / 2);
-  blitScaled(ctx, rgbaToCanvas(rgbaBase64, w, h), ox, oy, sw, sh, 1);
-}
