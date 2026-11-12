@@ -433,6 +433,10 @@
 - P0 实现：mcp-server 同端口 HTTP 静态托管 web/，去掉对 Python 静态服务器的依赖。transport_ws.cpp/h 扩展 serveHttp（web 根可配，默认 exe 同级 web/；新增 .html/.js/.css/.json 等 MIME 与目录穿越防护，保留 /scenes/ 映射），main.cpp 解析 --web-root 并默认按 exe 目录定位 web/；更新 README/ARCHITECTURE 运行说明、RELEASE_PLAN 标记 P0 完成。构建通过，三套测试全绿。
 - 涉及: src/mcp/transport_ws.cpp, src/mcp/transport_ws.h, src/main.cpp, README.md, docs/ARCHITECTURE.md, docs/RELEASE_PLAN.md
 
+## 2026-11-12 19:31:22
+- 新增 docs/COMPLIANCE.md：合规文档（核心底线不提供资源；AI 高清化三层风险——输出物版权/模型权重出处/超分vs生成；GitHub 平台风控；实现护栏清单；多游戏插件额外注意；声明文案）。README 资源声明处加链接指向该文档。
+- 涉及: docs/COMPLIANCE.md, README.md
+
 ## 2026-11-12 19:03:47
 - README.md 项目介绍补充「为什么做这个项目」：说明本项目旨在解决 Hellfire 资料与工具碎片化问题，将其集中到统一 Web 界面。
 - 涉及: README.md

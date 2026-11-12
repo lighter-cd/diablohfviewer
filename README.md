@@ -34,6 +34,8 @@ DiabloHFConverter 是一个 **纯 C/C++ 原生 `mcp-server`**（不依赖 Node.j
 
 本工具的所有解码、查看与复原功能，都依赖你本地已有的正版 MPQ 档案。没有正版文件，与游戏内容相关的功能将无法运行。请通过合法渠道获取你自己的游戏副本。
 
+> 合规细节（含 AI 高清化的版权/模型/平台护栏）见 **[docs/COMPLIANCE.md](docs/COMPLIANCE.md)**。
+
 ---
 
 Diablo 1 / Hellfire 的 MPQ 研究与精灵查看工具。**后端为纯 C/C++ 原生 `mcp-server`**，
