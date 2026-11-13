@@ -21,6 +21,8 @@ import { McpClient } from "./client.js?v=20261113d";
 import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js?v=20261113d";
 import { drawComposite, drawScene } from "./viewer.js?v=20261113d";
 import { t, tOpt, getLang, initI18n, applyI18n, wireLangSelectors, onLangChange } from "./i18n.js?v=20261113d";
+import { renderScene } from "./scene-render.js?v=20261113d";
+import { buildLightMap } from "./scene-light.js?v=20261113d";
 
 // Load the string tables BEFORE anything else runs. Module scripts are deferred,
 // so the whole DOM is already parsed here. onLangChange (registered at the
@@ -1507,6 +1509,10 @@ const sceneState = {
   dragging: false,
   dragX: 0,
   dragY: 0,
+  // Phase 2 front-end lighting state:
+  tiles: null,      // { layout, tileAtlas, specialAtlas, gw, gh, ambient, softFalloff, lights, light }
+  lightOn: false,   // mirrors sceneLightToggle
+  torchDragging: false,
 };
 let sceneCatalog = [];
 
@@ -1633,6 +1639,133 @@ async function sceneDrawUrl(canvas, url) {
   }
 }
 
+// ---- Phase 2: front-end lighting (real-time, zero server round-trip) --------
+// The scene base is rendered locally from the `scene.tiles` index atlas + layout
+// (see renderScene), so changing ambient / moving the torch only recomputes a
+// per-cell dLight map (buildLightMap) and re-blits — no scene.build call.
+
+// Fetch a PNG over HTTP and return a plain pixel buffer {width,height,data}
+// (RGBA Uint8ClampedArray), the same shape renderScene / the Node regression
+// test consume.
+async function fetchPngBuffer(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(t("scene.httpError", { status: resp.status }));
+  const blob = await resp.blob();
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const c = document.createElement("canvas");
+    c.width = bitmap.width; c.height = bitmap.height;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(bitmap, 0, 0);
+    const data = ctx.getImageData(0, 0, c.width, c.height).data;
+    return { width: c.width, height: c.height, data };
+  } finally {
+    if (typeof bitmap.close === "function") bitmap.close();
+  }
+}
+
+// Call scene.tiles (same args as scene.build) and pull the two index atlases.
+async function loadSceneTiles(args) {
+  const res = await client.callTool("scene.tiles", args, pushSceneProgress);
+  if (!res || !res.layout) throw new Error(t("error.sceneTilesNoLayout"));
+  const layout = res.layout;
+  const origin = sceneHttpOrigin();
+  const tileAtlas = await fetchPngBuffer(origin + res.tiles_url);
+  let specialAtlas = null;
+  if (res.special_url) {
+    try { specialAtlas = await fetchPngBuffer(origin + res.special_url); }
+    catch (e) { console.warn("special atlas load failed:", e); specialAtlas = null; }
+  }
+  return { layout, tileAtlas, specialAtlas };
+}
+
+// Render the scene base from the cached tiles into #sceneBase (native res).
+function renderSceneBase() {
+  const t = sceneState.tiles;
+  if (!t) return;
+  const out = renderScene(t.layout, t.tileAtlas, t.specialAtlas, { light: t.light });
+  const canvas = $("sceneBase");
+  canvas.width = out.width;
+  canvas.height = out.height;
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+  ctx.putImageData(new ImageData(out.data, out.width, out.height), 0, 0);
+  sceneState.w = out.width;
+  sceneState.h = out.height;
+}
+
+let sceneReRenderScheduled = false;
+function scheduleSceneReRender() {
+  if (sceneReRenderScheduled) return;
+  sceneReRenderScheduled = true;
+  requestAnimationFrame(() => {
+    sceneReRenderScheduled = false;
+    renderSceneBase();
+    applySceneTransform();
+  });
+}
+
+// Recompute the per-cell dLight map from ambient + lights and re-render.
+function recomputeSceneLight() {
+  const t = sceneState.tiles;
+  if (!t || !sceneState.lightOn) return;
+  t.light = buildLightMap(t.gw, t.gh, t.ambient, t.lights, t.softFalloff);
+  scheduleSceneReRender();
+  positionTorchMarker();
+}
+
+// Position the torch marker at the (first) light's projected native coords
+// within #sceneLayers (which is sized w*zoom, so ×zoom maps native -> layer px).
+function positionTorchMarker() {
+  const t = sceneState.tiles;
+  const marker = $("sceneTorch");
+  if (!t || !sceneState.lightOn || !t.lights || !t.lights.length) {
+    marker.hidden = true;
+    return;
+  }
+  const L = t.lights[0];
+  const proj = t.layout.projection;
+  const Hm = (t.layout.micro_len / 2) * 32;
+  const nx = (L.x - L.y) * 32 - proj.minX + 32;       // cell centre x
+  const ny = (L.x + L.y) * 16 - proj.minY - Hm + 17;  // cell centre y (diamond centre)
+  marker.hidden = false;
+  marker.style.left = (nx * sceneState.zoom) + "px";
+  marker.style.top = (ny * sceneState.zoom) + "px";
+}
+
+function showSceneLightControls(visible) {
+  $("sceneLightControls").hidden = !visible;
+  if (visible && sceneState.tiles) {
+    $("sceneAmbient").value = String(sceneState.tiles.ambient | 0);
+    $("sceneAmbientVal").textContent = String(sceneState.tiles.ambient | 0);
+  }
+}
+
+// Map a pointer event to a map-native coordinate, then invert the isometric
+// projection to a (possibly fractional) micro cell, and move the (first) light.
+function updateTorchFromPointer(e) {
+  const t = sceneState.tiles;
+  if (!t || !sceneState.lightOn) return;
+  const vp = $("sceneViewport");
+  const rect = vp.getBoundingClientRect();
+  const nx = (e.clientX - rect.left - sceneState.panX) / sceneState.zoom;
+  const ny = (e.clientY - rect.top - sceneState.panY) / sceneState.zoom;
+  const proj = t.layout.projection;
+  const Hm = (t.layout.micro_len / 2) * 32;
+  const u = (nx + proj.minX) / 32;        // i - j
+  const v = (ny + proj.minY + Hm - 1) / 16; // i + j (floor diamond top)
+  const ci = (u + v) / 2, cj = (v - u) / 2;
+  const x = Math.max(0, Math.min(t.gw - 1, Math.round(ci)));
+  const y = Math.max(0, Math.min(t.gh - 1, Math.round(cj)));
+  const fx = ci - Math.floor(ci), fy = cj - Math.floor(cj);
+  const offX = Math.max(0, Math.min(7, Math.round(fx * 8)));
+  const offY = Math.max(0, Math.min(7, Math.round(fy * 8)));
+  const lights = t.lights;
+  if (!lights.length) lights.push({ x, y, radius: 15, offset_x: offX, offset_y: offY });
+  else { lights[0].x = x; lights[0].y = y; lights[0].offset_x = offX; lights[0].offset_y = offY; }
+  recomputeSceneLight();
+}
+
 function applySceneTransform() {
   if (!sceneState.loaded) return;
   const z = sceneState.zoom;
@@ -1648,6 +1781,8 @@ function applySceneTransform() {
     el.style.height = `${sceneState.h * z}px`;
   }
   $("sceneZoomNo").textContent = `${z}×`;
+  // Phase 2: keep the torch marker glued to its map point while panning/zooming.
+  if (sceneState.tiles && sceneState.lightOn) positionTorchMarker();
 }
 
 function sceneFit() {
@@ -1778,39 +1913,84 @@ async function loadScene() {
     args.dirt_border = !!$("sceneDirtBorderToggle").checked;
     // The onProgress callback streams backend $/progress notifications into the
     // loading mask in real time.
-    const res = await client.callTool("scene.build", args, pushSceneProgress);
-    if (!res || !res.image_base64) throw new Error(t("error.sceneBuildNoImage"));
-    // Prefer the backend HTTP endpoint for the NATIVE-resolution image so the
-    // canvas shows the full-size scene (base + overlay both native, aligned).
-    // Fall back to the base64 preview if the endpoint is unavailable.
-    const origin = sceneHttpOrigin();
-    let dim;
+    // ---- Phase 2: render the base locally from scene.tiles (index atlas +
+    // layout); scene.build is only used for the aligned overlay PNG + metadata.
+    sceneState.lightOn = !!$("sceneLightToggle").checked;
+
+    // 1) tiles: atlas + layout for the front-end base render. ALWAYS request
+    //    lighting:false — the front-end owns lighting end-to-end (ambient slider
+    //    + draggable torch), recomputing the dLight map locally via buildLightMap.
+    //    Fetching with lighting:true would make the server ship a precomputed
+    //    layout.light that renderScene falls back to when the user turns lighting
+    //    OFF (opts.light=null), wrongly lighting the scene against their wish.
+    let tiles = null;
     try {
-      dim = await sceneDrawUrl($("sceneBase"), origin + res.image_url);
-      await sceneDrawUrl($("sceneOverlay"), res.overlay_url ? origin + res.overlay_url : "");
+      tiles = await loadSceneTiles({ ...args, lighting: false });
     } catch (e) {
-      console.warn("scene URL load failed, using base64 preview:", e);
-      dim = await sceneDrawPng($("sceneBase"), res.image_base64);
-      await sceneDrawPng($("sceneOverlay"), res.overlay_base64 || "");
+      console.warn("scene.tiles failed, will fall back to server PNG:", e);
+      tiles = null;
     }
-    $("sceneOverlay").hidden = !res.overlay_url || !$("sceneOverlayToggle").checked;
+
+    // 2) scene.build: overlay + metadata (lighting-independent overlay, so keep
+    //    it off to avoid an unused lit base render on the server).
+    let buildRes = null;
+    try {
+      buildRes = await client.callTool("scene.build",
+        { ...args, lighting: false }, pushSceneProgress);
+    } catch (e) {
+      console.warn("scene.build failed:", e);
+    }
+
+    if (tiles) {
+      const L = tiles.layout;
+      const lights = Array.isArray(L.lights)
+        ? L.lights.map((o) => ({ ...o })) : [];
+      const ambient = (L.default_ambient != null) ? L.default_ambient
+        : (L.ambient || 0);
+      sceneState.tiles = {
+        layout: L, tileAtlas: tiles.tileAtlas, specialAtlas: tiles.specialAtlas,
+        gw: L.grid_width, gh: L.grid_height, ambient,
+        softFalloff: !!L.soft_falloff, lights,
+        light: sceneState.lightOn
+          ? buildLightMap(L.grid_width, L.grid_height, ambient, lights, !!L.softFalloff)
+          : null,
+      };
+      renderSceneBase();
+    } else if (buildRes && buildRes.image_base64) {
+      // Fallback: draw the server base PNG directly.
+      const dim = await sceneDrawUrl($("sceneBase"), sceneHttpOrigin() + buildRes.image_url);
+      sceneState.w = dim.w; sceneState.h = dim.h;
+    } else {
+      throw new Error(t("error.sceneTilesNoLayout"));
+    }
+
+    // Overlay (grid / SOL markers) from scene.build, aligned to the tiles base.
+    if (buildRes && buildRes.overlay_url) {
+      try {
+        await sceneDrawUrl($("sceneOverlay"), sceneHttpOrigin() + buildRes.overlay_url);
+      } catch (e) { console.warn("overlay load failed:", e); }
+    }
+    $("sceneOverlay").hidden = !buildRes || !buildRes.overlay_url || !$("sceneOverlayToggle").checked;
+
     // Night-palette scenes (e.g. Tristram) render very dark and look blank;
     // the brighten toggle defaults to ON, so apply its state on every load.
     $("sceneLayers").classList.toggle("bright", $("sceneBrightToggle").checked);
-    sceneState.w = dim.w || res.preview_width || 0;
-    sceneState.h = dim.h || res.preview_height || 0;
     sceneState.loaded = true;
     sceneFit();
+    showSceneLightControls(sceneState.lightOn);
     // Mirror the GUI layout viewer: show one consolidated scene summary in the
     // top-right "当前资源" line (#currentName) and keep the bottom status bar
     // free of duplicates. The shared sprite control bar (#stageControls) is
     // hidden in scene mode (see setMode), so show the info here instead.
     setMetaT("scene.summary", {
-      title: dataTitle("scene", res.scene_id, res.title),
-      w: res.width, h: res.height, pw: res.preview_width, ph: res.preview_height,
-      gw: res.grid_width, gh: res.grid_height, scale: res.scale,
-      tp: res.transparent_pixel_count, solid: res.solid_count,
-      light: res.lighting ? t("common.on") : t("common.off"),
+      title: dataTitle("scene", (buildRes && buildRes.scene_id) || id, (buildRes && buildRes.title) || id),
+      w: sceneState.w, h: sceneState.h,
+      pw: buildRes ? buildRes.preview_width : null, ph: buildRes ? buildRes.preview_height : null,
+      gw: sceneState.tiles ? sceneState.tiles.gw : (buildRes ? buildRes.grid_width : null),
+      gh: sceneState.tiles ? sceneState.tiles.gh : (buildRes ? buildRes.grid_height : null),
+      scale: buildRes ? buildRes.scale : null,
+      tp: buildRes ? buildRes.transparent_pixel_count : null, solid: buildRes ? buildRes.solid_count : null,
+      light: sceneState.lightOn ? t("common.on") : t("common.off"),
     });
   } catch (e) {
     showErrorT("error.sceneBuild", { error: e.message || e });
@@ -1853,8 +2033,46 @@ function wireSceneControls() {
     $("sceneLayers").classList.toggle("bright", e.target.checked);
   });
   $("sceneLightToggle").addEventListener("change", () => {
-    // Rebuild the scene so dLight shading is applied/removed server-side.
-    loadScene();
+    // Phase 2: toggle lighting locally — the base is rendered client-side, so
+    // turning dLight on/off (and dragging the torch / ambient later) needs no
+    // server round-trip. Only fall back to a full reload if tiles aren't loaded.
+    sceneState.lightOn = $("sceneLightToggle").checked;
+    showSceneLightControls(sceneState.lightOn);
+    if (sceneState.tiles) {
+      sceneState.tiles.light = sceneState.lightOn
+        ? buildLightMap(sceneState.tiles.gw, sceneState.tiles.gh,
+                        sceneState.tiles.ambient, sceneState.tiles.lights,
+                        sceneState.tiles.softFalloff)
+        : null;
+      scheduleSceneReRender();
+      positionTorchMarker();
+    } else {
+      loadScene();
+    }
+  });
+  // Ambient slider: real-time re-shade, no server call.
+  $("sceneAmbient").addEventListener("input", (e) => {
+    const v = parseInt(e.target.value, 10) || 0;
+    $("sceneAmbientVal").textContent = String(v);
+    if (sceneState.tiles) {
+      sceneState.tiles.ambient = v;
+      recomputeSceneLight();
+    }
+  });
+  // Torch marker drag -> move the (first) point light and re-shade.
+  const torch = $("sceneTorch");
+  torch.addEventListener("pointerdown", (e) => {
+    e.stopPropagation();
+    sceneState.torchDragging = true;
+    try { torch.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  torch.addEventListener("pointermove", (e) => {
+    if (!sceneState.torchDragging) return;
+    updateTorchFromPointer(e);
+  });
+  torch.addEventListener("pointerup", (e) => {
+    sceneState.torchDragging = false;
+    try { torch.releasePointerCapture(e.pointerId); } catch (_) {}
   });
   $("sceneDirtBorderToggle").addEventListener("change", () => {
     // Rebuild: the border changes grid size / DUN offset server-side.
@@ -1888,6 +2106,8 @@ function wireSceneControls() {
   }, { passive: false });
   vp.addEventListener("mousedown", (e) => {
     if (!isSceneMode()) return;
+    // The torch marker has its own pointer drag; don't start a map pan on it.
+    if (e.target && e.target.classList && e.target.classList.contains("scene-torch")) return;
     sceneState.dragging = true;
     sceneState.dragX = e.clientX - sceneState.panX;
     sceneState.dragY = e.clientY - sceneState.panY;

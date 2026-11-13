@@ -391,12 +391,15 @@ std::string buildCacheKey(const std::string& id,
                           const std::string& outDir) {
     std::string a;
     for (size_t i = 0; i < archives.size(); ++i) { if (i) a += ";"; a += archives[i]; }
-    // v5: catacombs doorways now render CLOSED door leaves (AddL2Objs /
-    // SetDoorStateClosed), so their dPiece micro changed. Earlier: v4 shaded
-    // dungeon dSpecial sprites by dLight (ClxDrawLight); v3 cropped presets
-    // to the .dun bbox. Assembly inputs and switches are all in the key so
-    // catalog changes / toggles invalidate cached PNGs automatically.
-    return "v5|" + id + "|" + a + "|" +
+    // v6: layout now also ships light-source definitions (default_ambient /
+    // lights / soft_falloff) for the front-end Phase 2 real-time lighting, which
+    // changes the layout schema — bump to invalidate stale pre-v6 caches that
+    // lacked those fields. v5: catacombs doorways now render CLOSED door leaves
+    // (AddL2Objs / SetDoorStateClosed), so their dPiece micro changed. Earlier:
+    // v4 shaded dungeon dSpecial sprites by dLight (ClxDrawLight); v3 cropped
+    // presets to the .dun bbox. Assembly inputs and switches are all in the key
+    // so catalog changes / toggles invalidate cached PNGs automatically.
+    return "v6|" + id + "|" + a + "|" +
            std::to_string(spec.floorMegaTile) + "|" + spec.specialCel + "|" +
            std::to_string(static_cast<int>(spec.specialTable)) + "|" +
            (params.value("dirt_border", false) ? "B1" : "B0") + "|" +
@@ -741,6 +744,32 @@ mcp::ToolResult toolSceneTiles(const mcp::json& params) {
         layout["light"] = lightArr;
     } else {
         layout["lighting"] = false;
+    }
+
+    // Phase 2: always ship the light-source definitions so the front-end can
+    // recompute the per-cell dLight map locally (real-time ambient slider +
+    // draggable torch) with ZERO server round-trips, reproducing scene.build's
+    // lit output exactly. `default_ambient` is the scene's ambient light level;
+    // `lights` is the resolved source list (the auto central torch when lighting
+    // was requested, else a fallback central torch so the front-end's default
+    // lit state always matches scene.build's lit default); `soft_falloff` maps
+    // to light_style == 2 (Nest/Crypt quadratic falloff).
+    layout["default_ambient"] = ambient;
+    layout["soft_falloff"] = (spec->lightStyle == 2);
+    {
+        mcp::json lightsJson = mcp::json::array();
+        if (lights.empty()) {
+            lightsJson.push_back(mcp::json{
+                {"x", gw / 2}, {"y", gh / 2}, {"radius", 15},
+                {"offset_x", 0}, {"offset_y", 0}});
+        } else {
+            for (const auto& s : lights) {
+                lightsJson.push_back(mcp::json{
+                    {"x", s.x}, {"y", s.y}, {"radius", s.radius},
+                    {"offset_x", s.offsetX}, {"offset_y", s.offsetY}});
+            }
+        }
+        layout["lights"] = lightsJson;
     }
 
     mcp::ToolResult r;

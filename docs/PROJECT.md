@@ -866,6 +866,8 @@ DiabloHFConverter/
       地牢 DUN object layer 与 `dTransVal`/`TransList` 透明遮挡尚未接入。这些属于运行时/细节
       保真项，已从阶段 4 主目标中剥离，不影响「完整地图 + 光照/寻路信息」的交付。
 
+- [x] **场景渲染前端化 — Phase 2 实时光照（2026-11-13）**：前端不再依赖服务端把整张地图渲染成 PNG 后调亮，而是后端 `scene.tiles` 下发的**索引 atlas（R=调色板索引，A=绘制/0）+ layout（网格/投影/调色板/16 级 `light_tables`/光源定义）** 在前端 `SceneRenderer`（`web/src/scene-render.js`）本地组装；光照完全由前端掌控——`web/src/scene-light.js` 移植 DevilutionX `level_light.cpp` 的 `buildLightMap`（16 级 falloff + 8×8×16×16 cone + 四向旋转环），据 `layout.lights`/`default_ambient`/`soft_falloff` 实时算每格 dLight，再经 `light_tables[level][index]` 着色后取 `palette`。查看器新增「环境光」滑块与可拖拽「火把」标记（零服务端往返，拖动即重算 dLight 并重绘）；底图始终以 `lighting:false` 请求 `scene.tiles`，确保前端完全掌控光照（规避服务端预计算 `layout.light` 在用户关灯时被回退点亮的隐患）。`scene.tiles` 缓存 key 升 `v6` 并把 `default_ambient`/`lights`/`soft_falloff` 纳入 layout schema。验收：WS `scene.tiles`→atlas HTTP 拉取端到端 200 + 合法 PNG；前端 `buildLightMap` 与后端预计算 `layout.light` 在 l1_rnd2/l2_blind/l3_anvil/l4_diab1/l1_skngdo 上 100% 一致（484/484 格）；前端 `SceneRenderer` 与后端 `scene.build`（unlit）逐像素 100% 对齐；三套测试全绿、`web/src/*` `node --check`、i18n 1371 断言通过。
+
 **阶段 4 验收（2026-11-09 收工）**：
 
 | 验收项 | 状态 |
@@ -884,7 +886,8 @@ DiabloHFConverter/
 | tile 纵向翻转修复（triangle/trapezoid 与 square 统一 top-down） | ✅ |
 | 前端场景查看器 + 关卡 tile 查看器（`web/`） | ✅ |
 | 场景渲染前端化 — Phase 0/1（后端 `scene.tiles` 索引 atlas + layout；前端 `SceneRenderer` 与 `scene.build` PNG 逐像素 100% 对齐，见 `docs/DESIGN_SCENE_WEB_RENDER.md`） | ✅ |
-| 场景渲染前端化 — Phase 2-4（实时光照/环境光滑块、门开关本地切换、查看器管线切换） | ⏳ 待办 |
+| 场景渲染前端化 — Phase 2（实时环境光滑块 + 拖拽火把，零服务端往返，与 `scene.build` 逐像素一致） | ✅ |
+| 场景渲染前端化 — Phase 3/4（门/通道本地开关切换、查看器管线切换） | ⏳ 待办 |
 | 单元 / 集成 / core 三套测试 + mcp-server 构建 | ✅ |
 
 ### 游戏场景如何组织（对照 DevilutionX，2026-11-09 澄清）

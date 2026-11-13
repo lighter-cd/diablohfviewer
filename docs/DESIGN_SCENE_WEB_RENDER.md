@@ -237,8 +237,24 @@ lighting/门 修复用过的 PNG 解码对比）确保 SceneRenderer 与后端�
    - **关键修复**：special atlas 打包原先在增长时调用 `acc.assign(...,0)` 会整体重分配并
      清零缓冲、改变行跨度，导致已放置帧错位/清零；改为「先布局后写入」两遍打包
      （shelf 行宽 2048，逐帧 memcpy 子矩形），`ATLAS diff=0`。
-3. **Phase 2 — 接光照**：前端实时 `light[]` / 环境光滑块（可选移植 `buildLightMap`）。
-   ⏳ 待办（lit 模式已能渲染，但环境光滑块/火把拖拽实时编辑未做）。
+3. **Phase 2 — 接光照（实时、零服务端往返）**：✅ **已完成**（2026-11-13）。
+   - `web/src/scene-light.js` 完整移植 DevilutionX `level_light.cpp` 的 `buildLightMap`
+     （16 级 falloff + `LightConeInterpolations[8][8][16][16]` + 四向旋转环
+     `rotateX/rotateY` + `kRotationSines=[0,1,0,-1]` + offsetX/Y 归一化 + blockX/Y 进位），
+     输入 `gridW,gridH,ambient,lights[],softFalloff`，输出每格 0..15 的 `Uint8Array`。
+   - 后端 `scene.tiles` 缓存 key 升 **v6**，layout 始终下发 `default_ambient` / `lights[]`
+     / `soft_falloff`（即便 `lighting:false` 也下发，供前端自由重算），`light_tables`
+     16×256 一并下发；前端 `renderScene` 新增 `opts.light` 优先级（覆盖服务端
+     `layout.light`）以 `light_tables[level][index]` 逐格重着色。
+   - 查看器交互：新增「环境光」滑块（0..15 实时重算 dLight 并重绘）与可拖拽「火把」标记
+     （逆等距投影拾取微格 + `offset_x/y=round(frac*8)`，零服务端往返）；底图**始终以
+     `lighting:false` 请求** `scene.tiles`，确保前端完全掌控、关灯时不被服务端
+     `layout.light` 回退点亮。
+   - **验收**：WS `scene.tiles`→atlas HTTP 端到端 200 + 合法 PNG；前端 `buildLightMap`
+     与后端预计算 `layout.light` 在 l1_rnd2/l2_blind/l3_anvil/l4_diab1/l1_skngdo 上
+     **100% 一致**（484/484 格）；前端 `SceneRenderer`（unlit）与后端 `scene.build`
+     逐像素 **100%**（`tests/regress_scene_tiles.mjs` 已改为按投影尺寸匹配 build PNG，
+     规避多缓存变体误选）；三套 C++ 测试全绿、`node --check` 通过、i18n 1371 断言通过。
 4. **Phase 3 — 门开关**：基于 `doors[]` 的本地切换 + 过渡动画。⏳ 待办。
 5. **Phase 4 — 切换查看器管线**：场景查看器改用 tiles；PNG 模式保留作导出/缩略图。⏳ 待办。
 

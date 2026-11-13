@@ -126,17 +126,33 @@ const tilesResult = newest(new RegExp(`^${sceneId}_.*\\.tiles\\.result\\.json$`)
 const tilesPng = newest(new RegExp(`^${sceneId}_.*_tiles\\.png$`));
 const specialPng = newest(new RegExp(`^${sceneId}_.*_special\\.png$`));
 // scene.build native PNG: <id>_<hash>.png but NOT the preview/overlay variants.
-const buildPng = newest(new RegExp(`^${sceneId}_[0-9a-f]+\\.png$`));
+// Many cached variants (dirt-border, lighting, older projection) coexist, so we
+// pick the one whose pixel dimensions match the tiles layout's native
+// projection — that is the build produced with the SAME params as the tiles.
+const buildCandidates = fs.readdirSync(SCENES)
+  .filter((f) => new RegExp(`^${sceneId}_[0-9a-f]+\\.png$`).test(f))
+  .map((f) => path.join(SCENES, f));
+const tilesResultParsed = JSON.parse(fs.readFileSync(tilesResult, 'utf8'));
+const tilesLayout = tilesResultParsed.result ? tilesResultParsed.result.layout : tilesResultParsed.layout;
+const wantW = tilesLayout.projection.width, wantH = tilesLayout.projection.height;
+let buildPng = null;
+for (const f of buildCandidates) {
+  try {
+    const p = readPNG(f);
+    if (p.width === wantW && p.height === wantH) { buildPng = f; break; }
+  } catch { /* not a PNG we can read */ }
+}
+if (!buildPng) buildPng = newest(new RegExp(`^${sceneId}_[0-9a-f]+\\.png$`));
 
 console.log('tiles result :', tilesResult);
 console.log('tiles png    :', tilesPng);
 console.log('special png  :', specialPng || '(none)');
-console.log('build png    :', buildPng);
+console.log('build png    :', buildPng, `(target ${wantW}x${wantH})`);
 if (!tilesResult || !tilesPng || !buildPng)
   throw new Error('could not locate artifacts for scene ' + sceneId);
 
-const parsed = JSON.parse(fs.readFileSync(tilesResult, 'utf8'));
-const layout = parsed.result ? parsed.result.layout : parsed.layout;
+const parsed = tilesResultParsed;
+const layout = tilesLayout;
 const tileAtlas = readPNG(tilesPng);
 const specialAtlas = specialPng ? readPNG(specialPng) : null;
 

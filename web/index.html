@@ -229,6 +229,14 @@
         <label class="scene-check"><input type="checkbox" id="sceneOverlayToggle" checked /> <span data-i18n="scene.overlayToggle">显示叠加层（网格 / SOL 标志）</span></label>
         <label class="scene-check"><input type="checkbox" id="sceneBrightToggle" checked /> <span data-i18n="scene.brightToggle">提亮（夜景）</span></label>
         <label class="scene-check"><input type="checkbox" id="sceneLightToggle" /> <span data-i18n="scene.lightToggle">光照（dLight 暗部 + 中心火把）</span></label>
+        <div id="sceneLightControls" class="scene-light-controls" hidden>
+          <div class="scene-light-row">
+            <span data-i18n="scene.ambient">环境光</span>
+            <input type="range" id="sceneAmbient" min="0" max="15" step="1" value="0" />
+            <span id="sceneAmbientVal">0</span>
+          </div>
+          <div class="scene-light-hint" data-i18n="scene.torchHint">在地图上拖动火把（中心点光源）即时改变光照；拖动环境光滑块实时重着色。全部在浏览器本地完成，零服务端往返。</div>
+        </div>
         <label class="scene-check"><input type="checkbox" id="sceneDirtBorderToggle" /> <span data-i18n="scene.dirtToggle">绘制 Dirt 边框（忠实复原 dPiece，会遮挡房间）</span></label>
         <button id="sceneFitBtn" type="button" data-i18n="scene.fitBtn">复位视图</button>
         <button id="sceneClearCacheBtn" type="button" data-i18n="scene.clearCacheBtn">清除地图缓存</button>
@@ -303,8 +311,9 @@
       <div class="scene-view" id="sceneView" hidden>
         <div id="sceneViewport" class="scene-viewport">
           <div id="sceneLayers" class="scene-layers">
-            <canvas id="sceneBase" aria-label="scene"></canvas>
-            <canvas id="sceneOverlay" aria-label="scene overlay"></canvas>
+        <canvas id="sceneBase" aria-label="scene"></canvas>
+        <canvas id="sceneOverlay" aria-label="scene overlay"></canvas>
+        <div id="sceneTorch" class="scene-torch" hidden title="torch"></div>
           </div>
         </div>
       </div>

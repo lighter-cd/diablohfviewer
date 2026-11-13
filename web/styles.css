@@ -329,6 +329,25 @@ canvas { background: transparent; image-rendering: pixelated; }
    contrast reduction lifts shadow detail while keeping the diamond background
    near-black; brightness restores overall level. Toggle defaults to ON. */
 .scene-layers.bright canvas { filter: brightness(1.7) contrast(0.85) saturate(1.1); }
+/* Phase 2: front-end lighting controls. The torch marker is a child of
+   .scene-layers (positioned at the light's projected native coords × zoom), so
+   it tracks pan/zoom automatically; only its left/top are recomputed. */
+.scene-torch {
+  position: absolute; width: 14px; height: 14px; margin: 0;
+  border-radius: 50%; transform: translate(-50%, -50%);
+  background: radial-gradient(circle, #fff2b0 0%, #ffb53a 55%, rgba(255,140,0,0) 100%);
+  border: 1px solid #ffd479; box-shadow: 0 0 10px 3px rgba(255,170,40,0.7);
+  cursor: grab; z-index: 5;
+}
+.scene-torch:active { cursor: grabbing; }
+.scene-torch[hidden] { display: none; }
+.scene-light-controls { display: flex; flex-direction: column; gap: 6px; padding: 6px 8px; margin-top: 4px;
+  background: #15151a; border: 1px solid #3a3a42; border-radius: 5px; }
+.scene-light-controls[hidden] { display: none; }
+.scene-light-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #e6e6e6; }
+.scene-light-row input[type=range] { flex: 1; }
+#sceneAmbientVal { color: #ffd479; min-width: 18px; text-align: right; }
+.scene-light-hint { font-size: 11px; color: #9aa0aa; line-height: 1.4; }
 
 /* ---- GUI layout viewer (6th browse mode) ----
    Three stacked <canvas> layers at native 640x480, all scaled together via CSS

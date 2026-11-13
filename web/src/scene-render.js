@@ -96,8 +96,10 @@ export function renderScene(layout, tileAtlas, specialAtlas, opts = {}) {
 
   // Lighting: with a precomputed `light` array we shade via LightTables; without
   // it (FullyLit) we use the plain palette, exactly like scene.build with
-  // lighting=false.
-  const light = layout.lighting && layout.light ? layout.light : null;
+  // lighting=false. An explicit opts.light (e.g. recomputed by the front-end's
+  // ambient slider / draggable torch) takes priority over the shipped one.
+  const light = opts.light ? opts.light
+              : (layout.lighting && layout.light ? layout.light : null);
   const shadeFor = (idx, cellIdx) => {
     if (!light) return idx; // FullyLit: identity through the palette
     const level = light[cellIdx] & 0x0f;
