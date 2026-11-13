@@ -229,3 +229,94 @@ export function renderScene(layout, tileAtlas, specialAtlas, opts = {}) {
 
   return { width: W, height: H, data: out };
 }
+
+// ---- Phase 4: front-end overlay (grid + SOL tint) ---------------------------
+// The backend's `scene.build` used to ship a separate overlay PNG aligned to the
+// (downscaled) preview. With the viewer now fully tiles-driven, this port draws
+// the SAME overlay on the client at NATIVE resolution — identical projection /
+// slot math to renderScene, so it lands pixel-perfectly on the base. Fully
+// transparent except for the translucent SOL tints and the coarse reference
+// grid, so the underlying tile art still shows through.
+//
+// SOL tint priority (matches decoders::buildOverlay): solid (red) > transparent
+// flag (blue) > blockLight (yellow). Major grid lines every 8th cell.
+
+function overlayPutPixel(out, w, h, x, y, r, g, b, a) {
+  if (x < 0 || x >= w || y < 0 || y >= h) return;
+  const q = (y * w + x) * 4;
+  out[q] = r; out[q + 1] = g; out[q + 2] = b; out[q + 3] = a;
+}
+
+function overlayLine(out, w, h, x0, y0, x1, y1, r, g, b, a) {
+  let dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+  let dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+  let err = dx + dy;
+  for (;;) {
+    overlayPutPixel(out, w, h, x0, y0, r, g, b, a);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x0 += sx; }
+    if (e2 <= dx) { err += dx; y0 += sy; }
+  }
+}
+
+function overlayFillDiamond(out, w, h, cx, cy, halfW, halfH, r, g, b, a) {
+  const deny = Math.max(1, halfH);
+  for (let y = -halfH; y <= halfH; ++y) {
+    const span = (halfW * (halfH - Math.abs(y))) / deny;
+    for (let x = -span; x <= span; ++x)
+      overlayPutPixel(out, w, h, cx + x, cy + y, r, g, b, a);
+  }
+}
+
+export function renderSceneOverlay(layout) {
+  const {
+    micro_len,
+    grid_width: gw,
+    grid_height: gh,
+    projection,
+  } = layout;
+  const Hm = (micro_len / 2) * 32;
+  const W = projection.width, H = projection.height;
+  // All-zero RGBA => fully transparent; only tints/grid are painted on top.
+  const out = new Uint8ClampedArray(W * H * 4);
+  const solid = layout.solid || [];
+  const transparent = layout.transparent || [];
+  const blockLight = layout.block_light || [];
+  const { minX, minY } = projection;
+
+  for (let j = 0; j < gh; ++j) {
+    for (let i = 0; i < gw; ++i) {
+      const idx = j * gw + i;
+      // Diamond corners in native coords (step = 1). `slot` is the floor
+      // diamond top, identical to renderScene's slotTop(colTop(i,j), 0).
+      const baseX = (i - j) * 32 - minX;
+      const baseY = (i + j) * 16 - minY;
+      const slot = baseY - 31;
+      const topX = baseX + 32, topY = slot;
+      const rightX = baseX + 64, rightY = slot + 16;
+      const botX = baseX + 32, botY = slot + 32;
+      const leftX = baseX, leftY = slot + 16;
+      const cx = (leftX + rightX) / 2;
+      const cy = (topY + botY) / 2;
+      const halfW = Math.max(1, (rightX - leftX) / 2);
+      const halfH = Math.max(1, (botY - topY) / 2);
+
+      let r = 0, g = 0, b = 0, a = 0;
+      if (solid[idx]) { r = 255; g = 60; b = 60; a = 55; }
+      else if (idx < transparent.length && transparent[idx]) { r = 60; g = 160; b = 255; a = 55; }
+      else if (idx < blockLight.length && blockLight[idx]) { r = 255; g = 200; b = 60; a = 45; }
+      if (a > 0) overlayFillDiamond(out, W, H, cx, cy, halfW, halfH, r, g, b, a);
+
+      // Major reference grid (every 8th cell) — keeps the coarse grid legible
+      // while the tint carries per-cell data.
+      if (i % 8 === 0 && j % 8 === 0) {
+        overlayLine(out, W, H, topX, topY, rightX, rightY, 255, 255, 255, 140);
+        overlayLine(out, W, H, rightX, rightY, botX, botY, 255, 255, 255, 140);
+        overlayLine(out, W, H, botX, botY, leftX, leftY, 255, 255, 255, 140);
+        overlayLine(out, W, H, leftX, leftY, topX, topY, 255, 255, 255, 140);
+      }
+    }
+  }
+  return { width: W, height: H, data: out };
+}

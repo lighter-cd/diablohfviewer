@@ -174,7 +174,7 @@
     "wsNotConnected": "WebSocket is not connected"
   },
   "scene": {
-    "title": "Scene Viewer (scene.list / scene.build · complete isometric level)",
+    "title": "Scene Viewer (scene.tiles · front-end isometric render)",
     "select": "Scene",
     "archive": "MPQ path (optional, overrides the catalog's primary archive)",
     "archivePlaceholder": "Leave empty to use the discovered archive stack",
@@ -189,11 +189,14 @@
     "dirtToggle": "Draw Dirt border (faithful dPiece, may cover the room)",
     "fitBtn": "Reset view",
     "clearCacheBtn": "Clear map cache",
-    "hint": "Pick a scene -> loads immediately: the backend uses DevilutionX's two-pass draw (floor diamonds + walls) to reconstruct the complete scene, returning a PNG preview plus an aligned overlay. Drag to pan, use the dropdown or the wheel to zoom (0.25×/0.5× for a whole-map preview; zoom keeps the map centre). Toggling Lighting reuses the backend cache for the lit/unlit results. Red=Solid, Blue=transparent, Yellow=BlockLight. \"Clear map cache\" deletes generated scene images and forces a rebuild next time.",
+    "exportBtn": "Export scene PNG",
+    "exporting": "Exporting {id} PNG …",
+    "exportNoUrl": "Export failed: server returned no image URL",
+    "hint": "Pick a scene -> loads immediately: the backend scene.tiles ships an index atlas + layout, and the browser renders the isometric map locally (floor diamonds + walls), computing lighting and the overlay (grid / SOL markers) on the client — zero server round-trip. Drag to pan, use the dropdown or the wheel to zoom (0.25×/0.5× for a whole-map preview; zoom keeps the map centre). \"Door edit\" toggles doors open/closed locally. \"Export scene PNG\" calls scene.build to produce a server PNG for export/thumbnail. Red=Solid, Blue=transparent, Yellow=BlockLight. \"Clear map cache\" deletes generated scene images and forces a rebuild next time.",
     "none": "(no scene selected)",
     "noSelection": "(no scene selected — pick one from the dropdown above)",
     "loading": "Loading scene {id} …",
-    "summary": "{title}  native {w}×{h}  preview {pw}×{ph}  grid {gw}×{gh}  scale 1/{scale}  transparent {tp}  Solid {solid}  lighting {light}",
+    "summary": "{title}  native {w}×{h}  grid {gw}×{gh}  Solid {solid}  lighting {light}",
     "pngDecodeFailed": "Scene PNG decode failed",
     "httpError": "Scene image HTTP {status}",
     "option": "{title}  ({w}×{h})"

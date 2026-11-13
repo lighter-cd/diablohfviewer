@@ -10,7 +10,8 @@
 //     #entityType dropdown switches between 玩家角色 (Character), 怪物 (Monster)
 //     and NPC (Towner); each shows only its own parameter panel and all three
 //     share the same sprite.decode + 8-direction playback.
-//   - Scene (场景查看器): scene.list / scene.build complete level renders.
+//   - Scene (场景查看器): scene.tiles (index atlas + layout) drives a front-end
+//     isometric renderer; scene.build is retained only for PNG export.
 //   - GUI (界面布局查看器, 6th): ui.list / ui.build reconstruct DiabloUI
 //     screens from real MPQ art + an approximate-font text layer.
 //
@@ -21,7 +22,7 @@ import { McpClient } from "./client.js?v=20261113d";
 import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js?v=20261113d";
 import { drawComposite, drawScene } from "./viewer.js?v=20261113d";
 import { t, tOpt, getLang, initI18n, applyI18n, wireLangSelectors, onLangChange } from "./i18n.js?v=20261113d";
-import { renderScene } from "./scene-render.js?v=20261113d";
+import { renderScene, renderSceneOverlay } from "./scene-render.js?v=20261113d";
 import { buildLightMap } from "./scene-light.js?v=20261113d";
 
 // Load the string tables BEFORE anything else runs. Module scripts are deferred,
@@ -1492,11 +1493,14 @@ function stepCombatStage(delta) {
 
 // ---- Scene viewer (5th browse mode) -----------------------------------------
 //
-// The backend scene.build returns two pixel-aligned PNGs (a bounded preview
-// and a transparent SOL overlay) as base64. We decode each into a bitmap and
-// drawImage() it onto one of two stacked <canvas> layers, then apply ONE
-// transform to the shared container, so zoom/pan never desync them. There is no
-// <img>/src involved — the bitmap is drawn, never referenced by a URL.
+// Phase 4: the viewer is fully tiles-driven. The backend scene.tiles ships an
+// index atlas + layout.json; the base map is rendered locally by
+// web/src/scene-render.js (renderScene), and the SOL/grid overlay (renderScene
+// Overlay) is also drawn on the client — both at native resolution onto two
+// stacked <canvas> layers. ONE transform is applied to the shared container, so
+// zoom/pan never desync them. scene.build is retained ONLY as an explicit PNG
+// export (see exportScenePng). There is no <img>/src involved — buffers are
+// drawn via putImageData, never referenced by a URL.
 
 const sceneState = {
   zoom: 1,
@@ -1598,50 +1602,6 @@ function sceneHttpOrigin() {
     return (u.protocol === "wss:" ? "https://" : "http://") + u.host;
   } catch {
     return "http://localhost:18765";
-  }
-}
-
-// Load a scene PNG from the backend HTTP endpoint (native resolution) and blit it
-// onto `canvas`. The backend serves /scenes/<id>.png etc. on the WS port; this
-// keeps the full native image out of the JSON-RPC payload. Empty URL clears.
-async function sceneDrawUrl(canvas, url) {
-  if (!url) {
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    canvas.width = 0;
-    canvas.height = 0;
-    return { w: 0, h: 0 };
-  }
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(t("scene.httpError", { status: resp.status }));
-  const blob = await resp.blob();
-  let bitmap, revoke = null, close = false;
-  if (typeof createImageBitmap === "function") {
-    bitmap = await createImageBitmap(blob);
-    close = true;
-  } else {
-    const u = URL.createObjectURL(blob);
-    revoke = u;
-    bitmap = await new Promise((resolve, reject) => {
-      const el = new Image();
-      el.onload = () => resolve(el);
-      el.onerror = () => reject(new Error(t("scene.pngDecodeFailed")));
-      el.src = u;
-    });
-  }
-  try {
-    const w = bitmap.width || bitmap.naturalWidth;
-    const h = bitmap.height || bitmap.naturalHeight;
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d");
-    ctx.imageSmoothingEnabled = false;
-    ctx.clearRect(0, 0, w, h);
-    ctx.drawImage(bitmap, 0, 0);
-    return { w, h };
-  } finally {
-    if (close && typeof bitmap.close === "function") bitmap.close();
-    if (revoke) URL.revokeObjectURL(revoke);
   }
 }
 
@@ -1980,6 +1940,41 @@ async function loadSceneCatalog() {
   }
 }
 
+// Build the scene tool args shared by the tiles load and the PNG export. The
+// lighting toggle is NOT baked in here: tiles always requests lighting:false
+// (the front-end owns lighting), while the export action reflects the toggle.
+function buildSceneArgs() {
+  const id = $("sceneSel").value;
+  const args = { id };
+  // Prefer an explicit path; otherwise the catalog's primary archive. The full
+  // archive stack is always passed so town/L1 assets resolve even when split
+  // across MPQs.
+  const override = ($("sceneArchive").value || "").trim();
+  const primary = override || ((allArchives && allArchives.length) ? allArchives[0] : null);
+  if (primary) args.archive = primary;
+  if (allArchives && allArchives.length) args.archives = allArchives.slice();
+  args.preview_max_width = 1000;
+  // Dungeon presets are cropped to the .dun bbox by default; the optional
+  // Dirt border restores the faithful full dPiece (and hides the room).
+  args.dirt_border = !!$("sceneDirtBorderToggle").checked;
+  return args;
+}
+
+// Render the overlay (grid + SOL tint) locally from the tiles layout onto
+// #sceneOverlay at NATIVE resolution, so it stays pixel-aligned with the base
+// (renderScene) without any server PNG. Phase 4: replaces scene.build's overlay.
+function renderSceneOverlayCanvas() {
+  const t = sceneState.tiles;
+  if (!t) return;
+  const ov = renderSceneOverlay(t.layout);
+  const canvas = $("sceneOverlay");
+  canvas.width = ov.width;
+  canvas.height = ov.height;
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+  ctx.putImageData(new ImageData(ov.data, ov.width, ov.height), 0, 0);
+}
+
 async function loadScene() {
   if (sceneState.loading) return;
   const id = $("sceneSel").value;
@@ -1988,51 +1983,28 @@ async function loadScene() {
   sceneState.loading = true;
   showSceneLoading(t("scene.loading", { id }));
   try {
-    const args = { id };
-    // Prefer an explicit path; otherwise the catalog's primary archive. The
-    // full archive stack is always passed so town/L1 assets resolve even when
-    // split across MPQs.
-    const override = ($("sceneArchive").value || "").trim();
-    const primary = override || ((allArchives && allArchives.length) ? allArchives[0] : null);
-    if (primary) args.archive = primary;
-    if (allArchives && allArchives.length) args.archives = allArchives.slice();
+    const args = buildSceneArgs();
     if (!args.archive) {
       showErrorT("error.sceneNoArchive");
       return;
     }
-    args.preview_max_width = 1000;
-    args.lighting = !!$("sceneLightToggle").checked;
-    // Dungeon presets are cropped to the .dun bbox by default; the optional
-    // Dirt border restores the faithful full dPiece (and hides the room).
-    args.dirt_border = !!$("sceneDirtBorderToggle").checked;
-    // The onProgress callback streams backend $/progress notifications into the
-    // loading mask in real time.
-    // ---- Phase 2: render the base locally from scene.tiles (index atlas +
-    // layout); scene.build is only used for the aligned overlay PNG + metadata.
     sceneState.lightOn = !!$("sceneLightToggle").checked;
 
-    // 1) tiles: atlas + layout for the front-end base render. ALWAYS request
-    //    lighting:false — the front-end owns lighting end-to-end (ambient slider
-    //    + draggable torch), recomputing the dLight map locally via buildLightMap.
-    //    Fetching with lighting:true would make the server ship a precomputed
-    //    layout.light that renderScene falls back to when the user turns lighting
-    //    OFF (opts.light=null), wrongly lighting the scene against their wish.
+    // ---- Phase 2 + Phase 4: the viewer is fully tiles-driven. The base is
+    // rendered locally from scene.tiles (index atlas + layout) with front-end
+    // lighting (ambient slider + draggable torch), and the overlay (grid + SOL
+    // tint) is now also drawn on the client (renderSceneOverlay). scene.build
+    // is retained ONLY as an explicit export action (see exportScenePng).
+    // ALWAYS request lighting:false — the front-end owns lighting end-to-end;
+    // fetching lighting:true would make the server ship a precomputed
+    // layout.light that renderScene falls back to when the user turns lighting
+    // OFF (opts.light=null), wrongly lighting the scene against their wish.
     let tiles = null;
     try {
       tiles = await loadSceneTiles({ ...args, lighting: false });
     } catch (e) {
-      console.warn("scene.tiles failed, will fall back to server PNG:", e);
+      console.warn("scene.tiles failed:", e);
       tiles = null;
-    }
-
-    // 2) scene.build: overlay + metadata (lighting-independent overlay, so keep
-    //    it off to avoid an unused lit base render on the server).
-    let buildRes = null;
-    try {
-      buildRes = await client.callTool("scene.build",
-        { ...args, lighting: false }, pushSceneProgress);
-    } catch (e) {
-      console.warn("scene.build failed:", e);
     }
 
     if (tiles) {
@@ -2058,22 +2030,14 @@ async function loadScene() {
       sceneState.doorOpen = new Set();
       sceneState.doorOverride = {};
       renderSceneBase();
+      renderSceneOverlayCanvas();
       showDoorControls(sceneState.doorEdit);
-    } else if (buildRes && buildRes.image_base64) {
-      // Fallback: draw the server base PNG directly.
-      const dim = await sceneDrawUrl($("sceneBase"), sceneHttpOrigin() + buildRes.image_url);
-      sceneState.w = dim.w; sceneState.h = dim.h;
     } else {
       throw new Error(t("error.sceneTilesNoLayout"));
     }
 
-    // Overlay (grid / SOL markers) from scene.build, aligned to the tiles base.
-    if (buildRes && buildRes.overlay_url) {
-      try {
-        await sceneDrawUrl($("sceneOverlay"), sceneHttpOrigin() + buildRes.overlay_url);
-      } catch (e) { console.warn("overlay load failed:", e); }
-    }
-    $("sceneOverlay").hidden = !buildRes || !buildRes.overlay_url || !$("sceneOverlayToggle").checked;
+    // Overlay is rendered locally; its visibility still follows the toggle.
+    $("sceneOverlay").hidden = !$("sceneOverlayToggle").checked;
 
     // Night-palette scenes (e.g. Tristram) render very dark and look blank;
     // the brighten toggle defaults to ON, so apply its state on every load.
@@ -2085,14 +2049,17 @@ async function loadScene() {
     // top-right "当前资源" line (#currentName) and keep the bottom status bar
     // free of duplicates. The shared sprite control bar (#stageControls) is
     // hidden in scene mode (see setMode), so show the info here instead.
+    const cat = sceneCatalog.find((s) => s.id === id);
+    const title = cat ? cat.title : id;
+    let solidCount = 0;
+    const solidArr = sceneState.tiles ? sceneState.tiles.layout.solid : null;
+    if (Array.isArray(solidArr)) for (const v of solidArr) if (v) solidCount++;
     setMetaT("scene.summary", {
-      title: dataTitle("scene", (buildRes && buildRes.scene_id) || id, (buildRes && buildRes.title) || id),
+      title: dataTitle("scene", id, title),
       w: sceneState.w, h: sceneState.h,
-      pw: buildRes ? buildRes.preview_width : null, ph: buildRes ? buildRes.preview_height : null,
-      gw: sceneState.tiles ? sceneState.tiles.gw : (buildRes ? buildRes.grid_width : null),
-      gh: sceneState.tiles ? sceneState.tiles.gh : (buildRes ? buildRes.grid_height : null),
-      scale: buildRes ? buildRes.scale : null,
-      tp: buildRes ? buildRes.transparent_pixel_count : null, solid: buildRes ? buildRes.solid_count : null,
+      gw: sceneState.tiles ? sceneState.tiles.gw : null,
+      gh: sceneState.tiles ? sceneState.tiles.gh : null,
+      solid: solidCount,
       light: sceneState.lightOn ? t("common.on") : t("common.off"),
     });
   } catch (e) {
@@ -2100,6 +2067,29 @@ async function loadScene() {
     setMetaT("error.sceneLoadFailed", null, true);
   } finally {
     sceneState.loading = false;
+    hideSceneLoading();
+  }
+}
+
+// Phase 4: retained PNG mode. The viewer no longer depends on scene.build for
+// display, but the server-rendered PNG is kept for EXPORT / thumbnail use. This
+// calls scene.build (reflecting the current lighting toggle) and opens the
+// native-resolution PNG in a new tab so the user can save it.
+async function exportScenePng() {
+  const id = $("sceneSel").value;
+  if (!id || sceneState.loading) return;
+  const args = buildSceneArgs();
+  args.lighting = !!$("sceneLightToggle").checked;
+  showSceneLoading(t("scene.exporting", { id }));
+  try {
+    const res = await client.callTool("scene.build", args, pushSceneProgress);
+    // image_url = native PNG; preview_url = downscaled. Export the full-res one.
+    const url = (res && (res.image_url || res.preview_url));
+    if (!url) throw new Error(t("scene.exportNoUrl"));
+    window.open(sceneHttpOrigin() + url, "_blank");
+  } catch (e) {
+    showErrorT("error.sceneBuild", { error: e.message || e });
+  } finally {
     hideSceneLoading();
   }
 }
@@ -2204,6 +2194,9 @@ function wireSceneControls() {
       showErrorT("error.sceneCacheClear", { error: e.message || e });
     }
   });
+  // Phase 4: retained PNG export (scene.build). The viewer is tiles-driven, but
+  // the server-rendered PNG is still available for export / thumbnail.
+  $("sceneExportBtn").addEventListener("click", () => exportScenePng());
 
   const vp = $("sceneViewport");
   vp.addEventListener("wheel", (e) => {

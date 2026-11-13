@@ -174,7 +174,7 @@
     "wsNotConnected": "WebSocket 未连接"
   },
   "scene": {
-    "title": "场景查看器（scene.list / scene.build · 完整等距关卡）",
+    "title": "场景查看器（scene.tiles · 前端等距渲染）",
     "select": "场景",
     "archive": "MPQ 路径（可选，覆盖目录里的主档案）",
     "archivePlaceholder": "留空则用目录中的档案栈",
@@ -189,11 +189,14 @@
     "dirtToggle": "绘制 Dirt 边框（忠实复原 dPiece，会遮挡房间）",
     "fitBtn": "复位视图",
     "clearCacheBtn": "清除地图缓存",
-    "hint": "选场景 → 立即加载：后端用 DevilutionX 两遍绘制（地板菱形 + 墙体）复原完整场景，返回 PNG 预览 + 对齐的叠加层。拖拽平移、下拉或滚轮缩放（支持 0.25×/0.5× 整体预览，缩放时保持地图中心）。切换「光照」会在有/无光照两种结果间复用后端缓存。红色=Solid，蓝色=透明，黄色=BlockLight。「清除地图缓存」可删除已生成的场景图并强制下次重新生成。",
+    "exportBtn": "导出场景 PNG",
+    "exporting": "导出 {id} PNG …",
+    "exportNoUrl": "导出失败：服务端未返回图像地址",
+    "hint": "选场景 → 立即加载：后端 scene.tiles 下发索引 atlas + layout，前端在浏览器本地等距绘制（地板菱形 + 墙体）、本地计算光照与叠加层（网格 / SOL 标志），全程零服务端往返。拖拽平移、下拉或滚轮缩放（支持 0.25×/0.5× 整体预览，缩放时保持地图中心）。「门编辑」可本地切换门开 / 关。「导出场景 PNG」调用 scene.build 生成服务端 PNG 用于导出。「清除地图缓存」可删除已生成的场景图并强制下次重新生成。红色=Solid，蓝色=透明，黄色=BlockLight。",
     "none": "（未选择场景）",
     "noSelection": "（未选择场景 — 请在上方下拉框中选择一个场景）",
     "loading": "加载场景 {id} …",
-    "summary": "{title}  原始 {w}×{h}  预览 {pw}×{ph}  网格 {gw}×{gh}  缩放 1/{scale}  透明像素 {tp}  Solid {solid}  光照 {light}",
+    "summary": "{title}  原始 {w}×{h}  网格 {gw}×{gh}  Solid {solid}  光照 {light}",
     "pngDecodeFailed": "场景 PNG 解码失败",
     "httpError": "场景图 HTTP {status}",
     "option": "{title}  ({w}×{h})"

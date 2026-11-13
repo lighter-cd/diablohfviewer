@@ -260,7 +260,11 @@ lighting/门 修复用过的 PNG 解码对比）确保 SceneRenderer 与后端�
    - 前端 `web/src/scene-render.js` 新增 `opts.microOverride`（`Map` 或 `{idx->microId}`），Pass1/Pass2 读取 micro 时优先用覆盖值，其余格保持 layout micro。
    - 查看器：新增「门编辑」开关 → 地图门显示可点击标记（绿=开/红=关），点击即在 `closed↔open` 间本地互换 micro 并重绘，**零服务端往返**；标记带开关脉冲 + 底图淡入过渡动画；标记是 `#sceneLayers` 子节点，随平移/缩放自动对齐（与火把一致）。`applySceneTransform` 在平移/缩放时重定位门标记；视口 `mousedown` 对门标记与火把 alike 跳过平移。
    - **验收**：`tests/regress_scene_door.mjs` 验证门 microOverride 路径——覆盖为开启 micro 图像必变、覆盖为闭合 micro（==layout）图像不变；v7 `l2_blind` tiles 实测 `doors[]`（2 扇，537→12）且开启 micro 12 帧已打包；三套 C++ 测试 + i18n 1381 断言全绿、`node --check` 通过。
-5. **Phase 4 — 切换查看器管线**：场景查看器改用 tiles；PNG 模式保留作导出/缩略图。⏳ 待办。
+5. **Phase 4 — 切换查看器管线**：✅ **已完成**（2026-11-14）。
+   - 场景查看器正式由 `scene.tiles` 全量接管：`loadScene` 不再调用 `scene.build` 取叠加层 / 元数据；基础图（前端 `SceneRenderer`）+ 叠加层（网格 / SOL 标志）均在浏览器本地绘制。`scene.tiles` 的 `layout` 本就下发 `solid`/`block_light`/`block_missile`/`transparent` SOL 标志与 `projection`，无需后端改动（缓存 key 维持 v7）。
+   - 前端 `web/src/scene-render.js` 新增 `renderSceneOverlay`（按后端 `buildOverlay` 同投影 / 同槽位数学、step=1 原生分辨率移植：solid 红 / transparent 蓝 / blockLight 黄 半透明菱形 + 每 8 格白色参考网格），与 `renderScene` 输出逐像素对齐。元数据摘要改为 tiles 原生值（标题取自目录、`w/h` 原始宽高、`gw/gh` 网格、Solid 计数、光照），去掉后端专属的预览尺寸 / 缩放 / 透明像素字段。
+   - `scene.build` 的 PNG 模式保留为「导出场景 PNG」按钮（反映当前光照开关，新标签页打开原生 PNG），并继续作为 `scene.build` 与前端渲染的回归基准。移除已无用的 `sceneDrawUrl` 辅助。
+   - **验收**：`tests/regress_scene_overlay.mjs` 将前端 `renderSceneOverlay` 与后端 `scene.build` 原生叠加层 PNG 逐字节对照——`l1_rnd2`/`l2_blind`/`l3_anvil`/`l4_diab1`/`l1_skngdo` 均 100%；i18n 1396 断言全绿、`node --check` 通过、无后端改动。
 
 ---
 
