@@ -184,6 +184,8 @@
     "lightToggle": "Lighting (dLight shading + central torch)",
     "ambient": "Ambient",
     "torchHint": "Drag the torch (point light) on the map to change lighting instantly; drag the ambient slider to re-shade in real time. All computed locally — zero server round-trip.",
+    "doorEditToggle": "Door edit (click a door to toggle open / closed)",
+    "doorHint": "When on, doors on the map show markers; click one to toggle open / closed locally (zero server round-trip). Green = open, red = closed.",
     "dirtToggle": "Draw Dirt border (faithful dPiece, may cover the room)",
     "fitBtn": "Reset view",
     "clearCacheBtn": "Clear map cache",

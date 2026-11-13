@@ -237,6 +237,10 @@
           </div>
           <div class="scene-light-hint" data-i18n="scene.torchHint">在地图上拖动火把（中心点光源）即时改变光照；拖动环境光滑块实时重着色。全部在浏览器本地完成，零服务端往返。</div>
         </div>
+        <label class="scene-check"><input type="checkbox" id="sceneDoorEditToggle" /> <span data-i18n="scene.doorEditToggle">门编辑（点击门切换开 / 关）</span></label>
+        <div id="sceneDoorControls" class="scene-door-controls" hidden>
+          <div class="scene-light-hint" data-i18n="scene.doorHint">开启后地图上门显示标记，点击即可在「开 / 关」间本地切换（零服务端往返）。绿 = 开，红 = 关。</div>
+        </div>
         <label class="scene-check"><input type="checkbox" id="sceneDirtBorderToggle" /> <span data-i18n="scene.dirtToggle">绘制 Dirt 边框（忠实复原 dPiece，会遮挡房间）</span></label>
         <button id="sceneFitBtn" type="button" data-i18n="scene.fitBtn">复位视图</button>
         <button id="sceneClearCacheBtn" type="button" data-i18n="scene.clearCacheBtn">清除地图缓存</button>

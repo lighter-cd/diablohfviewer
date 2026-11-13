@@ -1513,6 +1513,12 @@ const sceneState = {
   tiles: null,      // { layout, tileAtlas, specialAtlas, gw, gh, ambient, softFalloff, lights, light }
   lightOn: false,   // mirrors sceneLightToggle
   torchDragging: false,
+  // Phase 3 door local toggle state:
+  doors: [],        // [{ x, y, open, closed, idx }]
+  doorOpen: null,   // Set<idx> of currently-open doors
+  doorOverride: null, // { idx -> open micro } passed to renderScene
+  doorEls: [],      // door marker DOM elements, parallel to sceneState.doors
+  doorEdit: false,  // mirrors sceneDoorEditToggle
 };
 let sceneCatalog = [];
 
@@ -1683,7 +1689,11 @@ async function loadSceneTiles(args) {
 function renderSceneBase() {
   const t = sceneState.tiles;
   if (!t) return;
-  const out = renderScene(t.layout, t.tileAtlas, t.specialAtlas, { light: t.light });
+  const out = renderScene(t.layout, t.tileAtlas, t.specialAtlas, {
+    light: t.light,
+    microOverride: (sceneState.doorOverride && Object.keys(sceneState.doorOverride).length)
+      ? sceneState.doorOverride : null,
+  });
   const canvas = $("sceneBase");
   canvas.width = out.width;
   canvas.height = out.height;
@@ -1741,6 +1751,88 @@ function showSceneLightControls(visible) {
   }
 }
 
+// ---- Phase 3: door local toggle -------------------------------------------
+// Doors are children of #sceneLayers (projected native coords × zoom), so they
+// track pan/zoom automatically; only left/top are recomputed here.
+function doorNativeXY(d) {
+  const t = sceneState.tiles;
+  const proj = t.layout.projection;
+  const Hm = (t.layout.micro_len / 2) * 32;
+  const nx = (d.x - d.y) * 32 - proj.minX + 32;       // cell centre x
+  const ny = (d.x + d.y) * 16 - proj.minY - Hm + 17;  // cell centre y (diamond centre)
+  return { nx, ny };
+}
+
+function positionDoorMarkers() {
+  const layers = $("sceneLayers");
+  const markerLayer = layers; // markers live inside #sceneLayers (see index.html)
+  for (let k = 0; k < sceneState.doorEls.length; ++k) {
+    const el = sceneState.doorEls[k];
+    const d = sceneState.doors[k];
+    if (!d) { el.hidden = true; continue; }
+    const { nx, ny } = doorNativeXY(d);
+    const open = sceneState.doorOpen.has(d.idx);
+    el.hidden = !sceneState.doorEdit;
+    el.classList.toggle("open", open);
+    el.style.left = (nx * sceneState.zoom) + "px";
+    el.style.top = (ny * sceneState.zoom) + "px";
+  }
+}
+
+// (Re)build the door marker elements once per scene load.
+function buildDoorMarkers() {
+  const layers = $("sceneLayers");
+  // Remove any existing door markers.
+  sceneState.doorEls.forEach((el) => el.remove());
+  sceneState.doorEls = [];
+  for (const d of sceneState.doors) {
+    const el = document.createElement("div");
+    el.className = "scene-door-marker";
+    el.hidden = true;
+    el.title = "door";
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleDoor(d.idx);
+    });
+    layers.appendChild(el);
+    sceneState.doorEls.push(el);
+  }
+}
+
+function showDoorControls(visible) {
+  $("sceneDoorControls").hidden = !visible;
+  if (visible) buildDoorMarkers();
+  positionDoorMarkers();
+}
+
+function toggleDoor(idx) {
+  const t = sceneState.tiles;
+  if (!t) return;
+  const d = sceneState.doors.find((o) => o.idx === idx);
+  if (!d) return;
+  if (sceneState.doorOpen.has(idx)) {
+    sceneState.doorOpen.delete(idx);
+    delete sceneState.doorOverride[idx];
+  } else {
+    sceneState.doorOpen.add(idx);
+    sceneState.doorOverride[idx] = d.open;
+  }
+  // Re-render the base (micro swap) + a brief flash as a transition cue.
+  renderSceneBase();
+  applySceneTransform();
+  const el = sceneState.doorEls[sceneState.doors.findIndex((o) => o.idx === idx)];
+  if (el) {
+    el.classList.toggle("open", sceneState.doorOpen.has(idx));
+    el.classList.remove("pulse");
+    void el.offsetWidth; // restart the CSS animation
+    el.classList.add("pulse");
+  }
+  const base = $("sceneBase");
+  base.classList.remove("door-flip");
+  void base.offsetWidth;
+  base.classList.add("door-flip");
+}
+
 // Map a pointer event to a map-native coordinate, then invert the isometric
 // projection to a (possibly fractional) micro cell, and move the (first) light.
 function updateTorchFromPointer(e) {
@@ -1783,6 +1875,8 @@ function applySceneTransform() {
   $("sceneZoomNo").textContent = `${z}×`;
   // Phase 2: keep the torch marker glued to its map point while panning/zooming.
   if (sceneState.tiles && sceneState.lightOn) positionTorchMarker();
+  // Phase 3: keep the door markers glued to their map points while panning/zooming.
+  if (sceneState.doorEdit && sceneState.doorEls.length) positionDoorMarkers();
 }
 
 function sceneFit() {
@@ -1955,7 +2049,16 @@ async function loadScene() {
           ? buildLightMap(L.grid_width, L.grid_height, ambient, lights, !!L.softFalloff)
           : null,
       };
+      // Phase 3: collect door definitions (closed <-> open micro swap). Start
+      // fully CLOSED (the layout ships the closed state), so the open override
+      // set begins empty.
+      sceneState.doors = Array.isArray(L.doors)
+        ? L.doors.map((d) => ({ x: d.x, y: d.y, open: d.open, closed: d.closed, idx: d.y * L.grid_width + d.x }))
+        : [];
+      sceneState.doorOpen = new Set();
+      sceneState.doorOverride = {};
       renderSceneBase();
+      showDoorControls(sceneState.doorEdit);
     } else if (buildRes && buildRes.image_base64) {
       // Fallback: draw the server base PNG directly.
       const dim = await sceneDrawUrl($("sceneBase"), sceneHttpOrigin() + buildRes.image_url);
@@ -2078,6 +2181,12 @@ function wireSceneControls() {
     // Rebuild: the border changes grid size / DUN offset server-side.
     loadScene();
   });
+  // Phase 3: door edit toggle — show/hide clickable door markers. Toggling only
+  // reveals the markers; the actual open/closed swap is a local canvas edit.
+  $("sceneDoorEditToggle").addEventListener("change", () => {
+    sceneState.doorEdit = $("sceneDoorEditToggle").checked;
+    showDoorControls(sceneState.doorEdit);
+  });
   $("sceneFitBtn").addEventListener("click", () => sceneFit());
   // Clear the on-disk cache (native/overlay/preview PNGs + metadata + cache
   // markers) and rebuild the current scene fresh if one is selected.
@@ -2108,6 +2217,8 @@ function wireSceneControls() {
     if (!isSceneMode()) return;
     // The torch marker has its own pointer drag; don't start a map pan on it.
     if (e.target && e.target.classList && e.target.classList.contains("scene-torch")) return;
+    // Door markers are click-to-toggle; don't start a pan on them either.
+    if (e.target && e.target.classList && e.target.classList.contains("scene-door-marker")) return;
     sceneState.dragging = true;
     sceneState.dragX = e.clientX - sceneState.panX;
     sceneState.dragY = e.clientY - sceneState.panY;

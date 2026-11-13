@@ -255,7 +255,11 @@ lighting/门 修复用过的 PNG 解码对比）确保 SceneRenderer 与后端�
      **100% 一致**（484/484 格）；前端 `SceneRenderer`（unlit）与后端 `scene.build`
      逐像素 **100%**（`tests/regress_scene_tiles.mjs` 已改为按投影尺寸匹配 build PNG，
      规避多缓存变体误选）；三套 C++ 测试全绿、`node --check` 通过、i18n 1371 断言通过。
-4. **Phase 3 — 门开关**：基于 `doors[]` 的本地切换 + 过渡动画。⏳ 待办。
+4. **Phase 3 — 门开关本地切换（实时、零服务端往返）**：✅ **已完成**（2026-11-14）。
+   - 后端 `scene.tiles` 缓存 key 升 **v7**，atlas 打包时额外收入门**开启**态 micro（L2 537/539→12/16；网格只存闭合态，开启态不在 `micro_grid` 里，必须打进 atlas 否则切换时门消失）。`layout.doors[]` 仍按 537/539↔12/16 发出关闭/开启 micro 对（Catacombs 门洞无 dSpecial 覆盖层，`open_special/closed_special=0`，开关是纯 micro 互换）。
+   - 前端 `web/src/scene-render.js` 新增 `opts.microOverride`（`Map` 或 `{idx->microId}`），Pass1/Pass2 读取 micro 时优先用覆盖值，其余格保持 layout micro。
+   - 查看器：新增「门编辑」开关 → 地图门显示可点击标记（绿=开/红=关），点击即在 `closed↔open` 间本地互换 micro 并重绘，**零服务端往返**；标记带开关脉冲 + 底图淡入过渡动画；标记是 `#sceneLayers` 子节点，随平移/缩放自动对齐（与火把一致）。`applySceneTransform` 在平移/缩放时重定位门标记；视口 `mousedown` 对门标记与火把 alike 跳过平移。
+   - **验收**：`tests/regress_scene_door.mjs` 验证门 microOverride 路径——覆盖为开启 micro 图像必变、覆盖为闭合 micro（==layout）图像不变；v7 `l2_blind` tiles 实测 `doors[]`（2 扇，537→12）且开启 micro 12 帧已打包；三套 C++ 测试 + i18n 1381 断言全绿、`node --check` 通过。
 5. **Phase 4 — 切换查看器管线**：场景查看器改用 tiles；PNG 模式保留作导出/缩略图。⏳ 待办。
 
 ---

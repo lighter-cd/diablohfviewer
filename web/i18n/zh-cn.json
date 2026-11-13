@@ -184,6 +184,8 @@
     "lightToggle": "光照（dLight 暗部 + 中心火把）",
     "ambient": "环境光",
     "torchHint": "在地图上拖动火把（中心点光源）即时改变光照；拖动环境光滑块实时重着色。全部在浏览器本地完成，零服务端往返。",
+    "doorEditToggle": "门编辑（点击门切换开 / 关）",
+    "doorHint": "开启后地图上门显示标记，点击即可在「开 / 关」间本地切换（零服务端往返）。绿 = 开，红 = 关。",
     "dirtToggle": "绘制 Dirt 边框（忠实复原 dPiece，会遮挡房间）",
     "fitBtn": "复位视图",
     "clearCacheBtn": "清除地图缓存",

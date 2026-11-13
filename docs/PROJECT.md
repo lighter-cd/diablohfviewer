@@ -887,7 +887,8 @@ DiabloHFConverter/
 | 前端场景查看器 + 关卡 tile 查看器（`web/`） | ✅ |
 | 场景渲染前端化 — Phase 0/1（后端 `scene.tiles` 索引 atlas + layout；前端 `SceneRenderer` 与 `scene.build` PNG 逐像素 100% 对齐，见 `docs/DESIGN_SCENE_WEB_RENDER.md`） | ✅ |
 | 场景渲染前端化 — Phase 2（实时环境光滑块 + 拖拽火把，零服务端往返，与 `scene.build` 逐像素一致） | ✅ |
-| 场景渲染前端化 — Phase 3/4（门/通道本地开关切换、查看器管线切换） | ⏳ 待办 |
+| 场景渲染前端化 — Phase 3（门本地开关切换，零服务端往返） | ✅ |
+| 场景渲染前端化 — Phase 4（查看器管线切换：前端 SceneRenderer 默认接管，scene.build PNG 退为回归基准） | ⏳ 待办 |
 | 单元 / 集成 / core 三套测试 + mcp-server 构建 | ✅ |
 
 ### 游戏场景如何组织（对照 DevilutionX，2026-11-09 澄清）

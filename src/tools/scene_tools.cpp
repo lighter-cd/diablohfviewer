@@ -391,15 +391,18 @@ std::string buildCacheKey(const std::string& id,
                           const std::string& outDir) {
     std::string a;
     for (size_t i = 0; i < archives.size(); ++i) { if (i) a += ";"; a += archives[i]; }
-    // v6: layout now also ships light-source definitions (default_ambient /
-    // lights / soft_falloff) for the front-end Phase 2 real-time lighting, which
-    // changes the layout schema — bump to invalidate stale pre-v6 caches that
-    // lacked those fields. v5: catacombs doorways now render CLOSED door leaves
+    // v7: the tile atlas now also packs the OPEN-door micros (L2 537/539 ->
+    // 12/16) so the front-end can swap a closed door leaf for the open doorway
+    // locally (Phase 3 door toggle) without a server round-trip. v6: layout now
+    // also ships light-source definitions (default_ambient / lights /
+    // soft_falloff) for the front-end Phase 2 real-time lighting, which changes
+    // the layout schema — bump to invalidate stale pre-v6 caches that lacked
+    // those fields. v5: catacombs doorways now render CLOSED door leaves
     // (AddL2Objs / SetDoorStateClosed), so their dPiece micro changed. Earlier:
     // v4 shaded dungeon dSpecial sprites by dLight (ClxDrawLight); v3 cropped
     // presets to the .dun bbox. Assembly inputs and switches are all in the key
     // so catalog changes / toggles invalidate cached PNGs automatically.
-    return "v6|" + id + "|" + a + "|" +
+    return "v7|" + id + "|" + a + "|" +
            std::to_string(spec.floorMegaTile) + "|" + spec.specialCel + "|" +
            std::to_string(static_cast<int>(spec.specialTable)) + "|" +
            (params.value("dirt_border", false) ? "B1" : "B0") + "|" +
@@ -529,6 +532,24 @@ mcp::ToolResult toolSceneTiles(const mcp::json& params) {
     if (spec->prefillMicro != decoders::kNoMicro &&
         spec->prefillMicro < micros.size())
         used.insert(spec->prefillMicro);
+
+    // Phase 3 (door local toggle): the front-end swaps a closed door leaf
+    // (e.g. L2 537/539) for the OPEN doorway micro (12/16) with zero server
+    // round-trip. Those open micros are NOT in `grid.micro` (the grid stores the
+    // closed state), so they would be missing from the atlas and the door would
+    // vanish when toggled. Pre-collect every door's open micro and pack it too.
+    {
+        std::set<uint16_t> doorOpenMicros;
+        for (size_t idx = 0; idx < cells; ++idx) {
+            const uint16_t mi = resolveMi(grid.micro[idx]);
+            uint16_t open = 0;
+            if (mi == 537) open = 12;       // OBJ_L2LDOOR (closed) -> open
+            else if (mi == 539) open = 16;  // OBJ_L2RDOOR (closed) -> open
+            if (open != 0 && open < micros.size())
+                doorOpenMicros.insert(open);
+        }
+        for (uint16_t m : doorOpenMicros) used.insert(m);
+    }
 
     // ---- pack the main index atlas (R = palette index, A = drawn / 0) ----
     // Per micro, the renderer needs:

@@ -88,6 +88,19 @@ export function renderScene(layout, tileAtlas, specialAtlas, opts = {}) {
   const H = projection.height;
   const out = new Uint8ClampedArray(W * H * 4);
 
+  // Phase 3 (door local toggle): optionally override a cell's micro tile so the
+  // front-end can swap a closed door leaf for the open doorway (or any other
+  // local edit) with zero server round-trip. `microOverride` is a Map or an
+  // indexable { idx -> microId }. Cells absent from it keep their layout micro.
+  const microOverride = opts.microOverride || null;
+  const effMicro = (idx) => {
+    if (microOverride) {
+      const v = (microOverride instanceof Map) ? microOverride.get(idx) : microOverride[idx];
+      if (v !== undefined && v !== null) return v;
+    }
+    return micro_grid[idx];
+  };
+
   // Opaque background (matches renderMap filling every pixel, no black holes).
   const bg = layout.background || [0, 0, 0, 255];
   for (let i = 0; i < out.length; i += 4) {
@@ -134,7 +147,7 @@ export function renderScene(layout, tileAtlas, specialAtlas, opts = {}) {
       if (j < 0 || j >= gh) continue;
       const idx = j * gw + i;
       if (!isFloor(idx)) continue;
-      const mi = resolveMi(micro_grid[idx]);
+      const mi = resolveMi(effMicro(idx));
       const x = cellX(i, j);
       const slot = slotTop(colTop(i, j), 0);
       // Forced Left/Right triangle (with the TransparentSquare exception already
@@ -166,7 +179,7 @@ export function renderScene(layout, tileAtlas, specialAtlas, opts = {}) {
       const j = s - i;
       if (j < 0 || j >= gh) continue;
       const idx = j * gw + i;
-      const mi = resolveMi(micro_grid[idx]);
+      const mi = resolveMi(effMicro(idx));
       const x = cellX(i, j);
       const ct = colTop(i, j);
 
