@@ -57,6 +57,7 @@ Diablo 1 / Hellfire 的 MPQ 研究与精灵查看工具。**后端为纯 C/C++ �
 | `3rdparty/StormLib/` | StormLib 源码（git submodule；构建脚本见仓库根 `build-stormlib.sh`） |
 | `mpq-info/` | MPQ 文件名恢复字典与产出（参考数据，非代码） |
 | `web/` | 浏览器前端查看器（`src/*.js` ES Module + Canvas，零构建，连 WS 桥） |
+| `web/i18n/` | 前端多语言配置文件（`locales.json` 清单 + `en.json` / `zh-cn.json` 字符串表） |
 | `docs/` | 开发者文档（ARCHITECTURE.md / PROJECT.md） |
 
 ## 构建
@@ -100,6 +101,30 @@ build-mcp/mcp-server.exe --ws 18765          # 同端口同时提供 HTTP 页面
   （ES Module 必须经 http，不能用 file://）。
 
 查看器结构见 `web/README.md`；与后端契约、已知限制见 `docs/ARCHITECTURE.md` §10.3。
+
+### 前端多语言（中文 / English）
+
+`index.html` 与 `level.html` 右上角都有「语言 / Language」下拉框，可**即时切换 English (`en`) 与
+简体中文 (`zh-cn`)**，无需刷新页面；选择会写入浏览器 `localStorage`（`dhfc.lang`），下次打开自动沿用，
+首次访问则按浏览器语言选择（未匹配时用 `zh-cn`）。
+
+所有界面文案都放在纯 JSON 配置文件里，**改文案或加语言都不用改代码**：
+
+```text
+web/i18n/locales.json     # 语言清单：default / fallback / 每种语言的 code 与显示名
+web/i18n/en.json          # 英文字符串表
+web/i18n/zh-cn.json       # 简体中文字符串表
+```
+
+- 新增一种语言：把 `<code>.json` 放进 `web/i18n/`，再在 `locales.json` 的 `locales` 里加一条
+  `{ "code": "<code>", "label": "显示名" }` 即可，下拉框会自动出现。
+- 缺 key 时回退到 `locales.json` 的 `fallback` 语言；两个语言表必须保持**完全相同的 key 集合**与
+  `{占位符}` 名称，`node tests/i18n_config_test.mjs` 会自动校验（含 HTML/JS 里引用的每个 key）。
+- 切换后静态文案由 `data-i18n` / `data-i18n-attr` 重刷，运行时生成的文案（状态栏、下拉选项、
+  场景/界面摘要等）由 `onLangChange` 回调重刷，详见 `docs/ARCHITECTURE.md` 的前端 i18n 一节。
+
+> 前端只翻译界面文案；后端返回的中文数据（界面名、场景名、技能中文名/说明、阶段标签等）由
+> `web/i18n/*.json` 的 `data.*` 段覆盖已知 id，未知 id 原样保留。
 
 ### 技能 / 战斗查看器（第 4 种浏览模式）
 
@@ -274,7 +299,21 @@ micro 257–260 → frames 594–605，并验证组装 PNG。**`testLevelGenerat
 
 > 每轮改动后请完整运行以上三个套件，确保全绿。
 
-### 4. 阶段 0 文件名恢复（研究/代码生成，需要真实 MPQ + DevilutionX 源码）
+### 4. 前端 i18n 配置与引擎（Node 24，无需 MPQ / C++ 编译器）
+
+```bash
+node tests/i18n_config_test.mjs
+```
+
+覆盖：`web/i18n/locales.json` 的 `default`/`fallback`/语言清单合法性；`en.json` 与 `zh-cn.json`
+**key 集合完全一致**、值非空、每个 key 的 `{占位符}` 名称一致；`index.html` / `level.html` 的
+`data-i18n` / `data-i18n-attr` 与 `web/src/*.js` 里 `t()` / `tOpt()` / `setMetaT()` 等引用的每个
+key 都存在于两个语言表；动态 key 组（`enum.*` / `data.screen.*` / `data.scene.*` / `combat.stage*`）
+条目齐全；以及 `web/src/i18n.js` 引擎在桩化浏览器环境下的 `initI18n` / `t` / `tOpt` 插值 /
+回退语言 / `applyI18n` DOM 翻译 / `setLang` 持久化与 `onLangChange` 回调。
+源码路径：`web/src/i18n.js`、`web/i18n/*.json`；测试脚本 `tests/i18n_config_test.mjs`。
+
+### 5. 阶段 0 文件名恢复（研究/代码生成，需要真实 MPQ + DevilutionX 源码）
 
 `mpq-info/recover_phase0.cpp` 读取 DevilutionX 权威数据表，按运行时拼接公式
 （`plrgfx` / `monsters` / `missiles` 三类）批量生成候选文件名，与静态字典
@@ -319,7 +358,7 @@ out/recover_phase0.exe [devilutionx_root] [mpq_root]
   - 源码路径：`mpq-info/batch_extract.cpp`；产物：`out/extracted/`（运行产物，不入库）。
   - 已验证可一次性抽取全部 2,080 个文件，0 失败。
 
-### 5. 精灵渲染为 PNG（使用 src/decoders）
+### 6. 精灵渲染为 PNG（使用 src/decoders）
 
 `mpq-info/render_sprite.cpp` 把 `out/extracted/` 里已抽取的精灵（CL2/CEL）经解码管线
 渲染成 PNG：`CL2/CEL → CLX`（`cl2ToClx`/`celToClx`）→ `RGBA` 帧（`decodeClx`）→
@@ -370,7 +409,7 @@ out/render_sprite.exe \
   `data\inv\objcurs.cel`（179 帧，逐帧宽 33/32/28/56）、`data\inv\objcurs2.cel`（61 帧）、
   `data\inv\inv*.cel`（1 帧 320×352）均解码通过。
 
-### 6. 关卡地图与完整场景（阶段 4/5）
+### 7. 关卡地图与完整场景（阶段 4/5）
 
 > **阶段 4（地图还原，目标 1）已完成（2026-11-09）**：解码/两遍渲染/完整场景/dLight/寻路/
 > `level.inspect` tile 查看器/前端查看器与三套测试全部落地；逐像素 lightmap、地牢 DUN

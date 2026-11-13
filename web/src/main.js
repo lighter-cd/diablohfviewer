@@ -20,8 +20,39 @@
 import { McpClient } from "./client.js?v=20261113d";
 import { buildTree, renderCatalog, setAllExpanded } from "./catalog.js?v=20261113d";
 import { drawComposite, drawScene } from "./viewer.js?v=20261113d";
+import { t, tOpt, getLang, initI18n, applyI18n, wireLangSelectors, onLangChange } from "./i18n.js?v=20261113d";
+
+// Load the string tables BEFORE anything else runs. Module scripts are deferred,
+// so the whole DOM is already parsed here. onLangChange (registered at the
+// bottom) re-renders every runtime-built string without a page reload.
+await initI18n();
+applyI18n();
+wireLangSelectors();
 
 const $ = (id) => document.getElementById(id);
+
+// Separator after a key in the info/detail rows: full-width colon in Chinese.
+const SEP = () => (getLang() === "en" ? ": " : "：");
+
+// Escape untrusted backend data before it is inserted via innerHTML.
+function esc(v) {
+  return String(v == null ? "" : v)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+// Backend-owned titles/descriptions are Chinese data, not UI chrome. Override the
+// known ids from the config files (data.*) so English mode reads consistently;
+// unknown ids fall back to whatever the backend supplied.
+function dataTitle(group, id, backendTitle) {
+  return tOpt(`data.${group}.${id}`, backendTitle);
+}
+function stageLabel(st) {
+  if (!st) return "";
+  const id = st.id || "";
+  const suffix = id ? id.charAt(0).toUpperCase() + id.slice(1) : "";
+  return tOpt(`combat.stage${suffix}`, st.label || id);
+}
 
 // Extensions the backend can actually decode. sprite.list only enumerates CL2/CEL,
 // but we still guard so an unexpected entry never fails silently.
@@ -38,8 +69,10 @@ const WEAPON_NAMES = {
   n: "None", u: "Unarmed", s: "Sword", d: "Dagger",
   b: "Bow", a: "Axe", m: "Mace", h: "H2H", t: "H2H",
 };
-function optLabel(code, map) {
-  const n = map[code];
+function optLabel(code, map, group) {
+  // Prefer the localized name from the config files; the English maps below are
+  // the fallback for locales that do not define an enum entry.
+  const n = (group && tOpt(`enum.${group}.${code}`, null)) || map[code];
   return n ? `${n} (${code})` : code;
 }
 
@@ -140,29 +173,55 @@ function isLevelPalette(name) {
          n.includes("nlevels\\") || n.includes("nlevels/");
 }
 
-client.onStatus = (connected) => {
+let connected = false;
+client.onStatus = (isConnected) => {
+  connected = isConnected;
   const s = $("status");
-  s.textContent = connected ? "connected" : "disconnected";
-  s.className = "status " + (connected ? "ok" : "bad");
+  s.textContent = isConnected ? t("conn.connected") : t("conn.disconnected");
+  s.className = "status " + (isConnected ? "ok" : "bad");
 };
 
-// #meta was folded into the top "当前资源" line. Clear-only calls leave the
-// resource name intact (scene/GUI modes own that line); a real status text
-// replaces it (it already embeds the name where relevant).
-function setMeta(text, isError = false) {
+// #meta was folded into the top "当前资源" line. Every status line is stored as
+// a render closure so a language switch can re-translate it (and the error
+// banner) without losing the currently displayed resource / error.
+let metaRender = null;
+let errorRender = null;
+
+function setMetaRender(fn, isError = false) {
+  metaRender = fn;
   const m = $("currentName");
   m.className = isError ? "current-name err" : "current-name";
-  if (!text) return;
-  m.textContent = text;
+  m.textContent = fn();
+}
+function setMetaT(key, vars, isError = false) {
+  setMetaRender(() => t(key, vars), isError);
+}
+function setMeta(text, isError = false) {
+  if (!text) return;                 // clear-only call: keep the current line
+  setMetaRender(() => text, isError);
+}
+function renderMeta() {
+  if (metaRender) $("currentName").textContent = metaRender();
 }
 
-function showError(msg) {
+function showErrorRender(fn) {
+  errorRender = fn;
   const b = $("errorBanner");
-  b.textContent = msg;
+  b.textContent = fn();
   b.hidden = false;
 }
+function showErrorT(key, vars) {
+  showErrorRender(() => t(key, vars));
+}
+function showError(msg) {
+  showErrorRender(() => msg);
+}
 function hideError() {
+  errorRender = null;
   $("errorBanner").hidden = true;
+}
+function renderError() {
+  if (errorRender) $("errorBanner").textContent = errorRender();
 }
 
 // ---- Global MPQ entry (P1) --------------------------------------------------
@@ -188,17 +247,17 @@ function getMpqDir() {
 function setMpqButton(configured) {
   const b = $("mpqConfigBtn");
   b.className = "mpq-config-btn " + (configured ? "ok" : "bad");
-  b.title = configured ? "MPQ 已配置（点击修改）" : "MPQ 尚未配置（点击配置）";
+  b.title = configured ? t("mpq.configuredTip") : t("mpq.unconfiguredTip");
 }
 function setMpqStatusConfigured(dir) {
   const s = $("mpqStatus");
-  s.textContent = "MPQ已配置：" + dir;
+  s.textContent = t("mpq.configured", { dir });
   s.className = "mpq-status ok";
   setMpqButton(true);
 }
 function setMpqStatusUnconfigured() {
   const s = $("mpqStatus");
-  s.textContent = "MPQ尚未配置";
+  s.textContent = t("mpq.unconfigured");
   s.className = "mpq-status bad";
   setMpqButton(false);
 }
@@ -236,7 +295,7 @@ async function saveMpqDir() {
   try { localStorage.setItem(MPQ_DIR_KEY, dir); } catch {}
   setMpqStatusConfigured(dir);
   if (dir === prev) return;
-  setMeta("已保存 MPQ 目录：" + dir);
+  setMetaT("mpq.saved", { dir });
   if (!client.ws || client.ws.readyState !== WebSocket.OPEN) {
     try {
       await client.connect($("wsUrl").value.trim());
@@ -244,7 +303,7 @@ async function saveMpqDir() {
       if (isSceneMode() && !sceneState.loaded) await showSceneView();
       if (isGuiMode() && !guiState.loaded) await showGuiView();
     } catch (e) {
-      setMeta("自动连接/加载失败：" + (e.message || e), true);
+      setMetaT("mpq.autoLoadFailed", { error: e.message || e }, true);
     }
   }
 }
@@ -294,14 +353,14 @@ async function initMpqEntry() {
   }
   $("mpqDir").value = dir;
   setMpqStatusConfigured(dir);
-  setMeta("检测到已配置 MPQ 目录，自动连接并加载目录…");
+  setMetaT("mpq.autoLoading");
   try {
     await client.connect($("wsUrl").value.trim());
     await loadCatalog();
     if (isSceneMode() && !sceneState.loaded) await showSceneView();
     if (isGuiMode() && !guiState.loaded) await showGuiView();
   } catch (e) {
-    setMeta("自动连接/加载失败：" + (e.message || e), true);
+    setMetaT("mpq.autoLoadFailed", { error: e.message || e }, true);
   }
 }
 
@@ -346,7 +405,7 @@ function isViewOwnedMode() {
 }
 
 async function loadCatalog() {
-  setMeta("loading catalog…");
+  setMetaT("status.loadingCatalog");
   // P1: tell the backend which directory to read the MPQ files from. The backend
   // redirects every archive path in recovered.json into this directory, so the
   // viewer reads the user's own legitimate copy — nothing is uploaded anywhere.
@@ -368,7 +427,7 @@ async function loadCatalog() {
       console.warn("sprite.list(kind:ui) failed:", e);
     }
     renderCurrentCatalog();
-    setMeta(`catalog: ${lastSprites.length} sprites`);
+    setMetaT("status.catalogLoaded", { count: lastSprites.length });
     // Build the FULL MPQ stack. sprite.list reports every archive from
     // recovered.json, including ones holding no CL2/CEL sprites (notably
     // devilutionx.mpq, which owns the .clx UI art + ui_art\diablo.pal). Deriving
@@ -390,7 +449,7 @@ async function loadCatalog() {
     await loadCharacterData();   // build the class/action/armor/weapon index
     await loadSpellList();       // stage-ordered spell / monster-attack catalog
   } catch (e) {
-    setMeta("sprite.list failed: " + e.message, true);
+    setMetaT("error.spriteList", { error: e.message }, true);
   }
 }
 
@@ -419,12 +478,12 @@ async function loadPalettes() {
       });
     }
     if (allPalettes.length === 0) {
-      addPaletteOption("（无可用调色板）", "");
+      addPaletteOption(t("stage.noPalette"), "");
       return;
     }
     applyPaletteFilter(isCharMode());
   } catch (e) {
-    addPaletteOption("（加载调色板失败）", "");
+    addPaletteOption(t("stage.paletteFailed"), "");
   }
 }
 
@@ -446,7 +505,8 @@ function applyPaletteFilter(levelOnly) {
   for (const p of list) {
     const opt = document.createElement("option");
     opt.value = p.name;
-    opt.textContent = basename(p.name) + (levelOnly ? "（关卡）" : (p.isLevel ? "（关卡）" : "（其它）"));
+    opt.textContent = basename(p.name) +
+      (p.isLevel ? t("stage.levelPalette") : t("stage.otherPalette"));
     opt.title = p.name;
     sel.appendChild(opt);
   }
@@ -514,8 +574,8 @@ function fillCharActions() {
   const sel = $("charAction");
   sel.innerHTML = "";
   if (!e) return;
-  for (const t of [...e.types].sort())
-    addOption(sel, t, optLabel(t, TYPE_NAMES));
+  for (const code of [...e.types].sort())
+    addOption(sel, code, optLabel(code, TYPE_NAMES, "type"));
 }
 
 function fillCharArmorWeapon() {
@@ -529,8 +589,21 @@ function fillCharArmorWeapon() {
     armors.add(cw[0]);
     weapons.add(cw[1]);
   }
-  fillSelect($("charArmor"), [...armors].sort(), ARMOR_NAMES);
-  fillSelect($("charWeapon"), [...weapons].sort(), WEAPON_NAMES);
+  fillSelect($("charArmor"), [...armors].sort(), ARMOR_NAMES, "armor");
+  fillSelect($("charWeapon"), [...weapons].sort(), WEAPON_NAMES, "weapon");
+}
+
+// Rebuild the character dropdowns on a language switch, keeping the current
+// selections (option VALUES are data, only their labels are translated).
+function refreshCharOptions() {
+  const act = $("charAction").value;
+  const arm = $("charArmor").value;
+  const wep = $("charWeapon").value;
+  fillCharActions();
+  if ([...$("charAction").options].some((o) => o.value === act)) $("charAction").value = act;
+  fillCharArmorWeapon();
+  if ([...$("charArmor").options].some((o) => o.value === arm)) $("charArmor").value = arm;
+  if ([...$("charWeapon").options].some((o) => o.value === wep)) $("charWeapon").value = wep;
 }
 
 function addOption(sel, value, text) {
@@ -539,9 +612,9 @@ function addOption(sel, value, text) {
   o.textContent = text;
   sel.appendChild(o);
 }
-function fillSelect(sel, codes, names) {
+function fillSelect(sel, codes, names, group) {
   sel.innerHTML = "";
-  for (const c of codes) addOption(sel, c, optLabel(c, names));
+  for (const c of codes) addOption(sel, c, optLabel(c, names, group));
 }
 
 // Assemble the plrgfx path and decode it via the shared onSelectSprite pipeline.
@@ -565,6 +638,7 @@ async function showCharacterSprite() {
 function populateMonsterArchive() {
   for (const id of ["monsterArchive", "npcArchive"]) {
     const sel = $(id);
+    const prev = sel.value;
     sel.innerHTML = "";
     for (const a of allArchives) {
       const o = document.createElement("option");
@@ -576,9 +650,10 @@ function populateMonsterArchive() {
     if (allArchives.length === 0) {
       const o = document.createElement("option");
       o.value = "";
-      o.textContent = "（无可用 MPQ）";
+      o.textContent = t("common.noMpq");
       sel.appendChild(o);
     }
+    if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
   }
 }
 
@@ -618,29 +693,38 @@ function fillMonsterAnims() {
   for (const s of list) {
     const o = document.createElement("option");
     o.value = s.name;
-    o.textContent = `${s.anim || s.type} (${s.frames_per_dir || "?"} 帧/方向)`;
+    o.textContent = `${s.anim || s.type} (${t("entity.framesPerDir", { n: s.frames_per_dir || "?" })})`;
     o.title = s.name;
     sel.appendChild(o);
   }
 }
 
-// Build the NPC (towner) dropdown from sprite.list(family:"towners").
-async function populateNPCs() {
+// Build the NPC (towner) dropdown from sprite.list(family:"towners"). The
+// fetched list is cached so a language switch can rebuild the labels without
+// another backend round-trip.
+let npcSprites = [];
+function renderNpcOptions() {
   const sel = $("npcSel");
+  const prev = sel.value;
   sel.innerHTML = "";
+  for (const s of npcSprites) {
+    const o = document.createElement("option");
+    o.value = s.name;
+    o.textContent = `${s.class || basename(s.name)}  (${basename(s.name)})`;
+    o.title = s.name;
+    sel.appendChild(o);
+  }
+  if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+}
+async function populateNPCs() {
   try {
     const res = await client.callTool("sprite.list", { family: "towners" });
-    const sprites = (res && res.sprites) || [];
-    for (const s of sprites) {
-      const o = document.createElement("option");
-      o.value = s.name;
-      o.textContent = `${s.class || basename(s.name)}  (${basename(s.name)})`;
-      o.title = s.name;
-      sel.appendChild(o);
-    }
+    npcSprites = (res && res.sprites) || [];
   } catch (e) {
     console.warn("towner list failed:", e.message);
+    npcSprites = [];
   }
+  renderNpcOptions();
 }
 
 // Decode the selected monster (family monsters, directions from backend).
@@ -670,7 +754,7 @@ async function syncEntityType() {
   $("panel-monster").hidden = (t !== "monster");
   $("panel-npc").hidden = (t !== "npc");
   if (!allArchives.length) {
-    showError("尚无 MPQ 列表（请先在 目录浏览 模式加载目录）。");
+    showErrorT("error.noArchives");
     return;
   }
   if (t === "character") {
@@ -775,9 +859,9 @@ async function onSelectSprite(sprite) {
     if (sprite.tileset) {
       const url = `level.html?tileset=${encodeURIComponent(sprite.tileset)}`;
       window.open(url, "_blank", "noopener");
-      setMeta("已在新标签页打开关卡查看器：" + sprite.name);
+      setMetaT("status.levelOpened", { name: sprite.name });
     } else {
-      showError("该关卡文件未匹配到已知 tileset，请在关卡查看器中手动加载：" + sprite.name);
+      showErrorT("error.noTileset", { name: sprite.name });
     }
     stopPlay();
     return;
@@ -787,38 +871,38 @@ async function onSelectSprite(sprite) {
 
   const ext = extOf(sprite.name);
   if (!DECODABLE.has(ext)) {
-    showError(`暂不支持的格式：.${ext || "?"}（当前仅支持 .cl2 / .cel / .clx / .pcx）`);
+    showErrorT("error.unsupportedFormat", { ext: ext || "?" });
     stopPlay();
     return;
   }
 
   const archive = (sprite.archive_path || "").trim();
   if (!archive) {
-    showError("该精灵缺少 archive_path，无法定位 MPQ，无法解码。");
+    showErrorT("error.noArchivePath");
     stopPlay();
     return;
   }
   const palette = $("palette").value;
   const ownPalette = (sprite.palette && sprite.palette !== "embedded");
   if (!ownPalette && !palette) {
-    showError("请先在上方选择一个调色板。");
+    showErrorT("error.noPaletteSelected");
     stopPlay();
     return;
   }
 
-  setMeta("decoding " + sprite.name + " …");
+  setMetaT("status.decoding", { name: sprite.name });
   stopPlay();
   try {
     const args = buildDecodeArgs(sprite);
     const res = await client.callTool("sprite.decode", args);
     if (!res || !Array.isArray(res.frames) || res.frames.length === 0) {
-      showError("解码失败：" + sprite.name + " 未返回任何帧。");
+      showErrorT("error.noFrames", { name: sprite.name });
       return;
     }
     hideError();
     applyDecoded(res, sprite);
   } catch (e) {
-    showError("解码失败：" + (e.message || e));
+    showErrorT("error.decodeFailed", { error: e.message || e });
   }
 }
 
@@ -862,7 +946,9 @@ function showFrame(dir, fin) {
 
   drawComposite($("canvas"), f.rgba_base64, f.width, f.height, zoom);
   $("dirNo").textContent = `${dir + 1}/${currentDirections}`;
-  $("frameNo").textContent = `dir ${dir} / ${currentDirections - 1}  · 帧 ${fin} / ${framesPerDir - 1}`;
+  $("frameNo").textContent = t("stage.frameInfo", {
+    dir, maxDir: currentDirections - 1, fin, maxFin: framesPerDir - 1,
+  });
   updateMeta(idx, dir, fin);
 }
 
@@ -876,11 +962,12 @@ function updateMeta(idx, dir, fin) {
   if (!lastRes || !currentFrames || !lastSprite) return;
   const f = currentFrames[idx];
   if (!f) return;
-  let s = `${lastSprite.name}  ${lastRes.format}  帧 ${f.width}×${f.height}  ` +
-         `dir ${dir} 帧内 ${fin}  ${currentFrames.length} frames`;
-  if (lastRes.trn_applied)
-    s += `  · TRN: ${lastRes.trn_name || "on"}`;
-  setMeta(s);
+  setMetaRender(() =>
+    t("stage.meta", {
+      name: lastSprite.name, format: lastRes.format, w: f.width, h: f.height,
+      dir, fin, total: currentFrames.length,
+    }) + (lastRes.trn_applied
+      ? t("stage.trnApplied", { name: lastRes.trn_name || "on" }) : ""));
 }
 
 function startPlay() {
@@ -894,13 +981,13 @@ function startPlay() {
     showFrame(currentDir, currentFin);
     $("frame").value = String(currentFin);
   }, 1000 / fps);
-  $("playBtn").textContent = "⏸ 暂停";
+  $("playBtn").textContent = t("stage.pause");
 }
 function stopPlay() {
   isPlaying = false;
   if (playTimer) clearInterval(playTimer);
   playTimer = null;
-  $("playBtn").textContent = "▶ 播放";
+  $("playBtn").textContent = t("stage.play");
 }
 
 // ---- Skill / combat viewer (stage-ordered full-cast timeline) ---------------
@@ -928,12 +1015,14 @@ function combatList() {
   return spellCatalog.spells || [];
 }
 
-// 显示名：优先中文名 name_zh，仅在中文名与英文名不同（即确有翻译）时附英文名；
-// 怪物远程攻击通常无翻译，回落到英文名。description 用作悬浮提示。
+// 显示名：中文模式下优先中文名 name_zh，仅在中文名与英文名不同（即确有翻译）时
+// 附英文名；英文模式直接用英文名。怪物远程攻击通常无翻译，回落到英文名。
+// description 用作悬浮提示（后端数据，不翻译）。
 function combatLabel(e) {
   if (!e) return "";
-  const zh = e.name_zh && e.name_zh !== e.name ? e.name_zh : "";
-  const base = zh ? `${zh} (${e.name})` : e.name;
+  let base = e.name || "";
+  if (getLang() === "zh-cn" && e.name_zh && e.name_zh !== e.name)
+    base = `${e.name_zh} (${e.name})`;
   return e.variant ? `${base} · ${e.variant}` : base;
 }
 
@@ -948,34 +1037,34 @@ function renderCombatInfo() {
     const row = document.createElement("div");
     row.className = "ci-row";
     const kk = document.createElement("span");
-    kk.className = "ci-key"; kk.textContent = k + "：";
+    kk.className = "ci-key"; kk.textContent = k + SEP();
     const vv = document.createElement("span");
     vv.className = "ci-val"; vv.textContent = v;
     row.appendChild(kk); row.appendChild(vv); el.appendChild(row);
   };
-  addRow("英文名", combatEntry.name);
+  addRow(t("combat.nameEn"), combatEntry.name);
   if (combatEntry.name_zh && combatEntry.name_zh !== combatEntry.name)
-    addRow("中文名", combatEntry.name_zh);
+    addRow(t("combat.nameZh"), combatEntry.name_zh);
   if (combatEntry.level)
-    addRow("法术等级", combatEntry.level);
-  if (combatEntry.variant) addRow("攻击形态", combatEntry.variant);
-  if (combatEntry.condition) addRow("触发条件", combatEntry.condition);
-  if (combatEntry.trigger) addRow("触发条件", combatEntry.trigger);
-  if (combatEntry.source_ref) addRow("源码位置", combatEntry.source_ref);
+    addRow(t("combat.spellLevel"), combatEntry.level);
+  if (combatEntry.variant) addRow(t("combat.attackForm"), combatEntry.variant);
+  if (combatEntry.condition) addRow(t("combat.trigger"), combatEntry.condition);
+  if (combatEntry.trigger) addRow(t("combat.trigger"), combatEntry.trigger);
+  if (combatEntry.source_ref) addRow(t("combat.sourceRef"), combatEntry.source_ref);
   if (Array.isArray(combatEntry.objects) && combatEntry.objects.length)
-    addRow("宿主对象", combatEntry.objects.join(" / "));
+    addRow(t("combat.hostObjects"), combatEntry.objects.join(" / "));
   if (Array.isArray(combatEntry.mana_by_level) && combatEntry.mana_by_level.length) {
     const txt = combatEntry.mana_by_level
-      .map((o) => `${o.level}级=${o.mana}`)
-      .join("，");
-    addRow("各级法力", txt);
+      .map((o) => t("combat.manaPerLevel", { level: o.level, mana: o.mana }))
+      .join(getLang() === "en" ? ", " : "，");
+    addRow(t("combat.manaByLevel"), txt);
   }
   // 各级视觉参数（持续时间 / 范围 / 弹射物数量 / 弹速 / 法术特有字段）
   if (Array.isArray(combatEntry.visual_by_level) && combatEntry.visual_by_level.length) {
     const wrap = document.createElement("div");
     wrap.className = "ci-visual";
     const title = document.createElement("div");
-    title.className = "ci-key"; title.textContent = "各级视觉参数：";
+    title.className = "ci-key"; title.textContent = t("combat.visualByLevel") + SEP();
     wrap.appendChild(title);
 
     const keys = [];
@@ -989,7 +1078,7 @@ function renderCombatInfo() {
     const table = document.createElement("table");
     table.className = "ci-vtable";
     const thead = document.createElement("tr");
-    const th0 = document.createElement("th"); th0.textContent = "级别"; thead.appendChild(th0);
+    const th0 = document.createElement("th"); th0.textContent = t("combat.level"); thead.appendChild(th0);
     for (const k of keys) {
       const th = document.createElement("th"); th.textContent = k; thead.appendChild(th);
     }
@@ -1007,18 +1096,18 @@ function renderCombatInfo() {
     wrap.appendChild(table);
     if (note) {
       const n = document.createElement("div");
-      n.className = "ci-note"; n.textContent = "注：" + note;
+      n.className = "ci-note"; n.textContent = t("combat.note", { text: note });
       wrap.appendChild(n);
     }
     el.appendChild(wrap);
   } else {
-    addRow("各级视觉参数", "（无级别视觉缩放：单级/实用法术）");
+    addRow(t("combat.visualByLevel"), t("combat.noVisualScaling"));
   }
   if (combatEntry.description) {
     const d = document.createElement("div");
     d.className = "ci-desc";
     const kk = document.createElement("span");
-    kk.className = "ci-key"; kk.textContent = "描述：";
+    kk.className = "ci-key"; kk.textContent = t("combat.description") + SEP();
     const vv = document.createElement("span");
     vv.className = "ci-val"; vv.textContent = combatEntry.description;
     d.appendChild(kk); d.appendChild(vv); el.appendChild(d);
@@ -1027,6 +1116,7 @@ function renderCombatInfo() {
 
 function populateCombatSpells() {
   const sel = $("combatSpell");
+  const prev = sel.value;
   sel.innerHTML = "";
   for (const e of combatList()) {
     const o = document.createElement("option");
@@ -1035,6 +1125,7 @@ function populateCombatSpells() {
     o.title = e.description || e.name;
     sel.appendChild(o);
   }
+  if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
 }
 
 function populateCombatClass() {
@@ -1079,7 +1170,7 @@ function fillCombatMonsterAnims() {
   for (const s of list) {
     const o = document.createElement("option");
     o.value = s.name;
-    o.textContent = `${s.anim || s.type} (${s.frames_per_dir || "?"} 帧/方向)`;
+    o.textContent = `${s.anim || s.type} (${t("entity.framesPerDir", { n: s.frames_per_dir || "?" })})`;
     o.title = s.name;
     sel.appendChild(o);
   }
@@ -1152,7 +1243,7 @@ function combatDebuffTrn() {
 
 async function buildCombatScene() {
   if (!isCombatMode() || !combatEntry) return;
-  setMeta("loading combat scene…");
+  setMetaT("status.loadingCombat");
   stopPlay();
   try {
     const cp = $("combatClass").value;
@@ -1202,7 +1293,7 @@ async function buildCombatScene() {
     syncCombatDirControl();
     renderCombatStage(0, 0);
   } catch (e) {
-    showError("战斗场景加载失败：" + (e.message || e));
+    showErrorT("error.combatLoad", { error: e.message || e });
   }
 }
 
@@ -1333,12 +1424,18 @@ function renderCombatStage(si, fi) {
 
   drawScene($("canvas"), COMBAT_W, COMBAT_H, actors, zoom);
   $("dirNo").textContent = `${combatDir + 1}/8`;
-  $("frameNo").textContent = `dir ${combatDir} · ${st.label} · 帧 ${fi} / ${total - 1}`;
-  $("stageNo").textContent = `${si + 1}/${stages.length} ${st.label}`;
+  const label = stageLabel(st);
+  $("frameNo").textContent = t("combat.frameInfo", {
+    dir: combatDir, stage: label, fi, total: total - 1,
+  });
+  $("stageNo").textContent = `${si + 1}/${stages.length} ${label}`;
   $("frame").max = String(total - 1);
   $("frame").value = String(Math.min(fi, total - 1));
   renderCombatInfo();
-  setMeta(`技能/战斗查看器  ${combatLabel(combatEntry)}  ·  ${st.label}  ·  ${st.layers.length} 层  ·  方向 ${combatDir + 1}/8`);
+  setMetaT("combat.meta", {
+    name: combatLabel(combatEntry), stage: label,
+    layers: st.layers.length, dir: combatDir + 1,
+  });
 }
 
 function startCombatPlay() {
@@ -1356,7 +1453,7 @@ function startCombatPlay() {
       renderCombatStage(combatStage, (combatFrame + 1) % n);
     }
   }, 1000 / fps);
-  $("playBtn").textContent = "⏸ 暂停";
+  $("playBtn").textContent = t("stage.pause");
 }
 
 function selectCombatEntry() {
@@ -1372,7 +1469,7 @@ async function showCombatView() {
   syncCombatDirControl();
   if (!spellCatalog) await loadSpellList();
   if (!spellCatalog) {
-    showError("spell.list 不可用（后端未注册或 DevilutionX 数据表缺失）。");
+    showErrorT("error.spellListUnavailable");
     return;
   }
   if (!monsterMap) await populateMonsters();
@@ -1442,7 +1539,7 @@ async function sceneDecodeBitmap(b64) {
     const img = await new Promise((resolve, reject) => {
       const el = new Image();
       el.onload = () => resolve(el);
-      el.onerror = () => reject(new Error("场景 PNG 解码失败"));
+      el.onerror = () => reject(new Error(t("scene.pngDecodeFailed")));
       el.src = url;
     });
     return { bitmap: img, revoke: url, close: false };
@@ -1504,7 +1601,7 @@ async function sceneDrawUrl(canvas, url) {
     return { w: 0, h: 0 };
   }
   const resp = await fetch(url);
-  if (!resp.ok) throw new Error("场景图 HTTP " + resp.status);
+  if (!resp.ok) throw new Error(t("scene.httpError", { status: resp.status }));
   const blob = await resp.blob();
   let bitmap, revoke = null, close = false;
   if (typeof createImageBitmap === "function") {
@@ -1516,7 +1613,7 @@ async function sceneDrawUrl(canvas, url) {
     bitmap = await new Promise((resolve, reject) => {
       const el = new Image();
       el.onload = () => resolve(el);
-      el.onerror = () => reject(new Error("场景 PNG 解码失败"));
+      el.onerror = () => reject(new Error(t("scene.pngDecodeFailed")));
       el.src = u;
     });
   }
@@ -1605,7 +1702,7 @@ function sceneZoomIndex() {
 // Blocks the whole UI and mirrors backend progress (pushSceneProgress) while a
 // scene is rendering. Shown the moment loadScene starts and hidden on finish.
 function showSceneLoading(stage) {
-  $("sceneLoadingStage").textContent = stage || "准备加载…";
+  $("sceneLoadingStage").textContent = stage || t("status.scenePreparing");
   $("sceneLoadingFill").style.width = "0%";
   $("sceneLoadingPct").textContent = "0%";
   $("sceneLoadingMask").hidden = false;
@@ -1620,28 +1717,37 @@ function hideSceneLoading() {
   $("sceneLoadingMask").hidden = true;
 }
 
+// Rebuild the scene dropdown from the cached scene.list payload (also used on a
+// language switch, so no extra backend call is needed).
+function renderSceneOptions() {
+  const sel = $("sceneSel");
+  const prev = sel.value;
+  sel.innerHTML = "";
+  // No default selection: the dropdown starts empty so the viewer does NOT
+  // auto-load any scene (the user picks one explicitly). This pairs with the
+  // backend cache — once a scene IS built, re-selecting it is instant.
+  const empty = document.createElement("option");
+  empty.value = "";
+  empty.textContent = t("scene.none");
+  sel.appendChild(empty);
+  for (const s of sceneCatalog) {
+    const o = document.createElement("option");
+    o.value = s.id;
+    o.textContent = t("scene.option", {
+      title: dataTitle("scene", s.id, s.title), w: s.grid_width, h: s.grid_height,
+    });
+    sel.appendChild(o);
+  }
+  if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+}
 async function loadSceneCatalog() {
   try {
     const res = await client.callTool("scene.list", {});
     sceneCatalog = (res && res.scenes) || [];
-    const sel = $("sceneSel");
-    sel.innerHTML = "";
-    // No default selection: the dropdown starts empty so the viewer does NOT
-    // auto-load any scene (the user picks one explicitly). This pairs with the
-    // backend cache — once a scene IS built, re-selecting it is instant.
-    const empty = document.createElement("option");
-    empty.value = "";
-    empty.textContent = "（未选择场景）";
-    sel.appendChild(empty);
-    for (const s of sceneCatalog) {
-      const o = document.createElement("option");
-      o.value = s.id;
-      o.textContent = `${s.title}  (${s.grid_width}×${s.grid_height})`;
-      sel.appendChild(o);
-    }
-    sel.value = "";
+    renderSceneOptions();
+    $("sceneSel").value = "";
   } catch (e) {
-    showError("scene.list 失败: " + (e.message || e));
+    showErrorT("error.sceneList", { error: e.message || e });
   }
 }
 
@@ -1651,7 +1757,7 @@ async function loadScene() {
   if (!id) return;   // nothing selected — don't auto-load a default scene
   hideError();
   sceneState.loading = true;
-  showSceneLoading(`加载场景 ${id} …`);
+  showSceneLoading(t("scene.loading", { id }));
   try {
     const args = { id };
     // Prefer an explicit path; otherwise the catalog's primary archive. The
@@ -1662,7 +1768,7 @@ async function loadScene() {
     if (primary) args.archive = primary;
     if (allArchives && allArchives.length) args.archives = allArchives.slice();
     if (!args.archive) {
-      showError("未连接或未发现 MPQ 档案：请在上方填入 MPQ 路径");
+      showErrorT("error.sceneNoArchive");
       return;
     }
     args.preview_max_width = 1000;
@@ -1673,7 +1779,7 @@ async function loadScene() {
     // The onProgress callback streams backend $/progress notifications into the
     // loading mask in real time.
     const res = await client.callTool("scene.build", args, pushSceneProgress);
-    if (!res || !res.image_base64) throw new Error("scene.build 未返回图像");
+    if (!res || !res.image_base64) throw new Error(t("error.sceneBuildNoImage"));
     // Prefer the backend HTTP endpoint for the NATIVE-resolution image so the
     // canvas shows the full-size scene (base + overlay both native, aligned).
     // Fall back to the base64 preview if the endpoint is unavailable.
@@ -1699,14 +1805,16 @@ async function loadScene() {
     // top-right "当前资源" line (#currentName) and keep the bottom status bar
     // free of duplicates. The shared sprite control bar (#stageControls) is
     // hidden in scene mode (see setMode), so show the info here instead.
-    $("currentName").textContent =
-      `${res.title}  原始 ${res.width}×${res.height}  预览 ${res.preview_width}×${res.preview_height}  ` +
-      `网格 ${res.grid_width}×${res.grid_height}  缩放 1/${res.scale}  ` +
-      `透明像素 ${res.transparent_pixel_count}  Solid ${res.solid_count}  光照 ${res.lighting ? "开" : "关"}`;
-    setMeta("");
+    setMetaT("scene.summary", {
+      title: dataTitle("scene", res.scene_id, res.title),
+      w: res.width, h: res.height, pw: res.preview_width, ph: res.preview_height,
+      gw: res.grid_width, gh: res.grid_height, scale: res.scale,
+      tp: res.transparent_pixel_count, solid: res.solid_count,
+      light: res.lighting ? t("common.on") : t("common.off"),
+    });
   } catch (e) {
-    showError("scene.build 失败: " + (e.message || e));
-    setMeta("场景加载失败", true);
+    showErrorT("error.sceneBuild", { error: e.message || e });
+    setMetaT("error.sceneLoadFailed", null, true);
   } finally {
     sceneState.loading = false;
     hideSceneLoading();
@@ -1725,8 +1833,7 @@ async function showSceneView() {
     await loadScene();
   } else {
     // No selection yet: leave a clear prompt instead of an empty canvas.
-    $("currentName").textContent = "（未选择场景 — 请在上方下拉框中选择一个场景）";
-    setMeta("");
+    setMetaT("scene.noSelection");
   }
 }
 
@@ -1761,13 +1868,13 @@ function wireSceneControls() {
     try {
       const res = await client.callTool("scene.clearCache", { out: "out/scenes" });
       const n = (res && res.cleared) || 0;
-      setMeta(`已清除场景缓存 ${n} 个文件`);
+      setMetaT("status.cacheCleared", { count: n });
       const id = $("sceneSel").value;
       if (id && allArchives && allArchives.length) {
         await loadScene();   // cache is gone, so this does a fresh server-side build
       }
     } catch (e) {
-      showError("清除场景缓存失败: " + (e.message || e));
+      showErrorT("error.sceneCacheClear", { error: e.message || e });
     }
   });
 
@@ -1809,7 +1916,6 @@ function wireSceneControls() {
 // text/font_size/color/align/flags fields from ui.build.elements. This layer is
 // toggleable so the pure "real art" composite can be inspected on its own.
 
-const GUI_INFO_PROMPT = "<em>从上方「元素」下拉框选择元素查看详情…</em>";
 const guiState = {
   catalog: [],        // ui.list screens
   elements: [],       // ui.build elements for the current screen
@@ -1915,21 +2021,28 @@ function applyGuiTransform() {
   }
 }
 
+function renderGuiOptions() {
+  const sel = $("guiSel");
+  const prev = sel.value;
+  sel.innerHTML = "";
+  for (const s of guiState.catalog) {
+    const o = document.createElement("option");
+    o.value = s.id;
+    o.textContent = t("gui.screenOption", {
+      title: dataTitle("screen", s.id, s.title), count: s.element_count,
+    });
+    sel.appendChild(o);
+  }
+  if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+}
 async function loadGuiCatalog() {
   try {
     const res = await client.callTool("ui.list", {});
     guiState.catalog = (res && res.screens) || [];
-    const sel = $("guiSel");
-    sel.innerHTML = "";
-    for (const s of guiState.catalog) {
-      const o = document.createElement("option");
-      o.value = s.id;
-      o.textContent = `${s.title}  (${s.element_count} 元素)`;
-      sel.appendChild(o);
-    }
-    if (guiState.catalog.length) sel.value = "mainmenu";
+    renderGuiOptions();
+    if (guiState.catalog.length) $("guiSel").value = "mainmenu";
   } catch (e) {
-    showError("ui.list 失败: " + (e.message || e));
+    showErrorT("error.uiList", { error: e.message || e });
   }
 }
 
@@ -1947,7 +2060,7 @@ async function loadGuiScreen() {
     return;
   }
   hideError();
-  setMeta(`加载界面 ${id} …`);
+  setMetaT("gui.loading", { id });
   guiState.loading = true;
   try {
     const args = { id, overlay: true, label_numbers: !!$("guiNumberToggle").checked,
@@ -1961,12 +2074,12 @@ async function loadGuiScreen() {
     if (allArchives && allArchives.length) args.archives = allArchives.slice();
     if (!args.archive) {
       clearGuiElementState();
-      showError("未连接或未发现 MPQ 档案：请在上方填入 MPQ 路径");
-      setMeta("界面加载失败", true);
+      showErrorT("error.uiNoArchive");
+      setMetaT("error.uiLoadFailed", null, true);
       return;
     }
     const res = await client.callTool("ui.build", args);
-    if (!res || !res.image_base64) throw new Error("ui.build 未返回图像");
+    if (!res || !res.image_base64) throw new Error(t("error.uiBuildNoImage"));
     if (stale()) return; // newer request; re-issued in `finally`
     await sceneDrawPng($("guiBase"), res.image_base64);
     await sceneDrawPng($("guiOverlay"), res.overlay_base64 || "");
@@ -1983,16 +2096,17 @@ async function loadGuiScreen() {
     applyGuiTransform();
     // One consolidated summary line in the top-right "当前资源" area; keep the
     // bottom status bar free of duplicates.
-    const pals = (res.palettes || []).map((p) => p.name.split(/[\\/]/).pop()).join(", ") || "embedded";
-    $("currentName").textContent =
-      `${res.title}  640×480  元素 ${res.element_count}  框 ${res.overlay_box_count}  ` +
-      `美术解码 ok=${res.art_ok_count} 缺=${res.art_missing_count} 错=${res.art_error_count}  ` +
-      `调色板 [${pals}]  透明像素 ${res.transparent_pixel_count}`;
-    setMeta("");
+    const pals = (res.palettes || []).map((p) => p.name.split(/[\\/]/).pop()).join(", ") || t("gui.embedded");
+    setMetaT("gui.summary", {
+      title: dataTitle("screen", res.id, res.title),
+      count: res.element_count, boxes: res.overlay_box_count,
+      ok: res.art_ok_count, missing: res.art_missing_count,
+      errorCount: res.art_error_count, pals, tp: res.transparent_pixel_count,
+    });
   } catch (e) {
     clearGuiElementState();
-    showError("ui.build 失败: " + (e.message || e));
-    setMeta("界面加载失败", true);
+    showErrorT("error.uiBuild", { error: e.message || e });
+    setMetaT("error.uiLoadFailed", null, true);
   } finally {
     guiState.loading = false;
     // Any newer request (same screen OR a different one) that arrived while
@@ -2031,7 +2145,7 @@ function resetGuiElementView() {
   sel.innerHTML = "";
   const ph = document.createElement("option");
   ph.value = "";
-  ph.textContent = "— 选择元素 —";
+  ph.textContent = t("gui.selectElement");
   sel.appendChild(ph);
   sel.value = "";
   showGuiElementDetail(null);
@@ -2062,9 +2176,9 @@ function populateGuiElementSelect(preserveIndex = -1) {
   guiState.elements.forEach((el, i) => {
     const o = document.createElement("option");
     o.value = String(i);
-    const label = (el && (el.label || el.id)) || `元素 ${i + 1}`;
+    const label = (el && (el.label || el.id)) || t("gui.elementN", { n: i + 1 });
     const type = (el && el.type) || "?";
-    o.textContent = `${i + 1}. ${label}  [${type}]`;
+    o.textContent = t("gui.elementOption", { n: i + 1, label, type });
     sel.appendChild(o);
   });
   guiState.selectedIndex = -1;
@@ -2093,7 +2207,11 @@ function refreshGuiSelection() {
 
 function showGuiElementDetail(el) {
   const box = $("guiSelectBox");
-  if (!el) { box.hidden = true; $("guiInfo").innerHTML = GUI_INFO_PROMPT; return; }
+  if (!el) {
+    box.hidden = true;
+    $("guiInfo").textContent = t("gui.infoPrompt");
+    return;
+  }
   const r = Array.isArray(el.rect) ? el.rect : [0, 0, 0, 0];
   const z = guiState.zoom;
   box.style.left = `${r[0] * z}px`;
@@ -2101,20 +2219,31 @@ function showGuiElementDetail(el) {
   box.style.width = `${r[2] * z}px`;
   box.style.height = `${r[3] * z}px`;
   box.hidden = false;
-  const row = (k, v) => `<div class="gi-row"><span class="gi-key">${k}</span><span class="gi-val">${v}</span></div>`;
+  // All backend-provided values are escaped; only the static <br> in the art
+  // row and the wrapper tags are trusted markup.
+  const row = (k, v) =>
+    `<div class="gi-row"><span class="gi-key">${esc(k)}</span><span class="gi-val">${v}</span></div>`;
   const a = el.art;
-  let html = `<div class="gi-title">${el.label || el.id || "元素"}</div>`;
-  html += row("id", el.id || "-") + row("类型", el.type || "-") + row("矩形", `[${r.join(", ")}]`);
-  if (el.panel) html += row("分区", `${el.panel} ${JSON.stringify(el.panel_rect)}`);
-  html += row("z", el.z ?? "-");
-  if (a) html += row("美术", `${a.name || "-"}<br>${a.format || "-"} · w=${a.width ?? "-"} · frame ${a.frame ?? "-"}/${a.frames ?? "-"}`) +
-                 row("调色板", a.palette || "-") + row("解码", el.decode_status || "-");
-  if (el.grid) html += row("网格", `${el.grid.cols}×${el.grid.rows} · cell ${el.grid.cell} · step ${el.grid.step}`);
-  if (el.text) html += row("文字", guiExampleText(el.text)) +
-                       row("字号/色", `${el.font_size} / ${el.color || "默认"} / ${el.align || "left"}`);
-  html += row("源码", el.source_ref || "-");
-  if (el.text && /\{/.test(el.text)) html += `<div class="gi-note">占位符已替换为示意值（非运行时数据）；文字为系统字体近似，非游戏原版位图字体。</div>`;
-  else html += `<div class="gi-note">文字为系统字体近似，非游戏原版位图字体。</div>`;
+  let html = `<div class="gi-title">${esc(el.label || el.id || "—")}</div>`;
+  html += row(t("gui.infoId"), esc(el.id || "-")) +
+          row(t("gui.infoType"), esc(el.type || "-")) +
+          row(t("gui.infoRect"), esc(`[${r.join(", ")}]`));
+  if (el.panel) html += row(t("gui.infoPanel"), esc(`${el.panel} ${JSON.stringify(el.panel_rect)}`));
+  html += row(t("gui.infoZ"), esc(el.z ?? "-"));
+  if (a) {
+    const art = `${esc(a.name || "-")}<br>${esc(a.format || "-")} · w=${esc(a.width ?? "-")} · ` +
+                `frame ${esc(a.frame ?? "-")}/${esc(a.frames ?? "-")}`;
+    html += row(t("gui.infoArt"), art) +
+            row(t("gui.infoPalette"), esc(a.palette || "-")) +
+            row(t("gui.infoDecode"), esc(el.decode_status || "-"));
+  }
+  if (el.grid) html += row(t("gui.infoGrid"),
+    esc(`${el.grid.cols}×${el.grid.rows} · cell ${el.grid.cell} · step ${el.grid.step}`));
+  if (el.text) html += row(t("gui.infoText"), esc(guiExampleText(el.text))) +
+                       row(t("gui.infoFont"), esc(`${el.font_size} / ${el.color || "-"} / ${el.align || "left"}`));
+  html += row(t("gui.infoSource"), esc(el.source_ref || "-"));
+  const note = (el.text && /\{/.test(el.text)) ? t("gui.notePlaceholder") : t("gui.noteFont");
+  html += `<div class="gi-note">${esc(note)}</div>`;
   $("guiInfo").innerHTML = html;
 }
 
@@ -2157,7 +2286,7 @@ function wireControls() {
       if (isSceneMode() && !sceneState.loaded) await showSceneView();
       if (isGuiMode() && !guiState.loaded) await showGuiView();
     } catch (e) {
-      setMeta("connect failed: " + (e.message || e), true);
+      setMetaT("conn.connectFailed", { error: e.message || e }, true);
     }
   });
 
@@ -2324,7 +2453,45 @@ function wireControls() {
   wireMpqConfig();
 }
 
+// Rebuild a <select> while keeping the current value (option VALUES are backend
+// data; only the visible labels change with the language).
+function reselect(id, fn) {
+  const sel = $(id);
+  const prev = sel.value;
+  fn();
+  if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+}
+
+// Re-render every runtime-built string after a language switch. applyI18n()
+// already re-translated the static markup before this callback fires.
+function refreshAllText() {
+  client.onStatus(connected);
+  reflectMpqConfig();
+  $("playBtn").textContent = isPlaying ? t("stage.pause") : t("stage.play");
+  renderMeta();
+  renderError();
+  if (allPalettes.length) applyPaletteFilter(isEntityMode() || isCombatMode());
+  if (allArchives.length) populateMonsterArchive();
+  if (charIndex) refreshCharOptions();
+  if (monsterMap) {
+    reselect("monsterAnim", fillMonsterAnims);
+    reselect("combatMonsterAnim", fillCombatMonsterAnims);
+  }
+  if (npcSprites.length) renderNpcOptions();
+  if (spellCatalog) reselect("combatSpell", populateCombatSpells);
+  if (sceneCatalog.length) renderSceneOptions();
+  if (guiState.catalog.length) renderGuiOptions();
+  if (guiState.loaded) populateGuiElementSelect(guiState.selectedIndex);
+  else showGuiElementDetail(null);
+  // Re-render the active view's frame counters / status line.
+  if (isCombatMode() && combatEntry) renderCombatStage(combatStage, combatFrame);
+  else if (!isViewOwnedMode() && currentFrames) redrawCurrent();
+}
+onLangChange(refreshAllText);
+
 wireControls();
+stopPlay();             // initial localized Play label
+client.onStatus(false); // initial localized disconnected status
 // P1: reflect the persisted MPQ directory (dialog badge + input + button colour)
 // and, if configured, auto-connect + auto-load the catalog. If unconfigured, keep
 // the button red and do NOT auto-read the MPQ.

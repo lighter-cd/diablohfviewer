@@ -35,3 +35,12 @@ All decoding, viewing, and reconstruction features depend on the legitimate MPQ 
 ---
 
 > For build, run, and test instructions, see the Chinese [`README.md`](README.md).
+
+## Front-end i18n
+
+The viewer UI is bilingual: use the **Language / 语言** dropdown in the top-right of `index.html`
+or `level.html` to switch between **English (`en`)** and **简体中文 (`zh-cn`)** instantly (no reload).
+The choice is remembered in `localStorage`. All display strings live in plain JSON config files under
+`web/i18n/` (`locales.json` + one `<code>.json` per language); adding a language needs no code change —
+drop in a new JSON file and add one entry to `locales.json`. Validate the tables with
+`node tests/i18n_config_test.mjs`.

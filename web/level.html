@@ -1,16 +1,22 @@
 <!DOCTYPE html>
+<!--
+  Level Tile Viewer. i18n strings live in web/i18n/*.json (see web/src/i18n.js).
+  Static markup uses data-i18n / data-i18n-attr; runtime strings use t().
+-->
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Level Tile Viewer · DiabloHFConverter</title>
+<title data-i18n="level.title">Level Tile Viewer · DiabloHFConverter</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
   body { margin: 0; background: #14110d; color: #ddd3c0; font: 13px/1.45 Consolas, "Cascadia Mono", monospace; }
   header { padding: 12px 16px; border-bottom: 1px solid #3a3124; background: #1b1711; }
+  .hdr-row { display: flex; align-items: center; gap: 10px; }
   h1 { margin: 0 0 4px; font-size: 17px; color: #e8c67a; }
   .sub { color: #968a74; font-size: 12px; }
+  .lang-sel { background: #0f0d0a; border: 1px solid #4a3e2c; color: #eee2c8; padding: 3px 6px; font: inherit; margin-left: auto; }
   main { padding: 12px 16px 40px; }
   .panel { border: 1px solid #3a3124; background: #1b1711; padding: 10px; margin-bottom: 12px; }
   .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
@@ -44,19 +50,23 @@
 </head>
 <body>
 <header>
-  <h1>Level Tile Viewer</h1>
-  <div class="sub">inspect TIL → MIN → level CEL：megatile / micro pieces / TileType / frame / 组装预览。用于核对 FillTile(60,70,71) 这类地图对象。</div>
+  <div class="hdr-row">
+    <h1 data-i18n="nav.levelViewer">Level Tile Viewer</h1>
+    <span class="tb-label" data-i18n="lang.label">语言</span>
+    <select id="langSel" class="lang-sel" data-lang-select data-i18n-attr="aria-label:lang.aria"></select>
+  </div>
+  <div class="sub" data-i18n="level.subtitle">inspect TIL → MIN → level CEL：megatile / micro pieces / TileType / frame / 组装预览。用于核对 FillTile(60,70,71) 这类地图对象。</div>
 </header>
 <main>
   <section class="panel">
     <div class="row">
       <label>WS URL <input id="wsUrl" class="mid" value="ws://localhost:18765" /></label>
-      <button id="connectBtn">连接</button>
-      <label>MPQ 路径 <input id="archive" class="wide" value="D:/work/xt/diablo/DevilutionX-Hell Fire/DIABDAT.MPQ" /></label>
-      <button id="inspectBtn" disabled>检查</button>
+      <button id="connectBtn" data-i18n="level.connect">连接</button>
+      <label><span data-i18n="level.mpqPath">MPQ 路径</span> <input id="archive" class="wide" value="D:/work/xt/diablo/DevilutionX-Hell Fire/DIABDAT.MPQ" /></label>
+      <button id="inspectBtn" disabled data-i18n="level.inspect">检查</button>
     </div>
     <div class="row" style="margin-top:8px">
-      <label>图块集 <select id="preset"></select></label>
+      <label><span data-i18n="level.tileset">图块集</span> <select id="preset"></select></label>
       <label>CEL <input id="cel" class="mid" value="levels/towndata/town.cel" /></label>
       <label>TIL <input id="til" class="mid" value="levels/towndata/town.til" /></label>
       <label>MIN <input id="min" class="mid" value="levels/towndata/town.min" /></label>
@@ -65,29 +75,29 @@
       <label>blocks <input id="blocks" class="num" type="number" value="16" /></label>
       <label>micro_len <input id="microLen" class="num" type="number" value="16" /></label>
       <label>megatile <input id="megatile" class="num" type="number" value="71" min="1" /></label>
-      <button id="prevBtn" type="button" title="上一 megatile">◀</button>
-      <button id="nextBtn" type="button" title="下一 megatile">▶</button>
+      <button id="prevBtn" type="button" title="上一 megatile" data-i18n-attr="title:level.prevTitle">◀</button>
+      <button id="nextBtn" type="button" title="下一 megatile" data-i18n-attr="title:level.nextTitle">▶</button>
     </div>
     <div id="status" style="margin-top:8px"></div>
   </section>
 
   <div class="cols">
     <section class="panel">
-      <div class="label">组装预览（isometric，乘 4×）</div>
+      <div class="label" data-i18n="level.assemblyTitle">组装预览（isometric，乘 4×）</div>
       <div class="assembly-wrap"><canvas id="assembly" class="tile-canvas"></canvas></div>
       <div id="meta" class="muted" style="margin-top:6px"></div>
     </section>
     <section class="panel">
-      <div class="label">CEL frames（点击可切换 1× / 4×）</div>
+      <div class="label" data-i18n="level.framesTitle">CEL frames（点击可切换 1× / 4×）</div>
       <div id="frames" class="frames"></div>
     </section>
   </div>
 
   <section class="panel">
-    <div class="label">Micro pieces</div>
+    <div class="label" data-i18n="level.microTitle">Micro pieces</div>
     <div id="micros"></div>
   </section>
 </main>
-<script type="module" src="src/level.js?v=20261111c"></script>
+<script type="module" src="src/level.js?v=20261113d"></script>
 </body>
 </html>

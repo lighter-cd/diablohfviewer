@@ -3,8 +3,17 @@
 // Level Tile Viewer: calls mcp-server `level.inspect` and renders the returned
 // base64 PNGs (assembly / micro pieces / CEL frames) onto canvases. The
 // backend does all MPQ/TIL/MIN/CEL work; this page never reads files.
+//
+// i18n: static markup is translated via data-i18n (web/i18n/*.json); runtime
+// strings use t(). The status line is stored as a render closure so a language
+// switch can re-translate it without another inspect().
 
-import { McpClient } from "./client.js?v=20261111b";
+import { McpClient } from "./client.js?v=20261113d";
+import { t, initI18n, applyI18n, wireLangSelectors, onLangChange } from "./i18n.js?v=20261113d";
+
+await initI18n();
+applyI18n();
+wireLangSelectors();
 
 const $ = (id) => document.getElementById(id);
 const client = new McpClient();
@@ -12,19 +21,19 @@ let hasLevelTool = false;
 let maxMegatile = 0;
 
 const TILESETS = [
-  { id: "tristram", label: "Tristram 城镇", mpq: "DIABDAT.MPQ",
+  { id: "tristram", labelKey: "level.tsTristram", mpq: "DIABDAT.MPQ",
     base: "levels/towndata/town", palette: "levels/towndata/town.pal", blocks: 16, micro: 16 },
-  { id: "l1", label: "Cathedral L1", mpq: "DIABDAT.MPQ",
+  { id: "l1", labelKey: "level.tsL1", mpq: "DIABDAT.MPQ",
     base: "levels/l1data/l1", palette: "levels/l1data/l1_2.pal", blocks: 10, micro: 10 },
-  { id: "l2", label: "Catacombs L2", mpq: "DIABDAT.MPQ",
+  { id: "l2", labelKey: "level.tsL2", mpq: "DIABDAT.MPQ",
     base: "levels/l2data/l2", palette: "levels/l2data/l2_2.pal", blocks: 10, micro: 10 },
-  { id: "l3", label: "Caves L3", mpq: "DIABDAT.MPQ",
+  { id: "l3", labelKey: "level.tsL3", mpq: "DIABDAT.MPQ",
     base: "levels/l3data/l3", palette: "levels/l3data/l3pfoul.pal", blocks: 10, micro: 10 },
-  { id: "l4", label: "Hell L4", mpq: "DIABDAT.MPQ",
+  { id: "l4", labelKey: "level.tsL4", mpq: "DIABDAT.MPQ",
     base: "levels/l4data/l4", palette: "levels/l4data/l4_1.pal", blocks: 16, micro: 12 },
-  { id: "l5", label: "Hellfire Crypt L5", mpq: "hellfire.mpq",
+  { id: "l5", labelKey: "level.tsL5", mpq: "hellfire.mpq",
     base: "nlevels/l5data/l5", palette: "nlevels/l5data/l5base.pal", blocks: 10, micro: 10 },
-  { id: "l6", label: "Hellfire Nest L6", mpq: "hellfire.mpq",
+  { id: "l6", labelKey: "level.tsL6", mpq: "hellfire.mpq",
     base: "nlevels/l6data/l6", palette: "nlevels/l6data/l6base1.pal", blocks: 10, micro: 10 },
 ];
 
@@ -44,33 +53,43 @@ function mpqDir() {
 }
 
 function applyTileset(id, runInspect) {
-  const t = TILESETS.find((x) => x.id === id) || TILESETS[0];
-  $("archive").value = mpqDir() + t.mpq;
-  $("cel").value = t.base + ".cel";
-  $("til").value = t.base + ".til";
-  $("min").value = t.base + ".min";
-  $("sol").value = t.base + ".sol";
-  $("palette").value = t.palette;
-  $("blocks").value = String(t.blocks);
-  $("microLen").value = String(t.micro);
+  const ts = TILESETS.find((x) => x.id === id) || TILESETS[0];
+  $("archive").value = mpqDir() + ts.mpq;
+  $("cel").value = ts.base + ".cel";
+  $("til").value = ts.base + ".til";
+  $("min").value = ts.base + ".min";
+  $("sol").value = ts.base + ".sol";
+  $("palette").value = ts.palette;
+  $("blocks").value = String(ts.blocks);
+  $("microLen").value = String(ts.micro);
   $("megatile").value = "1";
   maxMegatile = 0;
   if (runInspect && hasLevelTool && client.ws && client.ws.readyState === WebSocket.OPEN) inspect();
 }
 
-function initTilesets() {
+// Rebuild the tileset dropdown (also used on a language switch); the selected
+// id is preserved because option values are data, only labels are translated.
+function renderTilesetOptions() {
   const sel = $("preset");
-  for (const t of TILESETS) {
+  const prev = sel.value;
+  sel.innerHTML = "";
+  for (const ts of TILESETS) {
     const opt = document.createElement("option");
-    opt.value = t.id;
-    opt.textContent = t.label;
+    opt.value = ts.id;
+    opt.textContent = t(ts.labelKey);
     sel.appendChild(opt);
   }
+  if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+}
+
+function initTilesets() {
+  const sel = $("preset");
+  renderTilesetOptions();
   // Allow deep-linking from the sprite catalog: ?tileset=l1 opens the matching
   // level tileset and prefills its CEL/TIL/MIN/SOL/palette inputs. The actual
   // inspect runs after the WS connection is established (see connect handler).
   const requested = new URLSearchParams(location.search).get("tileset");
-  if (requested && TILESETS.some((t) => t.id === requested)) {
+  if (requested && TILESETS.some((x) => x.id === requested)) {
     sel.value = requested;
     applyTileset(requested, false);
   } else {
@@ -79,10 +98,18 @@ function initTilesets() {
   sel.addEventListener("change", () => applyTileset(sel.value, true));
 }
 
-function setStatus(text, isError = false) {
+let statusRender = null;
+function setStatusRender(fn, isError = false) {
+  statusRender = fn;
   const el = $("status");
-  el.textContent = text;
+  el.textContent = fn();
   el.classList.toggle("err", isError);
+}
+function setStatusT(key, vars, isError = false) {
+  setStatusRender(() => t(key, vars), isError);
+}
+function setStatus(text, isError = false) {
+  setStatusRender(() => text, isError);
 }
 
 // The backend searches `archives` in order. Build the common DevilutionX MPQ
@@ -117,7 +144,7 @@ async function decodePng(b64) {
     return await new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error("PNG 解码失败"));
+      img.onerror = () => reject(new Error(t("level.pngDecodeFailed")));
       img.src = url;
     });
   } finally {
@@ -172,7 +199,7 @@ function blockTable(blocks) {
 async function inspect() {
   const archive = $("archive").value.trim();
   if (!archive) {
-    setStatus("请先填写 MPQ 路径", true);
+    setStatusT("level.fillMpq", null, true);
     return;
   }
   const args = {
@@ -187,16 +214,20 @@ async function inspect() {
     micro_len: parseInt($("microLen").value, 10) || 16,
     megatile: parseInt($("megatile").value, 10) || 1,
   };
-  setStatus(`inspect ${args.megatile} …`);
+  setStatusT("level.inspecting", { n: args.megatile });
   $("inspectBtn").disabled = true;
   try {
     const res = await client.callTool("level.inspect", args);
     maxMegatile = res.megatile_count || res.megatile || 0;
     await render(res);
-    setStatus(`megatile ${res.megatile}/${maxMegatile || "?"} · micros ${res.micros.map((m) => m.id).join(", ")} · ` +
-              `frames ${res.frames.length} · 组装 ${res.assembly.width}×${res.assembly.height}`);
+    setStatusT("level.statusSummary", {
+      n: res.megatile, max: maxMegatile || "?",
+      micros: res.micros.map((m) => m.id).join(", "),
+      frames: res.frames.length,
+      w: res.assembly.width, h: res.assembly.height,
+    });
   } catch (e) {
-    setStatus("level.inspect 失败: " + (e.message || e), true);
+    setStatusT("level.inspectFailed", { error: e.message || e }, true);
   } finally {
     $("inspectBtn").disabled = false;
   }
@@ -255,6 +286,13 @@ async function render(res) {
   }
 }
 
+// Re-translate runtime-built strings after a language switch. applyI18n() has
+// already re-translated the static markup before this callback fires.
+onLangChange(() => {
+  renderTilesetOptions();
+  if (statusRender) $("status").textContent = statusRender();
+});
+
 initTilesets();
 
 $("connectBtn").addEventListener("click", async () => {
@@ -264,17 +302,17 @@ $("connectBtn").addEventListener("click", async () => {
     await client.connect($("wsUrl").value.trim());
     const listing = await client.listTools();
     const tools = Array.isArray(listing) ? listing : (listing.tools || []);
-    hasLevelTool = tools.some((t) => t.name === "level.inspect");
+    hasLevelTool = tools.some((x) => x.name === "level.inspect");
     if (!hasLevelTool) {
-      setStatus("后端没有 level.inspect：请停止旧 mcp-server、重新构建并重启 --ws", true);
+      setStatusT("level.noLevelTool", null, true);
       return;
     }
     $("inspectBtn").disabled = false;
-    setStatus(`已连接（${tools.length} tools）`);
+    setStatusT("level.connected", { count: tools.length });
     // Auto-run the default inspection so the page is never an empty shell.
     if ($("archive").value.trim()) await inspect();
   } catch (e) {
-    setStatus("连接失败: " + (e.message || e), true);
+    setStatusT("level.connectFailed", { error: e.message || e }, true);
   } finally {
     $("connectBtn").disabled = false;
   }

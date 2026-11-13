@@ -33,6 +33,32 @@ MPQ），**绿色 = 已配置**（下次进入会自动连接并加载精灵目�
 目录后点「保存」即可；路径持久化在 `localStorage`（`dhfc.mpqDir`），也可清空输入再保存来
 取消配置。Esc / 「取消」/ 点击遮罩关闭对话框均不保存。
 
+### 多语言（i18n）
+
+`index.html` / `level.html` 右上角的「语言 / Language」下拉框可即时切换 **English (`en`)** 与
+**简体中文 (`zh-cn`)**，不需要刷新页面；选择持久化在 `localStorage`（`dhfc.lang`），首次访问按
+浏览器语言推断（未匹配时 `zh-cn`）。
+
+界面文案全部放在 `i18n/` 下的纯 JSON 配置文件中，由 `src/i18n.js` 加载：
+
+| 文件 | 作用 |
+|------|------|
+| `i18n/locales.json` | 语言清单（`default` / `fallback` / `locales[{code,label}]`） |
+| `i18n/en.json` | 英文字符串表 |
+| `i18n/zh-cn.json` | 简体中文字符串表 |
+
+- 静态文案：HTML 用 `data-i18n="a.b"` 设置文本，用 `data-i18n-attr="placeholder:a.b,title:c.d"`
+  设置属性；`applyI18n()` 遍历所有标记节点（`textContent` / `setAttribute`，不用 innerHTML）。
+- 运行时文案：JS 用 `t("a.b", {name})` 插值、`tOpt("a.b", fallback)` 做可选覆盖；状态行与
+  错误横幅保存为渲染闭包，`onLangChange` 回调在切换后统一重刷（状态栏、下拉选项、摘要行）。
+- 新增语言：加一个 `<code>.json` 并在 `locales.json` 里登记即可，下拉框自动出现。两个语言表
+  必须保持相同的 key 集合与 `{占位符}`；`node ../tests/i18n_config_test.mjs` 会校验。
+- 后端返回的中文数据（界面名 / 场景名 / 技能名 / 阶段标签）由 `data.*` 段覆盖已知 id，
+  未知 id 原样显示。
+
+> `i18n/*.json` 的 URL 带 `?v=<token>`，`sync-web.sh` 每次同步会统一刷新；`mcp-server` 已把
+> `.json` 映射为 `application/json`，因此同端口 HTTP 服务可直接读取。
+
 顶部「浏览模式」可在 5 种视图间切换：
 
 - **目录浏览**（默认）：左侧目录树由 `sprite.list` 构建；点任一精灵即调用 `sprite.decode`

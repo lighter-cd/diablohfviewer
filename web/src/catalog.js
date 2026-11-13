@@ -5,18 +5,22 @@
 // and render it as a collapsible, clickable DOM tree. Clicking a leaf sprite
 // calls onSelect(sprite). Every branch starts collapsed by default.
 
+import { tOpt } from "./i18n.js?v=20261113d";
+
+const unknown = () => tOpt("common.unknown", "(unknown)");
+
 // Chain of keys (root -> ... -> leaf) for one sprite in the chosen mode.
 function keyPath(sprite, mode) {
   if (mode === "mpq") {
     // group by owning MPQ, then by the in-archive directory path.
-    const archive = sprite.archive || "(unknown)";
+    const archive = sprite.archive || unknown();
     const parts = (sprite.name || "")
       .split(/[\\/]/)
       .filter((p) => p.length > 0);
     return [archive, ...parts];
   }
   // combined / family mode: family -> class -> type -> basename
-  const segs = [sprite.family || "(unknown)", sprite.class || "(unknown)"];
+  const segs = [sprite.family || unknown(), sprite.class || unknown()];
   if (sprite.type) segs.push(sprite.type);
   segs.push(leafBasename(sprite.name));
   return segs;
@@ -58,6 +62,9 @@ function renderChildren(ul, node, onSelect, container) {
       const head = document.createElement("span");
       head.className = "cat-head collapsed";
       head.textContent = child.label;
+      // Only the localized placeholder needs re-translating on a language
+      // switch; real family/class/archive names are backend data.
+      if (child.label === unknown()) head.setAttribute("data-i18n", "common.unknown");
       const sub = document.createElement("ul");
       sub.className = "cat-sub";
       sub.hidden = true; // default collapsed

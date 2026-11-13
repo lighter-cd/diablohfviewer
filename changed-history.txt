@@ -495,3 +495,7 @@
 ## 2026-11-13 03:49:24
 - 把前端「MPQ配置」功能从顶部常驻设置条收入到 connected 状态右侧的「mpq配置」按钮：点击弹出原生 <dialog> 配置 MPQ 目录，按钮背景 未配置红 / 已配置绿（沿用 bad/ok 配色）；删除原 #mpqSetup 常驻横条。弹窗保留状态徽标、目录输入框、保存/取消与正版资源声明，打开时从 localStorage 回灌已存目录（取消过的编辑不会被误显示为已保存），支持 Esc / 取消 / 遮罩点击关闭；保存后立即关闭弹窗并由 saveMpqDir 异步自动连接加载。main.js 新增 setMpqButton 同步按钮配色，把 wireMpqSetup 重构为 wireMpqConfig 统一绑定弹窗交互。同步更新 docs/RELEASE_PLAN.md 的 P1 状态与 web/README.md 运行说明；三套测试 core/unit/integration 全绿、node --check 与 HTML id 唯一性检查通过；已用 sync-web.sh 重新同步 build-mcp/web 并升缓存号 20261113034748。
 - 涉及: web/index.html, web/src/main.js, web/styles.css, docs/RELEASE_PLAN.md, web/README.md, build-mcp/web/(构建产物)
+
+## 2026-11-13 14:12:19
+- 前端多语言化：新增 web/i18n/{locales,en,zh-cn}.json 纯 JSON 字符串配置与 web/src/i18n.js 引擎，index.html/level.html 加语言下拉可即时切换 en/zh-cn（不刷新、状态不丢、localStorage 持久化、首次按浏览器语言推断）；main.js/level.js/catalog.js/client.js 全部界面文案改用 data-i18n 与 t()/tOpt()，状态行/错误条保存渲染闭包由 onLangChange 重刷，后端中文数据用 data.* 段覆盖；同步补样式、测试、文档并 sync-web.sh 升缓存号，三套 C++ 测试与 node tests/i18n_config_test.mjs 全绿。
+- 涉及: web/i18n/, web/src/i18n.js, web/index.html, web/level.html, web/src/main.js, web/src/level.js, web/src/catalog.js, web/src/client.js, web/styles.css, web/README.md, tests/i18n_config_test.mjs, README.md, README_EN.md, docs/ARCHITECTURE.md, docs/PROJECT.md, TODO, build-mcp/web/(构建产物)

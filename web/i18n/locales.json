@@ -1,0 +1,8 @@
+{
+  "default": "zh-cn",
+  "fallback": "en",
+  "locales": [
+    { "code": "en", "label": "English" },
+    { "code": "zh-cn", "label": "简体中文" }
+  ]
+}

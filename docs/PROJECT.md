@@ -440,6 +440,14 @@ DiabloHFConverter/
       1/2/4/8 手动选择器，方向数完全取自 `sprite.decode` 的 `directions`，`#dirNo` 改为
       `x/y`（当前方向 / 总方向数，战斗模式固定 `/8`）。仅改 `web/index.html`、
       `web/src/main.js`、`web/styles.css`，后端无改动。
+- [x] **前端多语言化 i18n（2026-11-13）**：支持 `en` / `zh-cn`，字符串集中在纯 JSON 配置文件
+      `web/i18n/{locales,en,zh-cn}.json`，引擎为 `web/src/i18n.js`；新增语言只需加一个 JSON
+      并在 `locales.json` 登记，不改代码。`index.html` / `level.html` 右上角语言下拉可即时切换
+      （不刷新、不丢浏览状态、不重请求后端），`localStorage` 持久化、首次按浏览器语言推断。
+      静态文案用 `data-i18n` / `data-i18n-attr`，运行时文案用 `t()` / `tOpt()`，状态行与错误条
+      保存渲染闭包由 `onLangChange` 重刷；后端中文数据（界面名/场景名/技能名/阶段标签）由
+      `data.*` 段覆盖已知 id。测试 `tests/i18n_config_test.mjs`（Node 24）校验两表 key/占位符
+      一致性与引擎行为。详见 `docs/ARCHITECTURE.md` §10.6 与 `web/README.md`。
 - [x] **（可选保真）`sprite.decode` 应用 TRN**：已实现（2026-11-07），原理取自 DevilutionX 逆向。
       `sprite.decode` 新增 `apply_trn`（布尔，默认 false）与 `trn_name`（可选显式 TRN）参数，
       开启后按默认 `plrgfx\trn<class>.trn`（来自 `sprites.tsv` 的 `trn` 字段，即 `trn`+职业，

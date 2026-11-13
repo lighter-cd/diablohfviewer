@@ -6,6 +6,8 @@
 // Every call() returns a Promise resolved when the response with the same id
 // arrives, so concurrent calls are safe.
 
+import { t } from "./i18n.js?v=20261113d";
+
 export class McpClient {
   constructor() {
     this.ws = null;
@@ -27,7 +29,7 @@ export class McpClient {
       };
       this.ws.onclose = () => {
         if (this.onStatus) this.onStatus(false);
-        if (!settled) reject(new Error("WebSocket closed before open"));
+        if (!settled) reject(new Error(t("error.wsClosed")));
       };
       this.ws.onerror = (e) => {
         if (!settled) { settled = true; reject(e); }
@@ -73,7 +75,7 @@ export class McpClient {
 
   _send(method, params, onProgress) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN)
-      return Promise.reject(new Error("WebSocket is not connected"));
+      return Promise.reject(new Error(t("error.wsNotConnected")));
     const id = this.nextId++;
     this.onProgress = onProgress || null;
     return new Promise((resolve, reject) => {

@@ -13,6 +13,10 @@
 
   (A plain file:// open will not load ES modules; use a static server.)
 
+  i18n: all user-visible strings live in web/i18n/*.json (see web/src/i18n.js).
+  Static markup is translated via data-i18n / data-i18n-attr attributes; strings
+  built at runtime use t() from i18n.js. The language dropdown switches live.
+
   Browse modes:
     - 目录浏览 (Catalog): pick any sprite from the recovered-name tree.
     - 实体查看器 (Entity): merged player / monster / NPC viewer. A left
@@ -29,32 +33,34 @@
       approximate system font on top (toggleable). Pick an element from the
       dropdown to inspect its details (no mouse hover).
 -->
-<html lang="zh">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store" />
   <meta http-equiv="Pragma" content="no-cache" />
-  <title>DiabloHFConverter · Sprite & Scene Viewer</title>
+  <title data-i18n="app.title">DiabloHFConverter · Sprite &amp; Scene Viewer</title>
   <link rel="stylesheet" href="styles.css?v=20261113d" />
 </head>
 <body>
   <header>
-    <h1>Sprite &amp; Character Viewer</h1>
+    <h1 data-i18n="app.h1">Sprite &amp; Character Viewer</h1>
     <div class="conn">
-      <a href="level.html" target="_blank" style="color:#e8c67a;margin-right:12px">Level Tile Viewer</a>
+      <a href="level.html" target="_blank" style="color:#e8c67a;margin-right:12px" data-i18n="nav.levelViewer">Level Tile Viewer</a>
       <input id="wsUrl" value="ws://localhost:18765" size="28" />
-      <button id="connectBtn">Connect</button>
+      <button id="connectBtn" data-i18n="conn.connect">Connect</button>
       <span id="status" class="status">disconnected</span>
-      <button id="mpqConfigBtn" class="mpq-config-btn bad" type="button">mpq配置</button>
+      <button id="mpqConfigBtn" class="mpq-config-btn bad" type="button" data-i18n="mpq.configBtn">mpq配置</button>
+      <span class="tb-label" data-i18n="lang.label">语言</span>
+      <select id="langSel" class="lang-sel" data-lang-select data-i18n-attr="aria-label:lang.aria"></select>
     </div>
     <div class="toolbar">
-      <span class="tb-label">浏览模式</span>
-      <label><input type="radio" name="mode" value="catalog" checked> 目录浏览</label>
-      <label><input type="radio" name="mode" value="entity"> 实体查看器</label>
-      <label><input type="radio" name="mode" value="combat"> 技能 / 战斗查看器</label>
-      <label><input type="radio" name="mode" value="scene"> 场景查看器</label>
-      <label><input type="radio" name="mode" value="gui"> 界面布局查看器</label>
+      <span class="tb-label" data-i18n="mode.label">浏览模式</span>
+      <label><input type="radio" name="mode" value="catalog" checked> <span data-i18n="mode.catalog">目录浏览</span></label>
+      <label><input type="radio" name="mode" value="entity"> <span data-i18n="mode.entity">实体查看器</span></label>
+      <label><input type="radio" name="mode" value="combat"> <span data-i18n="mode.combat">技能 / 战斗查看器</span></label>
+      <label><input type="radio" name="mode" value="scene"> <span data-i18n="mode.scene">场景查看器</span></label>
+      <label><input type="radio" name="mode" value="gui"> <span data-i18n="mode.gui">界面布局查看器</span></label>
     </div>
   </header>
 
@@ -63,151 +69,151 @@
        MPQ；配置后持久化到 localStorage，下次进入自动连接并加载目录。 -->
   <dialog id="mpqModal" class="mpq-modal" aria-labelledby="mpqModalTitle">
     <div class="mpq-modal-head">
-      <strong id="mpqModalTitle">MPQ 配置</strong>
-      <button id="mpqClose" class="mpq-x" type="button" aria-label="关闭">×</button>
+      <strong id="mpqModalTitle" data-i18n="mpq.title">MPQ 配置</strong>
+      <button id="mpqClose" class="mpq-x" type="button" aria-label="关闭" data-i18n-attr="aria-label:common.close">×</button>
     </div>
     <div class="mpq-modal-body">
       <span id="mpqStatus" class="mpq-status bad">MPQ尚未配置</span>
-      <label class="mpq-label">MPQ 目录 / 主档案
-        <input id="mpqDir" type="text" placeholder="输入或者粘贴你的正版MPQ所在目录" size="52" />
+      <label class="mpq-label"><span data-i18n="mpq.dirLabel">MPQ 目录 / 主档案</span>
+        <input id="mpqDir" type="text" placeholder="输入或者粘贴你的正版MPQ所在目录" size="52" data-i18n-attr="placeholder:mpq.dirPlaceholder" />
       </label>
       <span id="mpqPickMsg" class="mpq-pick-msg"></span>
-      <p class="mpq-hint">自备官方正版 Hellfire/Diablo 文件（含 DIABDAT.MPQ/hellfire.mpq 等）</p>
+      <p class="mpq-hint" data-i18n="mpq.hint">自备官方正版 Hellfire/Diablo 文件（含 DIABDAT.MPQ/hellfire.mpq 等）</p>
     </div>
     <div class="mpq-modal-foot">
-      <button id="mpqSave" type="button">保存</button>
-      <button id="mpqCancel" type="button">取消</button>
+      <button id="mpqSave" type="button" data-i18n="common.save">保存</button>
+      <button id="mpqCancel" type="button" data-i18n="common.cancel">取消</button>
     </div>
   </dialog>
 
   <main>
     <aside class="catalog-pane" id="catalogPane">
       <div class="catalog-bar">
-        <span class="cat-bar-label">分组</span>
-        <label><input type="radio" name="groupMode" value="family" checked> 按类型合并</label>
-        <label><input type="radio" name="groupMode" value="mpq"> 按 MPQ 包</label>
+        <span class="cat-bar-label" data-i18n="catalog.group">分组</span>
+        <label><input type="radio" name="groupMode" value="family" checked> <span data-i18n="catalog.byFamily">按类型合并</span></label>
+        <label><input type="radio" name="groupMode" value="mpq"> <span data-i18n="catalog.byMpq">按 MPQ 包</span></label>
         <span class="cat-bar-spacer"></span>
-        <button id="expandAll" type="button">展开全部</button>
-        <button id="collapseAll" type="button">收起全部</button>
+        <button id="expandAll" type="button" data-i18n="catalog.expandAll">展开全部</button>
+        <button id="collapseAll" type="button" data-i18n="catalog.collapseAll">收起全部</button>
       </div>
       <aside id="catalog" class="catalog">
-        <em>点击 Connect 加载精灵目录…</em>
+        <em data-i18n="catalog.empty">点击 Connect 加载精灵目录…</em>
       </aside>
     </aside>
 
     <aside class="entity-pane" id="entityPane" hidden>
-      <div class="char-bar">实体查看器</div>
+      <div class="char-bar" data-i18n="entity.title">实体查看器</div>
 
       <!-- 唯一的实体切换器：在 玩家角色 / 怪物 / NPC 之间选择；下方只渲染对应面板 -->
       <div class="entity-type-row">
-        <span class="entity-type-label">实体类型</span>
+        <span class="entity-type-label" data-i18n="entity.typeLabel">实体类型</span>
         <select id="entityType">
-          <option value="character">玩家角色 (Player)</option>
-          <option value="monster">怪物 (Monster)</option>
-          <option value="npc">NPC (Towner)</option>
+          <option value="character" data-i18n="entity.character">玩家角色 (Player)</option>
+          <option value="monster" data-i18n="entity.monster">怪物 (Monster)</option>
+          <option value="npc" data-i18n="entity.npc">NPC (Towner)</option>
         </select>
       </div>
 
       <!-- 玩家角色：仅 职业 / 动作 / 盔甲 / 武器（无 MPQ，路径取自精灵自身 archive_path） -->
       <div id="panel-character" class="entity-panel" hidden>
-        <div class="char-bar sub">玩家角色</div>
+        <div class="char-bar sub" data-i18n="entity.panelCharacter">玩家角色</div>
         <div class="char-controls">
-          <label>职业
+          <label><span data-i18n="entity.charClass">职业</span>
             <select id="charClass"></select>
           </label>
-          <label>动作
+          <label><span data-i18n="entity.charAction">动作</span>
             <select id="charAction"></select>
           </label>
-          <label>盔甲
+          <label><span data-i18n="entity.charArmor">盔甲</span>
             <select id="charArmor"></select>
           </label>
-          <label>武器
+          <label><span data-i18n="entity.charWeapon">武器</span>
             <select id="charWeapon"></select>
           </label>
         </div>
-        <div class="char-hint">选职业/动作后自动列出该职业真实存在的盔甲与武器组合；切换即解码并播放。</div>
+        <div class="char-hint" data-i18n="entity.charHint">选职业/动作后自动列出该职业真实存在的盔甲与武器组合；切换即解码并播放。</div>
       </div>
 
       <!-- 怪物：MPQ / 怪物 / 动作 -->
       <div id="panel-monster" class="entity-panel" hidden>
-        <div class="char-bar sub">怪物</div>
+        <div class="char-bar sub" data-i18n="entity.panelMonster">怪物</div>
         <div class="char-controls">
-          <label>MPQ
+          <label><span data-i18n="common.mpq">MPQ</span>
             <select id="monsterArchive"></select>
           </label>
-          <label>怪物
+          <label><span data-i18n="entity.panelMonster">怪物</span>
             <select id="monsterSel"></select>
           </label>
-          <label>动作
+          <label><span data-i18n="entity.action">动作</span>
             <select id="monsterAnim"></select>
           </label>
         </div>
-        <div class="char-hint">怪物按 monstdat 的动画字母枚举（Stand/Walk/Attack/Hit/Death/Special）；选择即解码并播放，方向数取自解码返回的 directions。</div>
+        <div class="char-hint" data-i18n="entity.monsterHint">怪物按 monstdat 的动画字母枚举（Stand/Walk/Attack/Hit/Death/Special）；选择即解码并播放，方向数取自解码返回的 directions。</div>
       </div>
 
       <!-- NPC：MPQ / NPC -->
       <div id="panel-npc" class="entity-panel" hidden>
-        <div class="char-bar sub">NPC</div>
+        <div class="char-bar sub" data-i18n="entity.panelNpc">NPC</div>
         <div class="char-controls">
-          <label>MPQ
+          <label><span data-i18n="common.mpq">MPQ</span>
             <select id="npcArchive"></select>
           </label>
-          <label>NPC
+          <label><span data-i18n="entity.panelNpc">NPC</span>
             <select id="npcSel"></select>
           </label>
         </div>
-        <div class="char-hint">NPC 为单方向 .cel 精灵（含硬编码 towners/animals/cow.cel）；选择即解码并播放。</div>
+        <div class="char-hint" data-i18n="entity.npcHint">NPC 为单方向 .cel 精灵（含硬编码 towners/animals/cow.cel）；选择即解码并播放。</div>
       </div>
     </aside>
 
     <aside class="combat-pane" id="combatPane" hidden>
-      <div class="char-bar">技能 / 战斗查看器（同屏：玩家 + 怪物 + 全阶段效果）</div>
+      <div class="char-bar" data-i18n="combat.title">技能 / 战斗查看器（同屏：玩家 + 怪物 + 全阶段效果）</div>
       <div class="char-controls">
-        <label>来源
+        <label><span data-i18n="combat.source">来源</span>
           <select id="combatSource">
-            <option value="player">玩家技能</option>
-            <option value="monster">怪物远程攻击</option>
-            <option value="ability">怪物特殊能力</option>
-            <option value="trap">陷阱法术</option>
+            <option value="player" data-i18n="combat.sourcePlayer">玩家技能</option>
+            <option value="monster" data-i18n="combat.sourceMonster">怪物远程攻击</option>
+            <option value="ability" data-i18n="combat.sourceAbility">怪物特殊能力</option>
+            <option value="trap" data-i18n="combat.sourceTrap">陷阱法术</option>
           </select>
         </label>
-        <label>技能 / 攻击
+        <label><span data-i18n="combat.spell">技能 / 攻击</span>
           <select id="combatSpell"></select>
         </label>
-        <label>玩家职业
+        <label><span data-i18n="combat.playerClass">玩家职业</span>
           <select id="combatClass"></select>
         </label>
-        <label>怪物 MPQ
+        <label><span data-i18n="combat.monsterMpq">怪物 MPQ</span>
           <select id="combatArchive"></select>
         </label>
-        <label>怪物
+        <label><span data-i18n="combat.monster">怪物</span>
           <select id="combatMonster"></select>
         </label>
-        <label>怪物动作
+        <label><span data-i18n="combat.monsterAction">怪物动作</span>
           <select id="combatMonsterAnim"></select>
         </label>
       </div>
       <div class="char-controls">
-        <label>阶段
+        <label><span data-i18n="combat.stage">阶段</span>
           <button id="stagePrev" type="button">◀</button>
           <span id="stageNo">—</span>
           <button id="stageNext" type="button">▶</button>
         </label>
-        <label class="fps"><input type="checkbox" id="combatLoop" checked /> 自动连播全阶段</label>
+        <label class="fps"><input type="checkbox" id="combatLoop" checked /> <span data-i18n="combat.autoLoop">自动连播全阶段</span></label>
       </div>
-      <div class="char-hint">「方向」滑块以施放者为中心旋转整场：目标落在施放者朝向的方位并回身面向施放者，两者位置与朝向同步重算。四个阶段都在当前方向内播完，播放不切换方向。「▶ 播放」连走 施法 → 投射 → 命中 → debuff，阶段按钮可单独查看；debuff 用 TRN 对目标做近似着色。</div>
+      <div class="char-hint" data-i18n="combat.hint">「方向」滑块以施放者为中心旋转整场：目标落在施放者朝向的方位并回身面向施放者，两者位置与朝向同步重算。四个阶段都在当前方向内播完，播放不切换方向。「▶ 播放」连走 施法 → 投射 → 命中 → debuff，阶段按钮可单独查看；debuff 用 TRN 对目标做近似着色。</div>
     </aside>
 
     <aside class="scene-pane" id="scenePane" hidden>
-      <div class="char-bar">场景查看器（scene.list / scene.build · 完整等距关卡）</div>
+      <div class="char-bar" data-i18n="scene.title">场景查看器（scene.list / scene.build · 完整等距关卡）</div>
       <div class="char-controls">
-        <label>场景
-          <select id="sceneSel"><option value="">（未选择场景）</option></select>
+        <label><span data-i18n="scene.select">场景</span>
+          <select id="sceneSel"><option value="" data-i18n="scene.none">（未选择场景）</option></select>
         </label>
-        <label>MPQ 路径（可选，覆盖目录里的主档案）
-          <input id="sceneArchive" type="text" placeholder="留空则用目录中的档案栈" />
+        <label><span data-i18n="scene.archive">MPQ 路径（可选，覆盖目录里的主档案）</span>
+          <input id="sceneArchive" type="text" placeholder="留空则用目录中的档案栈" data-i18n-attr="placeholder:scene.archivePlaceholder" />
         </label>
-        <label>缩放
+        <label><span data-i18n="scene.zoom">缩放</span>
           <select id="sceneZoom">
             <option value="0.25">0.25×</option>
             <option value="0.5">0.5×</option>
@@ -220,75 +226,75 @@
           </select>
           <span id="sceneZoomNo">1×</span>
         </label>
-        <label class="scene-check"><input type="checkbox" id="sceneOverlayToggle" checked /> 显示叠加层（网格 / SOL 标志）</label>
-        <label class="scene-check"><input type="checkbox" id="sceneBrightToggle" checked /> 提亮（夜景）</label>
-        <label class="scene-check"><input type="checkbox" id="sceneLightToggle" /> 光照（dLight 暗部 + 中心火把）</label>
-        <label class="scene-check"><input type="checkbox" id="sceneDirtBorderToggle" /> 绘制 Dirt 边框（忠实复原 dPiece，会遮挡房间）</label>
-        <button id="sceneFitBtn" type="button">复位视图</button>
-        <button id="sceneClearCacheBtn" type="button">清除地图缓存</button>
+        <label class="scene-check"><input type="checkbox" id="sceneOverlayToggle" checked /> <span data-i18n="scene.overlayToggle">显示叠加层（网格 / SOL 标志）</span></label>
+        <label class="scene-check"><input type="checkbox" id="sceneBrightToggle" checked /> <span data-i18n="scene.brightToggle">提亮（夜景）</span></label>
+        <label class="scene-check"><input type="checkbox" id="sceneLightToggle" /> <span data-i18n="scene.lightToggle">光照（dLight 暗部 + 中心火把）</span></label>
+        <label class="scene-check"><input type="checkbox" id="sceneDirtBorderToggle" /> <span data-i18n="scene.dirtToggle">绘制 Dirt 边框（忠实复原 dPiece，会遮挡房间）</span></label>
+        <button id="sceneFitBtn" type="button" data-i18n="scene.fitBtn">复位视图</button>
+        <button id="sceneClearCacheBtn" type="button" data-i18n="scene.clearCacheBtn">清除地图缓存</button>
       </div>
-      <div class="char-hint">选场景 → 立即加载：后端用 DevilutionX 两遍绘制（地板菱形 + 墙体）复原完整场景，返回 PNG 预览 + 对齐的叠加层。拖拽平移、下拉或滚轮缩放（支持 0.25×/0.5× 整体预览，缩放时保持地图中心）。切换「光照」会在有/无光照两种结果间复用后端缓存。红色=Solid，蓝色=透明，黄色=BlockLight。「清除地图缓存」可删除已生成的场景图并强制下次重新生成。</div>
+      <div class="char-hint" data-i18n="scene.hint">选场景 → 立即加载：后端用 DevilutionX 两遍绘制（地板菱形 + 墙体）复原完整场景，返回 PNG 预览 + 对齐的叠加层。拖拽平移、下拉或滚轮缩放（支持 0.25×/0.5× 整体预览，缩放时保持地图中心）。切换「光照」会在有/无光照两种结果间复用后端缓存。红色=Solid，蓝色=透明，黄色=BlockLight。「清除地图缓存」可删除已生成的场景图并强制下次重新生成。</div>
     </aside>
 
     <aside class="gui-pane" id="guiPane" hidden>
-      <div class="char-bar">界面布局查看器（ui.list / ui.build · 真实 MPQ 美术合成）</div>
+      <div class="char-bar" data-i18n="gui.title">界面布局查看器（ui.list / ui.build · 真实 MPQ 美术合成）</div>
       <div class="char-controls">
-        <label>界面
+        <label><span data-i18n="gui.screen">界面</span>
           <select id="guiSel"></select>
         </label>
-        <label>元素（选中查看详情）
+        <label><span data-i18n="gui.element">元素（选中查看详情）</span>
           <select id="guiElementSel"></select>
         </label>
-        <label>MPQ 路径（可选，覆盖主档案）
-          <input id="guiArchive" type="text" placeholder="留空则用目录中的档案栈" />
+        <label><span data-i18n="gui.archive">MPQ 路径（可选，覆盖主档案）</span>
+          <input id="guiArchive" type="text" placeholder="留空则用目录中的档案栈" data-i18n-attr="placeholder:gui.archivePlaceholder" />
         </label>
-        <label>缩放
+        <label><span data-i18n="gui.zoom">缩放</span>
           <select id="guiZoom">
             <option value="1" selected>1×</option>
             <option value="2">2×</option>
           </select>
         </label>
-        <label class="scene-check"><input type="checkbox" id="guiOverlayToggle" checked /> 显示元素框叠加层</label>
-        <label class="scene-check"><input type="checkbox" id="guiNumberToggle" checked /> 显示编号角标</label>
-        <label class="scene-check"><input type="checkbox" id="guiTextToggle" checked /> 显示文字（近似字体）</label>
+        <label class="scene-check"><input type="checkbox" id="guiOverlayToggle" checked /> <span data-i18n="gui.overlayToggle">显示元素框叠加层</span></label>
+        <label class="scene-check"><input type="checkbox" id="guiNumberToggle" checked /> <span data-i18n="gui.numberToggle">显示编号角标</span></label>
+        <label class="scene-check"><input type="checkbox" id="guiTextToggle" checked /> <span data-i18n="gui.textToggle">显示文字（近似字体）</span></label>
       </div>
-      <div class="char-hint">后端 ui.build 用真实 MPQ 美术（背景 PCX / 面板 CEL / 血蓝球 / 按钮 CLX）按 DevilutionX 坐标合成 640×480 底图，并生成对齐的元素框叠加层 PNG。文字由前端用系统字体按布局字段近似绘制（非游戏原版位图字体，可关闭核对纯美术底图）。从「元素」下拉框选中任一元素，即在下方查看类型 / 矩形 / 引用资源 / 源码位置等详情，并在画面上高亮对应元素框；不再使用鼠标悬停。</div>
-      <div class="gui-info" id="guiInfo"><em>从上方「元素」下拉框选择元素查看详情…</em></div>
+      <div class="char-hint" data-i18n="gui.hint">后端 ui.build 用真实 MPQ 美术（背景 PCX / 面板 CEL / 血蓝球 / 按钮 CLX）按 DevilutionX 坐标合成 640×480 底图，并生成对齐的元素框叠加层 PNG。文字由前端用系统字体按布局字段近似绘制（非游戏原版位图字体，可关闭核对纯美术底图）。从「元素」下拉框选中任一元素，即在下方查看类型 / 矩形 / 引用资源 / 源码位置等详情，并在画面上高亮对应元素框；不再使用鼠标悬停。</div>
+      <div class="gui-info" id="guiInfo"><em data-i18n="gui.infoPrompt">从上方「元素」下拉框选择元素查看详情…</em></div>
     </aside>
 
     <section class="stage">
       <div class="current">
-        <span class="current-label">当前资源：</span>
-        <span id="currentName" class="current-name">（未选择）</span>
+        <span class="current-label" data-i18n="stage.currentLabel">当前资源：</span>
+        <span id="currentName" class="current-name" data-i18n="stage.none">（未选择）</span>
       </div>
       <div id="errorBanner" class="error-banner" hidden></div>
       <div class="controls" id="stageControls">
-        <label>调色板
+        <label><span data-i18n="stage.palette">调色板</span>
           <select id="palette"></select>
         </label>
-        <label>TRN 预设
+        <label><span data-i18n="stage.trnPreset">TRN 预设</span>
           <select id="trnPreset">
-            <option value="">无</option>
-            <option value="class">职业默认 (trn&lt;class&gt;)</option>
-            <option value="infra">infra 红外视觉</option>
-            <option value="stone">stone 石化</option>
+            <option value="" data-i18n="stage.trnNone">无</option>
+            <option value="class" data-i18n="stage.trnClass">职业默认 (trn&lt;class&gt;)</option>
+            <option value="infra" data-i18n="stage.trnInfra">infra 红外视觉</option>
+            <option value="stone" data-i18n="stage.trnStone">stone 石化</option>
           </select>
         </label>
-        <label>方向
+        <label><span data-i18n="stage.direction">方向</span>
           <input id="dir" type="range" min="0" max="0" value="0" />
           <span id="dirNo">0/0</span>
         </label>
-        <label>帧
+        <label><span data-i18n="stage.frame">帧</span>
           <input id="frame" type="range" min="0" max="0" value="0" />
           <span id="frameNo">0 / 0</span>
         </label>
-        <label class="zoom">放大倍数
+        <label class="zoom"><span data-i18n="stage.zoom">放大倍数</span>
           <input id="zoom" type="range" min="1" max="8" step="1" value="2" />
           <span id="zoomNo">2×</span>
         </label>
         <button id="playBtn" type="button">▶ 播放</button>
-        <label class="fps">速度
-          <input id="fps" type="number" min="1" max="60" value="12" size="3" /> fps
+        <label class="fps"><span data-i18n="stage.speed">速度</span>
+          <input id="fps" type="number" min="1" max="60" value="12" size="3" /> <span data-i18n="stage.fps">fps</span>
         </label>
       </div>
       <div class="canvas-wrap" id="canvasWrap">
@@ -315,7 +321,7 @@
     </section>
 
     <aside class="combat-detail-pane" id="combatDetailPane" hidden>
-      <div class="char-bar">法术 / 攻击详情</div>
+      <div class="char-bar" data-i18n="combat.detailTitle">法术 / 攻击详情</div>
       <div id="combatInfo" class="combat-info"></div>
     </aside>
   </main>
@@ -325,8 +331,8 @@
   <div id="sceneLoadingMask" class="scene-loading-mask" hidden>
     <div class="scene-loading-box">
       <div class="scene-loading-spinner" aria-hidden="true"></div>
-      <div class="scene-loading-title">后端计算中…</div>
-      <div class="scene-loading-stage" id="sceneLoadingStage">准备加载…</div>
+      <div class="scene-loading-title" data-i18n="status.sceneLoading">后端计算中…</div>
+      <div class="scene-loading-stage" id="sceneLoadingStage" data-i18n="status.scenePreparing">准备加载…</div>
       <div class="scene-loading-bar"><div class="scene-loading-fill" id="sceneLoadingFill"></div></div>
       <div class="scene-loading-pct" id="sceneLoadingPct">0%</div>
     </div>

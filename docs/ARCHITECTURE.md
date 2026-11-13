@@ -685,13 +685,20 @@ scene.path {id,archive,archives?,from:{x,y},to:{x,y},max_steps?=1024,preview_max
 
 ```
 web/                              # 浏览器前端（不读 MPQ/文件，仅 WebSocket 调后端）
-├── index.html                    # 入口：连接栏 + 目录树(<ul>) + 当前资源名 + 错误条 + Canvas + 控制条
+├── index.html                    # 入口：连接栏 + 语言下拉 + 目录树(<ul>) + 当前资源名 + 错误条 + Canvas + 控制条
+├── level.html                    # 关卡 Tile 查看器（独立页，同样带语言下拉）
 ├── styles.css                   # 极简暗色样式
+├── i18n/                         # 多语言配置文件（纯 JSON，改文案/加语言不动代码）
+│   ├── locales.json              #   清单：default / fallback / locales[{code,label}]
+│   ├── en.json                   #   英文字符串表
+│   └── zh-cn.json                #   简体中文字符串表
 ├── src/
+│   ├── i18n.js                   # 引擎：initI18n / applyI18n / t / tOpt / setLang / onLangChange
 │   ├── client.js                 # McpClient：WS + JSON-RPC（id 配对，并发安全）
 │   ├── catalog.js                # sprite.list 结果 → 嵌套树（按类型合并 / 按 MPQ 包）→ 可点击可折叠 DOM
 │   ├── viewer.js                 # rgba_base64 → atob→ImageData→putImageData（最近邻放大）
-│   └── main.js                   # 编排：connect → sprite.list(+kind:palette 填下拉框) → 点击 → sprite.decode → 绘制
+│   ├── main.js                   # 编排：connect → sprite.list(+kind:palette 填下拉框) → 点击 → sprite.decode → 绘制
+│   └── level.js                  # 关卡 Tile 查看器：level.inspect → 组装/帧/micro 预览
 └── README.md                     # 开发者说明 + 运行步骤 + 与后端契约
 ```
 
@@ -831,6 +838,49 @@ Archive 输入框——点选精灵即可直接解码，无需用户手填路径
 
 > 场景模型、资产路径、两遍绘制与「黑块」根因见 `docs/PROJECT.md`「游戏场景如何组织」
 > 与本文 §9.2/§9.3；前端使用说明见 `web/README.md`。
+
+### 10.6 前端多语言 i18n（2026-11-13）
+
+支持 `en` / `zh-cn`，并做成**配置驱动**：所有界面文案集中在 `web/i18n/*.json`，
+引擎只有 `web/src/i18n.js` 一个文件，新增语言不需要改任何 JS。
+
+**配置文件**：`locales.json` 是清单（`default`、`fallback`、`locales[{code,label}]`），
+每个 `<code>.json` 是一张嵌套字符串表（点分 key，如 `scene.fitBtn`）。`en.json` / `zh-cn.json`
+必须保持**完全相同的 key 集合**与**相同的 `{占位符}` 名称**；`fallback` 语言用于补缺 key。
+
+**加载与缓存**：`main.js` / `level.js` 在模块顶层 `await initI18n()`（ES Module 顶层 await，
+模块脚本本身是 deferred，DOM 已就绪），通过 `fetch(new URL("../i18n/<file>?v=<token>", import.meta.url))`
+读取；`import.meta.url` 让路径与页面 URL 解耦。`mcp-server` 的 HTTP 静态服务已把 `.json`
+映射为 `application/json; charset=utf-8`，并支持子目录，`build-mcp/web/i18n/` 由
+`sync-web.sh` 同步。`?v=` 占位符由 `sync-web.sh` 每次同步统一刷新（与 CSS/JS 同机制）。
+`fetch` 失败时 `initI18n()` 不抛异常、降级保留 HTML 里的原始中文静态文案，页面仍可用。
+
+**两套文案路径**：
+- 静态 markup —— `data-i18n="key"` 写 `textContent`，
+  `data-i18n-attr="placeholder:key,title:key,aria-label:key"` 写属性。`applyI18n()` 遍历
+  `[data-i18n]` / `[data-i18n-attr]`，**全部走 textContent/setAttribute，不从配置注入 innerHTML**。
+  含子元素的 `<label>` 把文案包进 `<span data-i18n>`，避免覆盖 `<input>` / `<select>` 子节点。
+- 运行时文案 —— JS 用 `t("key", {name})` 插值、`tOpt("key", fallback)` 可选覆盖。
+  状态行 `#currentName`（`metaRender` 闭包）、错误条 `#errorBanner`（`errorRender` 闭包）、
+  `level.js` 的 `#status`（`statusRender` 闭包）都保存**渲染函数**而不是渲染后的字符串；
+  `onLangChange(refreshAllText)` 在 `setLang()` 完成 `applyI18n()` 之后触发，重刷这些闭包，
+  并从缓存数据重建下拉选项（调色板 / 职业动作 / 怪物动作 / NPC / 技能 / 场景 / 界面 / 元素），
+  用 `reselect()` 保留当前选中项，最后重绘当前视图的帧计数与摘要行。**切换语言不刷新页面、
+  不丢失浏览状态、不重新请求后端。**
+
+**后端数据的语言**：`ui.list` / `scene.list` / `spell.list` 返回的标题、阶段标签、中文名、
+描述是后端数据而非界面文案。`data.screen.*` / `data.scene.*` / `combat.stage*` 段覆盖已知 id，
+用 `tOpt(key, backendTitle)` 在前端覆盖；`combatLabel()` 在 `en` 模式下直接用英文名，
+`zh-cn` 模式下优先 `name_zh`。未知 id 原样显示，不伪造。GUI 示例文字（`guiExampleText`）
+是模拟游戏内 ASCII 位图字体的示意值，两个语言下都保持英文。
+
+**注入安全**：`showGuiElementDetail()` 用 `esc()` 转义所有后端字段后再拼 `innerHTML`；
+配置项本身从不进入 `innerHTML`。
+
+**测试**：`node tests/i18n_config_test.mjs`（`tests/i18n_config_test.mjs`）校验清单合法性、
+两表 key 集合 / 占位符一致性、HTML 与 JS 引用的每个 key 都存在、动态 key 组齐全，并在桩化
+浏览器 `document` / `localStorage` / `navigator` / `fetch` 后验证引擎的 `t` / `tOpt` 插值、
+回退语言、`applyI18n` DOM 翻译、`setLang` 持久化与 `onLangChange` 回调。
 
 ---
 
