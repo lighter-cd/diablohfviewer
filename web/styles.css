@@ -97,15 +97,16 @@ main { display: flex; height: calc(100vh - 52px); }
   background: #15151a; color: #e6e6e6; border: 1px solid #3a3a42;
   border-radius: 4px; padding: 3px 6px;
 }
-.meta { margin-left: auto; color: #b9b9c2; font-size: 12px; }
-.meta.err { color: #f0a0a0; }
-
+/* #meta was merged into the top "当前资源" line; status/error messages now
+   share #currentName instead of a separate trailing meta span. */
 .current { padding: 6px 2px 8px; border-bottom: 1px solid #3a3a42; }
 .current-label { color: #b9b9c2; font-size: 13px; }
 .current-name {
   font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14px;
   color: #ffd479; word-break: break-all;
 }
+.current-name.err { color: #f0a0a0; }
+#dirNo { min-width: 3ch; text-align: center; font-variant-numeric: tabular-nums; }
 .combat-info { margin: 8px 0 2px; padding: 8px 10px; border-radius: 6px;
   background: #23232b; border: 1px solid #33333d; font-size: 13px; line-height: 1.6; }
 .combat-info[hidden] { display: none; }
@@ -277,8 +278,6 @@ canvas { background: transparent; image-rendering: pixelated; }
 .controls button#playBtn:hover { background: #3a3a44; }
 .fps { font-size: 12px; color: #c9c9d2; }
 .fps input { width: 48px; background: #15151a; color: #e6e6e6; border: 1px solid #3a3a42; border-radius: 4px; padding: 2px 4px; }
-.trn-toggle { font-size: 12px; color: #c9c9d2; cursor: pointer; }
-.trn-toggle input { width: auto; }
 
 /* ---- Skill / combat viewer stage stepper ---- */
 #stageNo { display: inline-block; min-width: 96px; text-align: center; color: #cfe3ff; font-size: 12px; }

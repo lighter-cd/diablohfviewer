@@ -266,27 +266,17 @@
         <label>调色板
           <select id="palette"></select>
         </label>
-        <label class="trn-toggle">
-          <input type="checkbox" id="applyTrn" /> 应用 TRN
-        </label>
         <label>TRN 预设
           <select id="trnPreset">
+            <option value="">无</option>
             <option value="class">职业默认 (trn&lt;class&gt;)</option>
             <option value="infra">infra 红外视觉</option>
             <option value="stone">stone 石化</option>
           </select>
         </label>
-        <label>方向数
-          <select id="directions">
-            <option value="1">1</option>
-            <option value="2">2</option>
-            <option value="4">4</option>
-            <option value="8">8</option>
-          </select>
-        </label>
         <label>方向
           <input id="dir" type="range" min="0" max="0" value="0" />
-          <span id="dirNo">0</span>
+          <span id="dirNo">0/0</span>
         </label>
         <label>帧
           <input id="frame" type="range" min="0" max="0" value="0" />
@@ -300,7 +290,6 @@
         <label class="fps">速度
           <input id="fps" type="number" min="1" max="60" value="12" size="3" /> fps
         </label>
-        <span id="meta" class="meta"></span>
       </div>
       <div class="canvas-wrap" id="canvasWrap">
         <canvas id="canvas" width="1280" height="720"></canvas>

@@ -638,8 +638,10 @@ scene.path {id,archive,archives?,from:{x,y},to:{x,y},max_steps?=1024,preview_max
      故按职业默认 TRN 路径解码时为**忠实的 no-op**（`trn_applied:false`，仍用调色板上色），
      与游戏内玩家着色行为一致。真正存在的 `plrgfx\infra.trn`（红外视觉红染）/ `plrgfx\stone.trn`
      （石化灰染）可经 `trn_name` 显式施加，作为可视的 TRN 效果演示。
-   - **前端**：`web/` 新增「应用 TRN」开关 + TRN 预设下拉（职业默认 / infra 红外视觉 /
-     stone 石化），默认关闭（原调色板模式）；开启即传 `apply_trn:true`，meta 行显示 `TRN: <name>`。
+   - **前端（2026-11-13 控件精简）**：`web/` 的「TRN 预设」下拉首项为「无」（默认，原调色板
+     模式），其余为职业默认 / infra 红外视觉 / stone 石化；选中非「无」项即传 `apply_trn:true`。
+     原「应用 TRN」复选框已并入该下拉，帧详情 / `TRN: <name>` 状态并入顶部 `currentName`
+     行——`stageControls` 末尾的 `#meta` 已合并进该行。
 
 4. **（阶段 3）怪物 / NPC 目录合成**（已实现，2026-11-07）
    - 怪物（`monsters\`）与 NPC（`towners\`）精灵**没有 MPQ listfile**，无法像其它家族那样靠
@@ -703,7 +705,8 @@ web/                              # 浏览器前端（不读 MPQ/文件，仅 We
   WebSocket 从 http 页连 `ws://localhost` 不受 mixed-content 限制。
 - 绘制用 Canvas 2D `ImageData`（rgba_base64 即原始像素，最灵活）；如后续要 3D/滤镜
   再考虑 WebGL，但不在阶段 2 范围。
-- 交互细节（skeleton 已实现）：① 主视窗顶部**醒目显示当前资源完整路径**（`currentName`）；
+- 交互细节（skeleton 已实现）：① 主视窗顶部**醒目显示当前资源完整路径**（`currentName`）——
+  帧详情、状态提示与错误也写在这一行（原 `stageControls` 的 `#meta` 已合并进来）；
   ② 调色板改为**下拉框**，由 `sprite.list(kind:"palette")` 拉取档案内全部 `.pal` 填充，
   切换即对该精灵重新解码；③ 任何失败（暂不支持的格式 / 缺 archive_path / 解码报错）都通过
   **错误条（errorBanner）显式提示**，而非静默。
@@ -742,7 +745,9 @@ Archive 输入框——点选精灵即可直接解码，无需用户手填路径
      - NPC：复用 `sprite.list(family:"towners")` 合成目录，单方向 `.cel`（含硬编码
        `towners/animals/cow.cel`）。
    - 8 方向：玩家 CL2 为**方向优先**（8 方向 × N 帧），前端按 `总帧数 / 方向数` 切分，
-     提供方向滑块 + 帧滑块 + ▶播放/⏸ + fps 速度；方向数可选 1/2/4/8（plrgfx 默认 8）。
+     提供方向滑块 + 帧滑块 + ▶播放/⏸ + fps 速度；方向数取自 `sprite.decode` 的
+     `directions`，以 `dirNo` 的 `x/y`（当前方向 / 总方向数）显示，不再有手动
+     1/2/4/8 选择器。
    - 装备**不做 alpha 合成**（D1 把武器/护甲 bake 进文件名前缀，组合浏览=枚举文件名）；
      角色施法动作（`lm`/`fm`/`qm`，**不是**火球类攻击效果）作为可浏览动画纳入动作下拉。
    - **「特效叠加层（alpha 合成）」子系统已整体移除**（2026-11-13）：原先在实体查看器 / 目录浏览 /
@@ -755,7 +760,8 @@ Archive 输入框——点选精灵即可直接解码，无需用户手填路径
      `怪物` / `NPC`），并进一步拆成 **`panel-character` / `panel-monster` / `panel-npc` 三块
      互不混杂的独立参数面板**——切换实体类型时只渲染对应那一块，其余两块隐藏，绝不堆在一起。
    - TRN 上色（见 §10.2.3，已实现）：`sprite.decode` 加 `apply_trn` 接入职业 TRN 与
-     每精灵 TRN；前端「应用 TRN」开关可切换原调色板模式 / TRN 模式，meta 行显示应用状态。
+     每精灵 TRN；前端由「TRN 预设」下拉（默认「无」）单独控制，状态显示在顶部
+     `currentName` 行。
 7. **技能 / 战斗查看器的方向模型（✅ 已完成，2026-11-08）**：`web/src/main.js` 把
    `sprite.decode` 的扁平帧按方向拆成 `FrameSet = {groups:[frames[]...], directions}`：
    `makeFrameSet` 按 `总帧数 / directions` 分组，`frameSetAt(fs,fi,dir)` 只从

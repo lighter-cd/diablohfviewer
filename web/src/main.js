@@ -146,10 +146,14 @@ client.onStatus = (connected) => {
   s.className = "status " + (connected ? "ok" : "bad");
 };
 
+// #meta was folded into the top "当前资源" line. Clear-only calls leave the
+// resource name intact (scene/GUI modes own that line); a real status text
+// replaces it (it already embeds the name where relevant).
 function setMeta(text, isError = false) {
-  const m = $("meta");
+  const m = $("currentName");
+  m.className = isError ? "current-name err" : "current-name";
+  if (!text) return;
   m.textContent = text;
-  m.className = isError ? "meta err" : "meta";
 }
 
 function showError(msg) {
@@ -744,12 +748,16 @@ function buildDecodeArgs(sprite, nameOverride, opts = {}) {
   if (opts.trn) {
     args.apply_trn = true;
     args.trn_name = opts.trn;
-  } else if ($("applyTrn").checked) {
-    args.apply_trn = true;
+  } else {
+    // The TRN preset select alone controls the remap: "无" (empty) disables it,
+    // any other value enables it. The old "应用 TRN" checkbox is gone.
     const preset = $("trnPreset").value;
-    if (preset === "infra") args.trn_name = "plrgfx\\infra.trn";
-    else if (preset === "stone") args.trn_name = "plrgfx\\stone.trn";
-    // preset "class" -> let the backend compute plrgfx\trn<class>.trn
+    if (preset) {
+      args.apply_trn = true;
+      if (preset === "infra") args.trn_name = "plrgfx\\infra.trn";
+      else if (preset === "stone") args.trn_name = "plrgfx\\stone.trn";
+      // preset "class" -> let the backend compute plrgfx\trn<class>.trn
+    }
   }
   return args;
 }
@@ -833,7 +841,7 @@ function applyDecoded(res, sprite) {
 function setDirections(dirs) {
   currentDirections = dirs;
   framesPerDir = Math.max(1, Math.floor((currentFrames ? currentFrames.length : 1) / dirs));
-  $("directions").value = String(dirs);
+  // Direction count is no longer a user-editable select; #dirNo shows it as x/y.
   $("dir").max = String(Math.max(0, dirs - 1));
   $("dir").value = "0";
   $("frame").max = String(framesPerDir - 1);
@@ -853,7 +861,7 @@ function showFrame(dir, fin) {
   currentFin = fin;
 
   drawComposite($("canvas"), f.rgba_base64, f.width, f.height, zoom);
-  $("dirNo").textContent = String(dir);
+  $("dirNo").textContent = `${dir + 1}/${currentDirections}`;
   $("frameNo").textContent = `dir ${dir} / ${currentDirections - 1}  · 帧 ${fin} / ${framesPerDir - 1}`;
   updateMeta(idx, dir, fin);
 }
@@ -1239,9 +1247,8 @@ function syncCombatDirControl() {
   $("dir").min = "0";
   $("dir").max = "7";
   $("dir").value = String(combatDir);
-  $("dirNo").textContent = String(combatDir);
-  // The per-sprite "方向数" selector has no meaning for a two-actor scene.
-  $("directions").disabled = true;
+  // Combat uses a fixed 8-way scene direction: x/y = current/total.
+  $("dirNo").textContent = `${combatDir + 1}/8`;
 }
 
 // The caster is the fixed centre of the scene. The target is placed along the
@@ -1325,14 +1332,13 @@ function renderCombatStage(si, fi) {
   }
 
   drawScene($("canvas"), COMBAT_W, COMBAT_H, actors, zoom);
-  $("dirNo").textContent = String(combatDir);
+  $("dirNo").textContent = `${combatDir + 1}/8`;
   $("frameNo").textContent = `dir ${combatDir} · ${st.label} · 帧 ${fi} / ${total - 1}`;
   $("stageNo").textContent = `${si + 1}/${stages.length} ${st.label}`;
   $("frame").max = String(total - 1);
   $("frame").value = String(Math.min(fi, total - 1));
-  $("currentName").textContent = `${combatLabel(combatEntry)} — ${st.label}`;
   renderCombatInfo();
-  setMeta(`技能/战斗查看器  ${combatLabel(combatEntry)}  ·  ${st.label}  ·  ${st.layers.length} 层  ·  方向 ${combatDir}`);
+  setMeta(`技能/战斗查看器  ${combatLabel(combatEntry)}  ·  ${st.label}  ·  ${st.layers.length} 层  ·  方向 ${combatDir + 1}/8`);
 }
 
 function startCombatPlay() {
@@ -2176,11 +2182,11 @@ function wireControls() {
       $("canvasWrap").hidden = viewOwned;
       $("sceneView").hidden = !scene;
       $("guiView").hidden = !gui;
-      // The shared sprite/character control bar (palette / TRN / directions /
-      // frame / zoom / play / fps / #meta) does not apply to the GUI layout
-      // viewer or the scene viewer, both of which have their own controls
-      // (#guiPane / #scenePane) and show their summary in #currentName. Hide it
-      // so the stage isn't cluttered with dead inputs.
+      // The shared sprite/character control bar (palette / TRN / direction /
+      // frame / zoom / play / fps) does not apply to the GUI layout viewer or
+      // the scene viewer, both of which have their own controls (#guiPane /
+      // #scenePane) and show their summary in #currentName — that line now also
+      // carries the frame meta text. Hide it so the stage isn't cluttered.
       $("stageControls").hidden = scene || gui;
       // Leaving the scene view should also dismiss any loading mask left behind.
       if (!scene) hideSceneLoading();
@@ -2188,8 +2194,8 @@ function wireControls() {
       // own direction count when the next sprite is decoded.
       if (combat) syncCombatDirControl();
       else if (!viewOwned) {
-        $("directions").disabled = false;
         $("dir").max = String(Math.max(0, currentDirections - 1));
+        $("dirNo").textContent = `${currentDir + 1}/${currentDirections}`;
       }
       // Entity / combat all want level palettes (correct colours).
       applyPaletteFilter(entity || combat);
@@ -2232,16 +2238,8 @@ function wireControls() {
     stopPlay();
     showFrame(Number(e.target.value), currentFin);
   });
-  // Directions selector (re-splits the flat frame list).
-  $("directions").addEventListener("change", (e) => {
-    if (isCombatMode() || isViewOwnedMode()) return;
-    stopPlay();
-    setDirections(Number(e.target.value));
-    currentFin = Math.min(currentFin, framesPerDir - 1);
-    $("frame").max = String(framesPerDir - 1);
-    $("frame").value = String(currentFin);
-    showFrame(currentDir, currentFin);
-  });
+  // Direction count is derived from sprite.decode's `directions` field; the
+  // old manual 1/2/4/8 selector is gone and #dirNo displays it as x/y.
   $("playBtn").addEventListener("click", () => (isPlaying ? stopPlay() : startPlay()));
 
   // Display zoom (1..8). Baked into the canvas bitmap at draw time (see viewer.js
@@ -2262,15 +2260,12 @@ function wireControls() {
     if (lastSprite) onSelectSprite(lastSprite);
   });
 
-  // TRN toggle / preset: re-decode so the colour change takes effect.
-  $("applyTrn").addEventListener("change", () => {
+  // TRN preset alone (with the "无" option) controls the remap: re-decode so
+  // the colour change takes effect, including in combat mode.
+  $("trnPreset").addEventListener("change", () => {
     if (isViewOwnedMode()) return;
     if (isCombatMode()) { combatCache.clear(); buildCombatScene(); return; }
     if (lastSprite) onSelectSprite(lastSprite);
-  });
-  $("trnPreset").addEventListener("change", () => {
-    if (isCombatMode() || isViewOwnedMode()) return;
-    if ($("applyTrn").checked && lastSprite) onSelectSprite(lastSprite);
   });
 
   // Character panel selectors.

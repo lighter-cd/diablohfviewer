@@ -432,6 +432,14 @@ DiabloHFConverter/
       fps 速度控制；索引由 `sprite.list(family:"plrgfx")` 一次性构建，仅暴露 MPQ 真实存在的组合。
       改动 `web/index.html` + `web/src/main.js` + `web/styles.css`，后端无改动。详见 `web/README.md`
       与 `docs/ARCHITECTURE.md` §10.4。
+- [x] **`stageControls` 控件精简（2026-11-13）**：目录浏览 / 实体查看器 / 战斗·技能查看器
+      共用的控制条按三处合并：① `stageControls` 末尾的 `#meta` 与顶部「当前资源」
+      `#currentName` 合并为一行（帧详情 / 状态 / 错误都写在该行；`setMeta("")` 只清错误色、
+      不清资源名，scene/GUI 摘要得以保留）；② 「应用 TRN」复选框并入「TRN 预设」下拉，
+      首项「无」为默认（原调色板模式），选中非「无」项才传 `apply_trn`；③ 删除「方向数」
+      1/2/4/8 手动选择器，方向数完全取自 `sprite.decode` 的 `directions`，`#dirNo` 改为
+      `x/y`（当前方向 / 总方向数，战斗模式固定 `/8`）。仅改 `web/index.html`、
+      `web/src/main.js`、`web/styles.css`，后端无改动。
 - [x] **（可选保真）`sprite.decode` 应用 TRN**：已实现（2026-11-07），原理取自 DevilutionX 逆向。
       `sprite.decode` 新增 `apply_trn`（布尔，默认 false）与 `trn_name`（可选显式 TRN）参数，
       开启后按默认 `plrgfx\trn<class>.trn`（来自 `sprites.tsv` 的 `trn` 字段，即 `trn`+职业，
@@ -439,12 +447,14 @@ DiabloHFConverter/
       `trn_name`。**实测关键结论**：原版 MPQ 内 `plrgfx\trnwarrior/trnrogue/trnsorcerer/trnmonk.trn`
       **均不存在**（plrgfx 下仅 `infra.trn`/`stone.trn` 真实存在），故职业默认路径是**忠实的
       no-op**（`trn_applied:false`，仍用调色板上色），与游戏内玩家着色一致；`infra.trn`（红外视觉
-      红染）/`stone.trn`（石化灰染）可经 `trn_name` 显式施加作效果演示。前端 `web/` 新增「应用
-      TRN」开关 + 预设下拉（职业默认/infra/stone），默认关闭保留原调色板模式；详见 §10.2.3。
+      红染）/`stone.trn`（石化灰染）可经 `trn_name` 显式施加作效果演示。前端 `web/` 初版为「应用
+      TRN」开关 + 预设下拉（职业默认/infra/stone）；2026-11-13 精简为**单一预设下拉**
+      （首项「无」= 关闭 TRN）；详见 §10.2.3 与本轮 stageControls 精简条目。
 - [x] 枚举各职业所有动画模式（stand/walk/attack/hit/death/idle…，对应 `as/st/aw/wl/at/ht/dt…`）：
       由 `sprite.list(plrgfx)` 真实存在的 type 代码驱动动作下拉，按 `sprites.tsv` 列映射友好名。
 - [x] 8 方向切换（玩家固定 8 方向，按 `帧数/8` 切分；怪物方向数另查动画表）：前端通用分组，
-      方向数可选 1/2/4/8，plrgfx 默认 8。
+      方向数取自解码返回的 `directions`（初版可选 1/2/4/8，2026-11-13 起改为只读，
+      由 `#dirNo` 以 `x/y` 显示当前方向 / 总方向数）。
 - [x] 装备组合浏览（前缀 `c+a+w` 枚举：武器/护甲变化 = 不同文件名，直接枚举即可）：角色面板的
       盔甲/武器下拉仅列出该职业当前动作真实存在的组合。
 - [x] 角色施法动作层渲染（`lm`/`fm`/`qm` 是**角色举手/发光动作**，不是火球之类攻击效果；

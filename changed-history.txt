@@ -448,6 +448,10 @@
 - README.md 项目介绍补充「为什么做这个项目」：说明本项目旨在解决 Hellfire 资料与工具碎片化问题，将其集中到统一 Web 界面。
 - 涉及: README.md
 
+## 2026-11-13 12:16:48
+- 精简前端 stageControls（目录浏览 / 实体查看器 / 战斗·技能查看器共用）：① stageControls 末尾 #meta 合并进顶部「当前资源」#currentName（setMeta() 改为写该行，空文本只清错误色、保留 scene/GUI 摘要）；② 删除「应用 TRN」复选框，#trnPreset 首项改为「无」（默认，不传 apply_trn），选中非「无」项才启用 TRN，两个 change 处理合并为一个；③ 删除「方向数」1/2/4/8 选择器，方向数完全取自 sprite.decode 的 directions，#dirNo 改显示 x/y（x=当前方向，从 1 起算；y=总方向数，战斗模式固定 /8）。仅改 web/index.html、web/src/main.js、web/styles.css，后端 C++ 无改动；同步 web/README.md、docs/ARCHITECTURE.md、docs/PROJECT.md。验证：node --check 通过、main.js 的 DOM id 引用全部存在、stageControls 仅剩 6 个 label、HTTP 托管页已同步新控件。
+- 涉及: web/index.html, web/src/main.js, web/styles.css, web/README.md, docs/ARCHITECTURE.md, docs/PROJECT.md
+
 ## 2026-11-12 21:51:31
 - 推进 P1 统一 MPQ 入口：前端首次打开且 MPQ 尚未配置时，顶部醒目显示红色「MPQ尚未配置」徽标且绝不自动读取 MPQ；用户在设置区填入正版 MPQ 目录并保存后，该目录持久化到 localStorage（键 dhfc.mpqDir），下次进入前端自动连接并加载精灵目录（自动读取 MPQ 获取目录），保存当时也立即自动加载。level.js 的 mpqDir() 复用同一键作默认目录。
 - 涉及: web/index.html, web/src/main.js, web/src/level.js, web/styles.css, docs/RELEASE_PLAN.md
