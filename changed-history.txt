@@ -499,3 +499,13 @@
 ## 2026-11-13 14:12:19
 - 前端多语言化：新增 web/i18n/{locales,en,zh-cn}.json 纯 JSON 字符串配置与 web/src/i18n.js 引擎，index.html/level.html 加语言下拉可即时切换 en/zh-cn（不刷新、状态不丢、localStorage 持久化、首次按浏览器语言推断）；main.js/level.js/catalog.js/client.js 全部界面文案改用 data-i18n 与 t()/tOpt()，状态行/错误条保存渲染闭包由 onLangChange 重刷，后端中文数据用 data.* 段覆盖；同步补样式、测试、文档并 sync-web.sh 升缓存号，三套 C++ 测试与 node tests/i18n_config_test.mjs 全绿。
 - 涉及: web/i18n/, web/src/i18n.js, web/index.html, web/level.html, web/src/main.js, web/src/level.js, web/src/catalog.js, web/src/client.js, web/styles.css, web/README.md, tests/i18n_config_test.mjs, README.md, README_EN.md, docs/ARCHITECTURE.md, docs/PROJECT.md, TODO, build-mcp/web/(构建产物)
+
+## 2026-11-13 15:40:25
+- 新增设计文档 docs/DESIGN_SCENE_WEB_RENDER.md：将地图绘制从后端整张合成 PNG 迁移到前端——后端发图块索引 atlas（R=调色板索引、A=透明标记）+ layout.json（投影/microGrid/SOL 标志/16 张 lightTables/palette/special atlas/doors[]），前端 SceneRenderer 复刻 renderMap 两遍等距绘制，并按每格 dLight 查表着色；门洞开关改为前端本地互换 micro 索引。编码方式确认用索引 atlas（CEL 复杂解码留 C++），分 Phase0-4 实施，与现有 scene.build PNG 模式双轨并行。同步 PROJECT.md 进度表加「规划中」交叉引用。
+- 涉及: docs/DESIGN_SCENE_WEB_RENDER.md, docs/PROJECT.md, changed-history.txt
+
+## 2026-11-13 22:14:32
+- 完成场景渲染前端化 Phase 0/1 并逐像素对齐：后端 `scene.tiles`（`toolSceneTiles`）落地——`src/decoders/clx.cpp`/`clx.h` 新增 `decodeClxIndex`/`decodeReencodedFrameAsIndex` 索引解码，`level_cel.cpp` 重编码，`scene_tools.cpp` 打包 tiles 索引 atlas（R=调色板索引、A=透明）+ special atlas + layout.json（投影/microGrid/SOL/16 张 lightTables/palette/special_atlas/doors）；前端 `web/src/scene-render.js` 复刻 `renderMap` 两遍等距绘制、逐格 dLight 着色、dSpecial 底对齐覆盖层。`tests/regress_scene_tiles.mjs` 逐字节对照后端 `scene.build` 合成 PNG。
+- 关键修复：special atlas 打包原在增长时调用 `acc.assign(...,0)` 会整体重分配并清零缓冲、改变行跨度，导致已放置帧错位清零；改为「先布局后写入」两遍打包（shelf 行宽 2048 逐帧 memcpy 子矩形），`ATLAS diff=0`。
+- 回归结果：`l1_rnd2` 逐字节 100.0000%（4689152/4689152，0 字节差异）；`l1_skngdo`/`l2_blind`/`l3_anvil`/`l4_diab1` 同样 100%；`l1_rnd2` 在 `lighting:true`（lit 模式）下亦 100%。同步 DESIGN §8 标记 Phase 0/1 完成、PROJECT.md 进度表、TODO「地图前端生成」完成。
+- 涉及: src/decoders/clx.cpp, src/decoders/clx.h, src/decoders/level.h, src/decoders/level_cel.cpp, src/decoders/level_render.cpp, src/tools/scene_tools.cpp, web/src/scene-render.js, web/package.json, tests/regress_scene_tiles.mjs, docs/DESIGN_SCENE_WEB_RENDER.md, docs/PROJECT.md, TODO, changed-history.txt

@@ -7,6 +7,75 @@
 
 namespace decoders {
 
+void decodeClxFrameDataIndex(const uint8_t* src, size_t srcSize,
+                             uint16_t width, uint16_t height,
+                             std::vector<uint8_t>& outRGBA)
+{
+    // Index-output variant (for the web tile atlas): write the palette index into
+    // R (A=255 where drawn, A=0 for transparent) instead of resolved RGBA. The
+    // CLX `color` bytes are palette indices, so no palette is needed here; the
+    // frontend applies dLight shading via LightTables + the level palette.
+    outRGBA.assign(static_cast<size_t>(width) * height * 4, 0); // all transparent
+    if (width == 0 || height == 0 || srcSize == 0)
+        return;
+
+    const uint8_t* p = src;
+    const uint8_t* end = src + srcSize;
+    int curX = 0, curY = 0;
+
+    while (p < end && curY < static_cast<int>(height)) {
+        int remaining = static_cast<int>(width) - curX;
+        while (remaining > 0 && p < end) {
+            uint8_t control = *p++;
+            if (control < 0x80) {
+                // transparent run
+                int w = control;
+                curX += w;
+                remaining -= w;
+            } else if (control <= 0xBE) {
+                // opaque fill run: width = 0xBF - control, then 1 color byte
+                int w = 0xBF - control;
+                uint8_t color = *p++;
+                for (int k = 0; k < w && curX < static_cast<int>(width) && curY < static_cast<int>(height); ++k) {
+                    int outRow = (static_cast<int>(height) - 1) - curY;
+                    int idx = (outRow * static_cast<int>(width) + curX) * 4;
+                    outRGBA[idx] = color;
+                    outRGBA[idx + 1] = 0;
+                    outRGBA[idx + 2] = 0;
+                    outRGBA[idx + 3] = 255;
+                    ++curX;
+                }
+                remaining -= w;
+            } else {
+                // opaque pixels run: width = -(int8)control, then `width` color bytes
+                int w = -static_cast<int>(static_cast<int8_t>(control));
+                for (int k = 0; k < w && curX < static_cast<int>(width) && curY < static_cast<int>(height); ++k) {
+                    uint8_t color = *p++;
+                    int outRow = (static_cast<int>(height) - 1) - curY;
+                    int idx = (outRow * static_cast<int>(width) + curX) * 4;
+                    outRGBA[idx] = color;
+                    outRGBA[idx + 1] = 0;
+                    outRGBA[idx + 2] = 0;
+                    outRGBA[idx + 3] = 255;
+                    ++curX;
+                }
+                remaining -= w;
+            }
+        }
+
+        if (remaining == 0) {
+            ++curY;
+            curX = 0;
+        } else {
+            unsigned overrun = static_cast<unsigned>(-remaining);
+            int lines = static_cast<int>(overrun / static_cast<unsigned>(width) + 1);
+            int xOff = static_cast<int>(overrun % static_cast<unsigned>(width));
+            curY += lines;
+            curX = xOff;
+        }
+    }
+}
+
 void decodeClxFrameData(const uint8_t* src, size_t srcSize,
                         uint16_t width, uint16_t height,
                         const uint8_t* palRGB,
@@ -135,6 +204,25 @@ std::vector<DecodedFrame> decodeClxList(const std::vector<uint8_t>& buf,
     return frames;
 }
 
+std::vector<DecodedFrame> decodeClxIndex(const std::vector<uint8_t>& buf)
+{
+    std::vector<DecodedFrame> all;
+    uint16_t lists = clxNumLists(buf);
+    if (lists == 0) {
+        auto f = decodeClxListIndex(buf, 0);
+        all.insert(all.end(), f.begin(), f.end());
+        return all;
+    }
+    for (uint16_t s = 0; s < lists; ++s) {
+        if (4 + static_cast<size_t>(s + 1) * 4 > buf.size())
+            break;
+        uint32_t off = LoadLE32(buf.data() + 4 * static_cast<size_t>(s));
+        auto f = decodeClxListIndex(buf, off);
+        all.insert(all.end(), f.begin(), f.end());
+    }
+    return all;
+}
+
 std::vector<DecodedFrame> decodeClx(const std::vector<uint8_t>& buf,
                                     const std::vector<uint8_t>& palette)
 {
@@ -153,6 +241,43 @@ std::vector<DecodedFrame> decodeClx(const std::vector<uint8_t>& buf,
         all.insert(all.end(), f.begin(), f.end());
     }
     return all;
+}
+
+// Index-output counterpart of decodeClxList: each frame's pixels are stored as
+// palette indices (see decodeClxFrameDataIndex) for the web tile atlas.
+std::vector<DecodedFrame> decodeClxListIndex(const std::vector<uint8_t>& buf,
+                                            uint32_t listOffset)
+{
+    std::vector<DecodedFrame> frames;
+    if (buf.size() < listOffset + 8)
+        return frames;
+    const uint8_t* base = buf.data() + listOffset;
+
+    const uint32_t numSprites = LoadLE32(base);
+    const uint32_t entryCount = numSprites + 1;
+    if (listOffset + 4 + entryCount * 4 > buf.size())
+        return frames;
+
+    for (uint32_t i = 0; i < numSprites; ++i) {
+        uint32_t off0 = LoadLE32(base + 4 + i * 4);
+        uint32_t off1 = LoadLE32(base + 4 + (i + 1) * 4);
+        if (off0 >= off1 || listOffset + off1 > buf.size())
+            break;
+
+        const uint8_t* fhdr     = base + off0;
+        uint16_t headerSize     = LoadLE16(fhdr);
+        uint16_t width          = LoadLE16(fhdr + 2);
+        uint16_t height         = LoadLE16(fhdr + 4);
+        uint32_t pixelOffset    = off0 + headerSize;
+        uint32_t pixelSize      = off1 - pixelOffset;
+
+        DecodedFrame frame;
+        frame.width  = width;
+        frame.height = height;
+        decodeClxFrameDataIndex(base + pixelOffset, pixelSize, width, height, frame.rgba);
+        frames.push_back(std::move(frame));
+    }
+    return frames;
 }
 
 } // namespace decoders

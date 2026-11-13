@@ -883,6 +883,8 @@ DiabloHFConverter/
 | L2 关闭门板（`AddL2Objs` / `SetDoorStateClosed` 的 `dPiece` 模拟） | ✅ |
 | tile 纵向翻转修复（triangle/trapezoid 与 square 统一 top-down） | ✅ |
 | 前端场景查看器 + 关卡 tile 查看器（`web/`） | ✅ |
+| 场景渲染前端化 — Phase 0/1（后端 `scene.tiles` 索引 atlas + layout；前端 `SceneRenderer` 与 `scene.build` PNG 逐像素 100% 对齐，见 `docs/DESIGN_SCENE_WEB_RENDER.md`） | ✅ |
+| 场景渲染前端化 — Phase 2-4（实时光照/环境光滑块、门开关本地切换、查看器管线切换） | ⏳ 待办 |
 | 单元 / 集成 / core 三套测试 + mcp-server 构建 | ✅ |
 
 ### 游戏场景如何组织（对照 DevilutionX，2026-11-09 澄清）

@@ -231,13 +231,20 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
     res.height = static_cast<int>(proj.height);
     res.rgba.assign(static_cast<size_t>(res.width) * static_cast<size_t>(res.height) * 4, 0);
     // Fill the whole canvas with an OPAQUE background (no transparent gaps).
-    const uint8_t bg[4] = { opts.background[0], opts.background[1],
-                            opts.background[2], opts.background[3] };
-    for (size_t i = 0; i < res.rgba.size(); i += 4)
-        std::memcpy(res.rgba.data() + i, bg, 4);
+    {
+        const uint8_t bg[4] = { opts.background[0], opts.background[1],
+                                opts.background[2], opts.background[3] };
+        for (size_t i = 0; i < res.rgba.size(); i += 4)
+            std::memcpy(res.rgba.data() + i, bg, 4);
+    }
     const int pitch = res.width * 4;
 
     std::vector<uint8_t> frame(32 * 32 * 4);
+
+    // Decode a frame into RGBA through the supplied palette.
+    const auto decodeFrame = [&](uint32_t frameIdx, TileType t, const uint8_t* palPtr, int& fh) {
+        decodeReencodedFrameAs(cel, frameIdx, t, palPtr, frame, fh);
+    };
 
     // Screen position of a cell (DevilutionX screen axes: East=(+1,-1) so
     // X=(x-y), and rows advance (x+y) downward):
@@ -331,13 +338,12 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
                 // RLE bytes as triangle pixels (garbage specks), so decode their
                 // real shape here.
                 if (blk.type() == TileType::TransparentSquare) {
-                    decodeReencodedFrameAs(cel, blk.frame() - 1, TileType::TransparentSquare,
-                                           paletteAt(idx), frame, fh);
+                    decodeFrame(blk.frame() - 1, TileType::TransparentSquare, paletteAt(idx), fh);
                 } else {
-                    decodeReencodedFrameAs(cel, blk.frame() - 1,
-                                           side == 0 ? TileType::LeftTriangle
-                                                     : TileType::RightTriangle,
-                                           paletteAt(idx), frame, fh);
+                    decodeFrame(blk.frame() - 1,
+                                side == 0 ? TileType::LeftTriangle
+                                          : TileType::RightTriangle,
+                                paletteAt(idx), fh);
                 }
                 blitFrame(frame.data(), 32, 32, res.rgba.data(), res.width,
                           res.height, pitch, x + side * 32, slot);
@@ -366,7 +372,7 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
                     if (!blockDrawable(blk, cel))
                         continue;
                     int fh = 0;
-                    decodeReencodedFrameAs(cel, blk.frame() - 1, blk.type(), paletteAt(idx), frame, fh);
+                    decodeFrame(blk.frame() - 1, blk.type(), paletteAt(idx), fh);
                     blitFrame(frame.data(), 32, 32, res.rgba.data(), res.width,
                               res.height, pitch, x + side * 32, slotTop(ct, 0));
                 }
@@ -380,7 +386,7 @@ MapRenderResult renderMap(const ReencodedLevelCel& cel,
                     if (!blockDrawable(blk, cel))
                         continue;
                     int fh = 0;
-                    decodeReencodedFrameAs(cel, blk.frame() - 1, blk.type(), paletteAt(idx), frame, fh);
+                    decodeFrame(blk.frame() - 1, blk.type(), paletteAt(idx), fh);
                     blitFrame(frame.data(), 32, 32, res.rgba.data(), res.width,
                               res.height, pitch, x + side * 32, slot);
                 }

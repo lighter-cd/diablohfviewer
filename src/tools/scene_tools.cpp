@@ -13,8 +13,11 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <map>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -422,6 +425,345 @@ std::string hashHex(const std::string& s) {
 
 } // namespace
 
+mcp::ToolResult toolSceneTiles(const mcp::json& params) {
+    const std::string id = reqStr(params, "id");
+    const decoders::SceneSpec* spec = decoders::findScene(id);
+    if (!spec)
+        throw std::runtime_error("unknown scene id: " + id);
+    const std::vector<std::string> archives = archiveStack(params);
+    const std::string outDir = params.value("out", std::string("out/scenes"));
+    const bool dirtBorder = params.value("dirt_border", false);
+
+    // Layout-affecting signature (reuses scene.build's key logic, tagged tiles).
+    const std::string cacheKey =
+        "tiles|" + buildCacheKey(id, archives, *spec, params, 0, outDir);
+    const std::string tag = hashHex(cacheKey);
+    const std::string base = sanitize(id) + "_" + tag;
+
+    std::error_code ec;
+    std::filesystem::create_directories(outDir, ec);
+    const std::string tilesPngPath = outDir + "/" + base + "_tiles.png";
+    const std::string specialPngPath = outDir + "/" + base + "_special.png";
+    const std::string keyPath = outDir + "/" + base + ".tiles.key";
+    const std::string resultPath = outDir + "/" + base + ".tiles.result.json";
+
+    // Cache reuse: identical parameters -> return stored result without rebuilding.
+    if (fileExists(keyPath) && fileExists(tilesPngPath) &&
+        (spec->specialCel.empty() || fileExists(specialPngPath))) {
+        std::string stored;
+        if (readFile(keyPath, stored) && stored == cacheKey) {
+            std::string resTxt;
+            if (readFile(resultPath, resTxt)) {
+                mcp::tools::reportProgress(100, "复用缓存");
+                mcp::ToolResult r;
+                r.value = mcp::json::parse(resTxt);
+                return r;
+            }
+        }
+    }
+
+    mcp::tools::reportProgress(5, "解析场景规格 " + id);
+    SceneAssets assets = loadSceneAssets(*spec, archives, dirtBorder);
+    const decoders::SceneGrid& grid = assets.grid;
+    const int gw = grid.gw, gh = grid.gh;
+    const size_t cells = static_cast<size_t>(gw) * gh;
+    const int microLen = spec->microLen;
+    const int nRows = microLen / 2;
+    const decoders::ReencodedLevelCel& cel = assets.reencoded;
+    const std::vector<decoders::MicroTileRef>& micros = assets.micros;
+
+    const auto drawable = [&](const decoders::LevelCelBlock& b) -> bool {
+        if (!b.hasValue() || b.frame() == 0)
+            return false;
+        return (static_cast<uint32_t>(b.frame()) - 1) < cel.numFrames;
+    };
+    const auto resolveMi = [&](uint16_t mi) -> uint16_t {
+        if (mi == decoders::kNoMicro || mi >= micros.size())
+            mi = spec->prefillMicro;
+        if (mi == decoders::kNoMicro || mi >= micros.size())
+            return decoders::kNoMicro;
+        return mi;
+    };
+
+    // ---- per-cell SOL flags (solid / blockLight / blockMissile) + special ----
+    std::vector<uint8_t> solid(cells, 0), blockLight(cells, 0),
+        blockMissile(cells, 0), transparent(cells, 0), special(cells, 0);
+    for (int j = 0; j < gh; ++j) {
+        for (int i = 0; i < gw; ++i) {
+            const size_t idx = static_cast<size_t>(j) * gw + i;
+            special[idx] = grid.special[idx];
+            const uint16_t mi = resolveMi(grid.micro[idx]);
+            if (mi != decoders::kNoMicro && !assets.solFlags.empty() &&
+                mi < assets.solFlags.size()) {
+                const uint8_t f = assets.solFlags[mi];
+                solid[idx] = (f & decoders::TileFlags::Solid) ? 1 : 0;
+                blockLight[idx] = (f & decoders::TileFlags::BlockLight) ? 1 : 0;
+                blockMissile[idx] = (f & decoders::TileFlags::BlockMissile) ? 1 : 0;
+            }
+        }
+    }
+
+    // ---- optional per-cell dLight map (shipped precomputed; frontend can
+    // also recompute with buildLightMap) ----
+    uint8_t ambient = spec->ambientLight;
+    std::vector<decoders::LightSource> lights;
+    bool autoLight = false;
+    auto lightVec = makeSceneLighting(params, *spec, gw, gh, ambient, lights, autoLight);
+    const bool lightingEnabled = !lightVec.empty();
+
+    // ---- 16 dLight shade tables (LightTables[level][paletteIndex]) ----
+    decoders::LightTableView lightTables;
+    lightTables.build(static_cast<decoders::LightStyle>(
+        spec->lightStyle <= 2 ? spec->lightStyle : 0));
+
+    // ---- collect micros referenced by the grid (+ prefill for floor fallback)
+    std::set<uint16_t> used;
+    for (size_t idx = 0; idx < cells; ++idx) {
+        const uint16_t mi = resolveMi(grid.micro[idx]);
+        if (mi != decoders::kNoMicro)
+            used.insert(mi);
+    }
+    if (spec->prefillMicro != decoders::kNoMicro &&
+        spec->prefillMicro < micros.size())
+        used.insert(spec->prefillMicro);
+
+    // ---- pack the main index atlas (R = palette index, A = drawn / 0) ----
+    // Per micro, the renderer needs:
+    //   "mi:0:L" / "mi:1:R"  -> floor Pass1 (forced Left/Right triangle, with the
+    //                           TransparentSquare exception from renderMap)
+    //   "mi:b"               -> real-type decode of block b (wall Pass2; for
+    //                           non-floor cells b=0..microLen-1, for floor b=2..)
+    const int kAtlasCols = 64, kTile = 32;
+    std::vector<std::pair<std::string, std::vector<uint8_t>>> tileFrames;
+    for (uint16_t mi : used) {
+        const decoders::MicroTileRef& m = micros[mi];
+        auto pack = [&](const std::string& key, const decoders::LevelCelBlock& blk,
+                        decoders::TileType forced) {
+            if (!drawable(blk))
+                return;
+            std::vector<uint8_t> fbuf(static_cast<size_t>(kTile) * kTile * 4, 0);
+            int fh = 0;
+            decoders::decodeReencodedFrameAsIndex(cel, blk.frame() - 1, forced, fbuf, fh);
+            tileFrames.emplace_back(key, std::move(fbuf));
+        };
+        // floor triangles (Pass1)
+        decoders::TileType t0 = (m.blocks[0].type() == decoders::TileType::TransparentSquare)
+                                    ? decoders::TileType::TransparentSquare
+                                    : decoders::TileType::LeftTriangle;
+        decoders::TileType t1 = (m.blocks[1].type() == decoders::TileType::TransparentSquare)
+                                    ? decoders::TileType::TransparentSquare
+                                    : decoders::TileType::RightTriangle;
+        pack(std::to_string(mi) + ":0:L", m.blocks[0], t0);
+        pack(std::to_string(mi) + ":1:R", m.blocks[1], t1);
+        // real-type frames for the wall pass (b = 0 .. microLen-1)
+        for (int b = 0; b < microLen && b < 16; ++b)
+            pack(std::to_string(mi) + ":" + std::to_string(b), m.blocks[b], m.blocks[b].type());
+    }
+
+    const int atlasW = kAtlasCols * kTile;
+    const int atlasRows = std::max(1, (static_cast<int>(tileFrames.size()) + kAtlasCols - 1) / kAtlasCols);
+    const int atlasH = atlasRows * kTile;
+    std::vector<uint8_t> tilesAtlas(static_cast<size_t>(atlasW) * atlasH * 4, 0);
+    mcp::json framesJson = mcp::json::object();
+    const size_t srcRowPitch = static_cast<size_t>(kTile) * 4;
+    const size_t dstRowPitch = static_cast<size_t>(atlasW) * 4;
+    for (size_t n = 0; n < tileFrames.size(); ++n) {
+        const int ax = static_cast<int>(n % kAtlasCols) * kTile;
+        const int ay = static_cast<int>(n / kAtlasCols) * kTile;
+        const uint8_t* src = tileFrames[n].second.data();
+        // Copy row-by-row: the frame is kTile*4 wide, but the atlas is atlasW*4
+        // wide, so a flat memcpy would corrupt every tile by stuffing all frame
+        // rows into the atlas's first row.
+        for (int r = 0; r < kTile; ++r) {
+            std::memcpy(tilesAtlas.data() + (static_cast<size_t>(ay + r) * atlasW + ax) * 4,
+                        src + static_cast<size_t>(r) * srcRowPitch, srcRowPitch);
+        }
+        framesJson[tileFrames[n].first] = mcp::json::array({ax, ay});
+    }
+    mcp::tools::reportProgress(55, "打包主索引图集");
+
+    // ---- special CEL -> index atlas (R = palette index, A = drawn / 0) -----
+    mcp::json specialFramesJson = mcp::json::object();
+    std::vector<uint8_t> specialAtlas;
+    int specialAtlasW = 0, specialAtlasH = 0;
+    std::string specialUrl;
+    if (!spec->specialCel.empty()) {
+        std::vector<uint8_t> specialBuf;
+        if (extractAny(archives, spec->specialCel, specialBuf)) {
+            const std::vector<uint8_t> clx = decoders::celToClx(
+                specialBuf.data(), specialBuf.size(), spec->specialCelWidth);
+            const auto frames = decoders::decodeClxIndex(clx); // index form
+            const int shelfMax = 2048;
+            int curX = 0, curY = 0, shelfH = 0;
+            // Pass 1: lay out every frame into a rect on a shelf, recording the
+            // final atlas dimensions. We must decide the atlas width/height up
+            // front so the row stride NEVER changes mid-pack — growing the
+            // buffer with a different stride would shift every already-placed
+            // frame and silently corrupt the atlas.
+            struct SRect { int x, y, w, h; };
+            std::vector<SRect> srects;
+            srects.reserve(frames.size());
+            for (size_t fi = 0; fi < frames.size(); ++fi) {
+                const int w = frames[fi].width, h = frames[fi].height;
+                if (curX + w > shelfMax) { curX = 0; curY += shelfH; shelfH = 0; }
+                srects.push_back({ curX, curY, w, h });
+                curX += w;
+                if (h > shelfH) shelfH = h;
+            }
+            specialAtlasW = curX > 0 ? curX : 0;
+            specialAtlasH = curY + shelfH;
+            std::vector<uint8_t> acc;
+            if (specialAtlasW > 0 && specialAtlasH > 0) {
+                acc.assign(static_cast<size_t>(specialAtlasW) * specialAtlasH * 4, 0);
+                // Pass 2: blit each frame into its precomputed rect (fixed stride).
+                for (size_t fi = 0; fi < frames.size(); ++fi) {
+                    const SRect& r = srects[fi];
+                    const uint8_t* src = frames[fi].rgba.data();
+                    uint8_t* dst = acc.data() +
+                        (static_cast<size_t>(r.y) * specialAtlasW + r.x) * 4;
+                    for (int yy = 0; yy < r.h; ++yy) {
+                        std::memcpy(dst + static_cast<size_t>(yy) * specialAtlasW * 4,
+                                    src + static_cast<size_t>(yy) * r.w * 4,
+                                    static_cast<size_t>(r.w) * 4);
+                    }
+                    specialFramesJson[std::to_string(fi + 1)] =
+                        mcp::json::array({r.x, r.y, r.w, r.h});
+                }
+            }
+            specialAtlas = std::move(acc);
+            specialUrl = "/scenes/" + base + "_special.png";
+        }
+    }
+
+    // ---- doors: closed-door micro -> open/closed pair (Phase 3 toggle) -----
+    // Catacombs applyL2ClosedDoors maps left doorway 12/540 -> 537, right 16/541
+    // -> 539. Emit the opposite mapping so the frontend can swap the cell micro
+    // (and its dSpecial) between the closed leaf and the open doorway stub.
+    mcp::json doorsJson = mcp::json::array();
+    for (int j = 0; j < gh; ++j) {
+        for (int i = 0; i < gw; ++i) {
+            const size_t idx = static_cast<size_t>(j) * gw + i;
+            const uint16_t mi = grid.micro[idx];
+            uint16_t open = 0;
+            if (mi == 537) open = 12;       // OBJ_L2LDOOR (left, closed)
+            else if (mi == 539) open = 16;  // OBJ_L2RDOOR (right, closed)
+            if (open == 0) continue;
+            doorsJson.push_back(mcp::json{
+                {"x", i}, {"y", j}, {"open", open}, {"closed", mi},
+                {"open_special", 0}, {"closed_special", 0}});
+        }
+    }
+
+    // ---- write atlas PNGs ----
+    const std::vector<uint8_t> tilesPng =
+        decoders::encodePNG(static_cast<uint16_t>(atlasW),
+                            static_cast<uint16_t>(atlasH), tilesAtlas);
+    if (tilesPng.empty())
+        throw std::runtime_error("tile atlas PNG encode failed");
+    auto writeBytes = [](const std::string& p, const std::vector<uint8_t>& b) {
+        std::ofstream f(p, std::ios::binary);
+        if (f) f.write(reinterpret_cast<const char*>(b.data()),
+                       static_cast<std::streamsize>(b.size()));
+    };
+    writeBytes(tilesPngPath, tilesPng);
+    std::vector<uint8_t> specialPng;
+    if (!specialAtlas.empty() && specialAtlasW > 0 && specialAtlasH > 0) {
+        specialPng = decoders::encodePNG(static_cast<uint16_t>(specialAtlasW),
+                                         static_cast<uint16_t>(specialAtlasH),
+                                         specialAtlas);
+        if (specialPng.empty())
+            throw std::runtime_error("special atlas PNG encode failed");
+        writeBytes(specialPngPath, specialPng);
+    }
+    mcp::tools::reportProgress(80, "编码图集 PNG");
+
+    // ---- assemble layout.json ----
+    const decoders::SceneProjection proj = decoders::sceneProjection(gw, gh, microLen);
+    const uint8_t bg[4] = {
+        static_cast<uint8_t>((spec->background >> 16) & 0xFF),
+        static_cast<uint8_t>((spec->background >> 8) & 0xFF),
+        static_cast<uint8_t>(spec->background & 0xFF),
+        static_cast<uint8_t>((spec->background >> 24) & 0xFF)};
+
+    mcp::json microGridJson = mcp::json::array();
+    for (size_t idx = 0; idx < cells; ++idx)
+        microGridJson.push_back(grid.micro[idx]);
+
+    auto flagArr = [](const std::vector<uint8_t>& v) {
+        mcp::json a = mcp::json::array();
+        for (uint8_t b : v) a.push_back(b);
+        return a;
+    };
+
+    mcp::json paletteJson = mcp::json::array();
+    for (uint8_t b : assets.palRgba) paletteJson.push_back(b);
+
+    mcp::json lightTablesJson = mcp::json::array();
+    for (int lvl = 0; lvl < decoders::kNumLightLevels; ++lvl) {
+        mcp::json lvlArr = mcp::json::array();
+        for (int p = 0; p < decoders::kLightTableSize; ++p)
+            lvlArr.push_back(lightTables.tables[lvl][p]);
+        lightTablesJson.push_back(lvlArr);
+    }
+
+    mcp::json layout = mcp::json{
+        {"scene_id", id},
+        {"micro_len", microLen},
+        {"grid_width", gw},
+        {"grid_height", gh},
+        {"projection", mcp::json{{"minX", proj.minX}, {"minY", proj.minY},
+                                 {"width", proj.width}, {"height", proj.height}}},
+        {"micro_grid", microGridJson},
+        {"atlas", mcp::json{{"url", "/scenes/" + base + "_tiles.png"},
+                            {"tile", kTile}, {"cols", kAtlasCols},
+                            {"frames", framesJson}}},
+        {"palette", paletteJson},
+        {"light_tables", lightTablesJson},
+        {"light_style", spec->lightStyle},
+        {"prefill_micro", spec->prefillMicro},
+        {"solid", flagArr(solid)},
+        {"block_light", flagArr(blockLight)},
+        {"block_missile", flagArr(blockMissile)},
+        {"transparent", flagArr(transparent)},
+        {"special", flagArr(special)},
+        {"doors", doorsJson},
+        {"background", mcp::json::array({bg[0], bg[1], bg[2], bg[3]})},
+    };
+    if (!spec->specialCel.empty() && !specialFramesJson.empty()) {
+        layout["special_atlas"] = mcp::json{
+            {"url", specialUrl}, {"frames", specialFramesJson}};
+    }
+    if (lightingEnabled) {
+        mcp::json lightArr = mcp::json::array();
+        for (uint8_t v : lightVec) lightArr.push_back(v);
+        layout["lighting"] = true;
+        layout["ambient"] = ambient;
+        layout["light"] = lightArr;
+    } else {
+        layout["lighting"] = false;
+    }
+
+    mcp::ToolResult r;
+    r.value = mcp::json{
+        {"scene_id", id}, {"title", spec->title},
+        {"micro_len", microLen}, {"grid_width", gw}, {"grid_height", gh},
+        {"tiles_url", "/scenes/" + base + "_tiles.png"},
+        {"tiles_width", atlasW}, {"tiles_height", atlasH},
+        {"special_url", specialUrl},
+        {"layout", layout},
+        {"frame_count", static_cast<int>(tileFrames.size())},
+        {"has_lighting", lightingEnabled},
+    };
+
+    // ---- persist cache markers ----
+    {
+        std::ofstream fk(keyPath); if (fk) fk << cacheKey;
+        std::ofstream fr(resultPath); if (fr) fr << r.value.dump();
+    }
+    mcp::tools::reportProgress(100, "完成");
+    return r;
+}
+
 mcp::ToolResult toolSceneBuild(const mcp::json& params) {
     const std::string id = reqStr(params, "id");
     const decoders::SceneSpec* spec = decoders::findScene(id);
@@ -495,9 +837,6 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
     if (lightingEnabled)
         mcp::tools::reportProgress(50, "计算光照贴图");
     opts.special = grid.special;
-    // Number of dLight-shaded copies of the special CEL (16 for dungeon
-    // L1/L2 arches/doors, 0 for town / scenes without a special CEL).
-    const size_t specialLitLevels = assets.specialSpritesLit.size();
     opts.specialSprites = std::move(assets.specialSprites);
     opts.specialSpritesLit = std::move(assets.specialSpritesLit);
 
@@ -583,6 +922,7 @@ mcp::ToolResult toolSceneBuild(const mcp::json& params) {
         {"walkable", walkArr},
     };
     meta["special_count"] = specialCount;
+    const size_t specialLitLevels = opts.specialSpritesLit.size();
     meta["special_lit_levels"] = static_cast<int>(specialLitLevels);
     meta["special"] = mcp::json::array();
     for (const uint8_t id : grid.special)
@@ -778,6 +1118,38 @@ void registerSceneTools(ToolRegistry& reg) {
              }},
              {"required", json::array({"id", "archive"})}},
         toolSceneBuild});
+
+    reg.registerTool(ToolDef{
+        "scene.tiles",
+        "Assemble a Diablo 1 / Hellfire scene into a FRONT-END-RENDERABLE form: a "
+        "palette-INDEX tile atlas PNG (R = palette index, A = drawn / 0), a special "
+        "sprite index atlas, and a layout JSON (projection, micro_grid, atlas frame "
+        "map, palette, 16 dLight shade tables, per-cell SOL/walkable/light flags, "
+        "dSpecial overlay ids, and door open/closed pairs). The front-end "
+        "SceneRenderer reassembles the isometric map and re-applies per-cell "
+        "lighting locally, so opening doors or moving a torch needs no rebuild. "
+        "Twin track of scene.build (native PNG) which is kept for export / "
+        "thumbnails; this tool is the data source for the web viewer migration.",
+        json{{"type", "object"},
+             {"properties", json{
+                 {"id", json{{"type", "string"}, {"description", "scene id from scene.list, e.g. l1_rnd2"}}},
+                 {"archive", json{{"type", "string"}, {"description", "primary MPQ path"}}},
+                 {"archives", json{{"type", "array"}, {"items", json{{"type", "string"}}},
+                                    {"description", "additional MPQ search paths"}}},
+                 {"out", json{{"type", "string"}, {"description", "output dir (default out/scenes)"}}},
+                 {"lighting", json{{"type", "boolean"},
+                                    {"description", "precompute per-cell dLight levels (default false = FullyLit)"}}},
+                 {"ambient", json{{"type", "integer"},
+                                  {"description", "ambient light level 0..15 (default per scene)"}}},
+                 {"lights", json{{"type", "array"}, {"items", json{{"type", "object"}}},
+                                  {"description", "static lights: {x,y,radius,offset_x,offset_y} in MICRO coords"}}},
+                 {"auto_light", json{{"type", "boolean"},
+                                     {"description", "when lighting and no lights: add a central torch (default true)"}}},
+                 {"dirt_border", json{{"type", "boolean"},
+                                       {"description", "dungeon presets: draw the 32-micro Dirt border (default false = cropped bbox)"}}},
+             }},
+             {"required", json::array({"id", "archive"})}},
+        toolSceneTiles});
 
     reg.registerTool(ToolDef{
         "scene.clearCache",

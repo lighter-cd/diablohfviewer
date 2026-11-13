@@ -225,8 +225,16 @@ int decodeReencodedFrame(const ReencodedLevelCel& cel, uint32_t frameIndex,
 // bits). Same layout as decodeReencodedFrame, but the shape decoder is chosen
 // by `forced` instead of cel.frameTypes[frameIndex].
 int decodeReencodedFrameAs(const ReencodedLevelCel& cel, uint32_t frameIndex,
-                           TileType forced, const uint8_t* pal,
-                           std::vector<uint8_t>& rgba, int& outH);
+                          TileType forced, const uint8_t* pal,
+                          std::vector<uint8_t>& rgba, int& outH);
+
+// Index-output variant: decode a forced-type frame into a 32x32 buffer where R
+// holds the palette index (A=255 if drawn, A=0 if transparent) instead of
+// resolved RGBA. Used by the web tile atlas so the frontend can re-apply dLight
+// shading per cell. `outH` is set to the used height (32).
+int decodeReencodedFrameAsIndex(const ReencodedLevelCel& cel, uint32_t frameIndex,
+                                TileType forced, std::vector<uint8_t>& rgba,
+                                int& outH);
 
 // Build the per-frame TileType table needed by reencodeLevelCel, from every
 // CEL block referenced by every micro-tile (DevilutionX's "frame type is a

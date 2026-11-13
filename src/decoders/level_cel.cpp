@@ -131,8 +131,24 @@ void ReencodeRightTrapezoid(const uint8_t*& src, uint8_t*& dst)
 
 // ---- decode: render a re-encoded frame into a 32 x H RGBA buffer -----------
 
-inline void CopyRun(uint8_t* dst, const uint8_t* src, unsigned n, const uint8_t* pal)
+inline void CopyRun(uint8_t* dst, const uint8_t* src, unsigned n, const uint8_t* pal,
+                   bool index)
 {
+    if (index) {
+        // Index mode (for the web tile atlas): store the palette index in R and
+        // mark the pixel drawn (A=255); G/B stay 0. Transparent pixels are
+        // represented by A=0 (see SkipRun), so the frontend can tell "drawn
+        // palette index 0" apart from "no pixel here".
+        for (unsigned i = 0; i < n; ++i) {
+            const uint8_t idx = src[i];
+            const size_t o = static_cast<size_t>(i) * 4;
+            dst[o] = idx;
+            dst[o + 1] = 0;
+            dst[o + 2] = 0;
+            dst[o + 3] = 255;
+        }
+        return;
+    }
     // `pal` is a 256-entry RGBA table (4 bytes/entry), produced by
     // paletteToRGBA. Index with a 4-byte stride.
     for (unsigned i = 0; i < n; ++i) {
@@ -148,24 +164,27 @@ inline void CopyRun(uint8_t* dst, const uint8_t* src, unsigned n, const uint8_t*
 
 inline void SkipRun(uint8_t*& dst, unsigned n)
 {
+    // Advance without writing: the zero-initialized buffer already has A=0, so
+    // these pixels read as transparent in both RGBA and index mode.
     dst += n * 4;
 }
 
 // Square / Solid: copy 32x32 raw indices.
-void DecodeSquare(const uint8_t* src, uint8_t* rgba, const uint8_t* pal)
+void DecodeSquare(const uint8_t* src, uint8_t* rgba, const uint8_t* pal, bool index)
 {
     // Source rows are bottom-to-top (engine renders CELs backwards); the RGBA
     // output is consistently top-down for every TileType so blitters can be
     // shared without a second vertical flip.
     for (int y = 0; y < kTileHeight; ++y) {
         CopyRun(rgba + static_cast<size_t>(kTileHeight - 1 - y) * kDstPitch,
-                src + static_cast<size_t>(y) * kTileWidth, kTileWidth, pal);
+                src + static_cast<size_t>(y) * kTileWidth, kTileWidth, pal, index);
     }
 }
 
 // TransparentSquare: RLE, Solid mask (transparent runs stay transparent).
 // Source rows are bottom-to-top; write them into top-down RGBA rows.
-void DecodeTransparentSquare(const uint8_t* src, const uint8_t* srcEnd, uint8_t* rgba, const uint8_t* pal)
+void DecodeTransparentSquare(const uint8_t* src, const uint8_t* srcEnd, uint8_t* rgba,
+                            const uint8_t* pal, bool index)
 {
     for (int y = 0; y < kTileHeight && src < srcEnd; ++y) {
         uint8_t* dst = rgba + static_cast<size_t>(kTileHeight - 1 - y) * kDstPitch;
@@ -175,7 +194,7 @@ void DecodeTransparentSquare(const uint8_t* src, const uint8_t* srcEnd, uint8_t*
             if (v > 0) {
                 if (src + v > srcEnd)
                     break;
-                CopyRun(dst, src, static_cast<unsigned>(v), pal);
+                CopyRun(dst, src, static_cast<unsigned>(v), pal, index);
                 src += v;
                 dst += v * 4;
             } else {
@@ -190,18 +209,18 @@ void DecodeTransparentSquare(const uint8_t* src, const uint8_t* srcEnd, uint8_t*
 // Write `width` palette-index pixels from `src` into row `rowIndex` of a 32-wide
 // RGBA buffer at horizontal offset `xOff` (palette pixels).
 inline void WriteRow(std::vector<uint8_t>& rgba, int rowIndex, int xOff, int width,
-                     const uint8_t* src, const uint8_t* pal)
+                     const uint8_t* src, const uint8_t* pal, bool index)
 {
     if (width <= 0 || xOff < 0 || xOff + width > kTileWidth)
         return;
     uint8_t* dst = rgba.data() + static_cast<size_t>(rowIndex) * kDstPitch + static_cast<size_t>(xOff) * 4;
-    CopyRun(dst, src, static_cast<unsigned>(width), pal);
+    CopyRun(dst, src, static_cast<unsigned>(width), pal, index);
 }
 
 // Decode a triangle/trapezoid frame (already re-encoded into packed runs) into a
 // 32 x 32 RGBA buffer (top-to-bottom). Left/Right differ by horizontal placement;
 // rows are 0..31 with 31 = bottom of the tile. Floor diamonds are two triangles.
-void DecodeLeftTriangle(const uint8_t*& src, std::vector<uint8_t>& rgba, const uint8_t* pal)
+void DecodeLeftTriangle(const uint8_t*& src, std::vector<uint8_t>& rgba, const uint8_t* pal, bool index)
 {
     // Lower 16 rows (k=0 bottom .. k=15 top of lower): widths 2,4,...,32, shifted
     // left by 2px each step up (solid on the left). Buffer rows 31..16.
@@ -209,7 +228,7 @@ void DecodeLeftTriangle(const uint8_t*& src, std::vector<uint8_t>& rgba, const u
         const int width = 2 * (k + 1);
         const int xOff = 30 - 2 * k;
         const int rowIndex = 31 - k;
-        WriteRow(rgba, rowIndex, xOff, width, src, pal);
+        WriteRow(rgba, rowIndex, xOff, width, src, pal, index);
         src += width;
     }
     // Upper 15 rows (k=0 .. k=14): widths 30,28,...,2, shifted right by 2px each
@@ -219,53 +238,53 @@ void DecodeLeftTriangle(const uint8_t*& src, std::vector<uint8_t>& rgba, const u
         const int width = 30 - 2 * k;
         const int xOff = 2 + 2 * k;
         const int rowIndex = 15 - k;
-        WriteRow(rgba, rowIndex, xOff, width, src, pal);
+        WriteRow(rgba, rowIndex, xOff, width, src, pal, index);
         src += width;
     }
 }
 
-void DecodeRightTriangle(const uint8_t*& src, std::vector<uint8_t>& rgba, const uint8_t* pal)
+void DecodeRightTriangle(const uint8_t*& src, std::vector<uint8_t>& rgba, const uint8_t* pal, bool index)
 {
     for (int k = 0; k < 16; ++k) {
         const int width = 2 * (k + 1);
         const int rowIndex = 31 - k;
-        WriteRow(rgba, rowIndex, 0, width, src, pal);
+        WriteRow(rgba, rowIndex, 0, width, src, pal, index);
         src += width;
     }
     for (int k = 0; k < 15; ++k) {
         const int width = 30 - 2 * k;
         const int rowIndex = 15 - k;
-        WriteRow(rgba, rowIndex, 0, width, src, pal);
+        WriteRow(rgba, rowIndex, 0, width, src, pal, index);
         src += width;
     }
 }
 
-void DecodeLeftTrapezoid(const uint8_t*& src, std::vector<uint8_t>& rgba, const uint8_t* pal)
+void DecodeLeftTrapezoid(const uint8_t*& src, std::vector<uint8_t>& rgba, const uint8_t* pal, bool index)
 {
     // Triangle lower (rows 31..16) + flat 32x16 rectangle on top (rows 15..0).
     for (int k = 0; k < 16; ++k) {
         const int width = 2 * (k + 1);
         const int xOff = 30 - 2 * k;
         const int rowIndex = 31 - k;
-        WriteRow(rgba, rowIndex, xOff, width, src, pal);
+        WriteRow(rgba, rowIndex, xOff, width, src, pal, index);
         src += width;
     }
     for (int y = 15; y >= 0; --y) {
-        WriteRow(rgba, y, 0, kTileWidth, src, pal);
+        WriteRow(rgba, y, 0, kTileWidth, src, pal, index);
         src += kTileWidth;
     }
 }
 
-void DecodeRightTrapezoid(const uint8_t*& src, std::vector<uint8_t>& rgba, const uint8_t* pal)
+void DecodeRightTrapezoid(const uint8_t*& src, std::vector<uint8_t>& rgba, const uint8_t* pal, bool index)
 {
     for (int k = 0; k < 16; ++k) {
         const int width = 2 * (k + 1);
         const int rowIndex = 31 - k;
-        WriteRow(rgba, rowIndex, 0, width, src, pal);
+        WriteRow(rgba, rowIndex, 0, width, src, pal, index);
         src += width;
     }
     for (int y = 15; y >= 0; --y) {
-        WriteRow(rgba, y, 0, kTileWidth, src, pal);
+        WriteRow(rgba, y, 0, kTileWidth, src, pal, index);
         src += kTileWidth;
     }
 }
@@ -370,12 +389,13 @@ ReencodedLevelCel reencodeLevelCel(const std::vector<uint8_t>& rawCel,
     return out;
 }
 
-// Decode one re-encoded frame into a 32 x H RGBA buffer using the given shape.
-// Shared by decodeReencodedFrame (per-frame type) and decodeReencodedFrameAs
-// (forced type, used for floor triangles).
+// Decode one re-encoded frame into a 32 x H RGBA (or index) buffer using the
+// given shape. Shared by decodeReencodedFrame (per-frame type),
+// decodeReencodedFrameAs (forced type, used for floor triangles) and
+// decodeReencodedFrameAsIndex (index output for the web tile atlas).
 static int decodeAs(const ReencodedLevelCel& cel, uint32_t frameIndex,
                     TileType shape, const uint8_t* pal,
-                    std::vector<uint8_t>& rgba, int& outH)
+                    std::vector<uint8_t>& rgba, int& outH, bool index)
 {
     rgba.assign(static_cast<size_t>(kTileWidth) * kTileHeight * 4, 0);
     outH = kTileHeight;
@@ -383,17 +403,17 @@ static int decodeAs(const ReencodedLevelCel& cel, uint32_t frameIndex,
         return 0;
     const uint8_t* src = cel.buffer.data() + cel.frameOffsetsRel(frameIndex);
     switch (shape) {
-    case TileType::Square: DecodeSquare(src, rgba.data(), pal); break;
+    case TileType::Square: DecodeSquare(src, rgba.data(), pal, index); break;
     case TileType::TransparentSquare:
         {
             const uint8_t* srcEnd = cel.buffer.data() + cel.frameOffsetsRel(frameIndex + 1);
-            DecodeTransparentSquare(src, srcEnd, rgba.data(), pal);
+            DecodeTransparentSquare(src, srcEnd, rgba.data(), pal, index);
         }
         break;
-    case TileType::LeftTriangle: DecodeLeftTriangle(src, rgba, pal); break;
-    case TileType::RightTriangle: DecodeRightTriangle(src, rgba, pal); break;
-    case TileType::LeftTrapezoid: DecodeLeftTrapezoid(src, rgba, pal); break;
-    case TileType::RightTrapezoid: DecodeRightTrapezoid(src, rgba, pal); break;
+    case TileType::LeftTriangle: DecodeLeftTriangle(src, rgba, pal, index); break;
+    case TileType::RightTriangle: DecodeRightTriangle(src, rgba, pal, index); break;
+    case TileType::LeftTrapezoid: DecodeLeftTrapezoid(src, rgba, pal, index); break;
+    case TileType::RightTrapezoid: DecodeRightTrapezoid(src, rgba, pal, index); break;
     }
     return kTileWidth;
 }
@@ -402,15 +422,24 @@ int decodeReencodedFrame(const ReencodedLevelCel& cel, uint32_t frameIndex,
                          const uint8_t* pal, std::vector<uint8_t>& rgba, int& outH)
 {
     if (frameIndex >= cel.numFrames)
-        return decodeAs(cel, frameIndex, TileType::Square, pal, rgba, outH);
-    return decodeAs(cel, frameIndex, cel.frameTypes[frameIndex], pal, rgba, outH);
+        return decodeAs(cel, frameIndex, TileType::Square, pal, rgba, outH, false);
+    return decodeAs(cel, frameIndex, cel.frameTypes[frameIndex], pal, rgba, outH, false);
 }
 
 int decodeReencodedFrameAs(const ReencodedLevelCel& cel, uint32_t frameIndex,
                            TileType forced, const uint8_t* pal,
                            std::vector<uint8_t>& rgba, int& outH)
 {
-    return decodeAs(cel, frameIndex, forced, pal, rgba, outH);
+    return decodeAs(cel, frameIndex, forced, pal, rgba, outH, false);
+}
+
+// Index-output variant for the web tile atlas: the decoded frame stores the
+// palette index in R (A=255 if drawn, A=0 if transparent) instead of resolved
+// RGBA, so the frontend can re-apply dLight shading per cell.
+int decodeReencodedFrameAsIndex(const ReencodedLevelCel& cel, uint32_t frameIndex,
+                                TileType forced, std::vector<uint8_t>& rgba, int& outH)
+{
+    return decodeAs(cel, frameIndex, forced, nullptr, rgba, outH, true);
 }
 
 } // namespace decoders

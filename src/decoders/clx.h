@@ -37,6 +37,18 @@ void decodeClxFrameData(const uint8_t* src, size_t srcSize,
                         const uint8_t* palRGB,
                         std::vector<uint8_t>& outRGBA);
 
+// Index-output variant: writes the palette index into R (A=255 where drawn,
+// A=0 for transparent) instead of resolved RGBA. Used by the web tile atlas so
+// the frontend can re-apply dLight shading per cell.
+void decodeClxFrameDataIndex(const uint8_t* src, size_t srcSize,
+                             uint16_t width, uint16_t height,
+                             std::vector<uint8_t>& outRGBA);
+
+// Decode a whole CLX buffer (list or sheet) into all of its frames, with each
+// frame's pixels stored as palette indices (index form, see
+// decodeClxFrameDataIndex). Returns frames whose `rgba` carries the index data.
+std::vector<DecodedFrame> decodeClxIndex(const std::vector<uint8_t>& buf);
+
 // Returns the number of lists if `buf` is a sprite sheet, or 0 for a plain list.
 uint16_t clxNumLists(const std::vector<uint8_t>& buf);
 
@@ -44,6 +56,10 @@ uint16_t clxNumLists(const std::vector<uint8_t>& buf);
 std::vector<DecodedFrame> decodeClxList(const std::vector<uint8_t>& buf,
                                         const std::vector<uint8_t>& palette,
                                         uint32_t listOffset = 0);
+
+// Index-output counterpart of decodeClxList (see decodeClxFrameDataIndex).
+std::vector<DecodedFrame> decodeClxListIndex(const std::vector<uint8_t>& buf,
+                                            uint32_t listOffset = 0);
 
 // Decode a whole CLX buffer (list or sheet) into all of its frames.
 std::vector<DecodedFrame> decodeClx(const std::vector<uint8_t>& buf,

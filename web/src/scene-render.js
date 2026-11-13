@@ -1,0 +1,216 @@
+// web/src/scene-render.js
+//
+// Front-end isometric scene renderer for the index atlas produced by the backend
+// `scene.tiles` tool. It replicates decoders::renderMap (level_render.cpp) in
+// pure JS so the map can be assembled in the browser: no CEL decoding, no PNG
+// compositing on the server. The atlas stores PALETTE INDICES (R channel) with
+// A=255 for drawn pixels / A=0 for transparent, so per-cell dLight shading is
+// applied locally from the shipped `light_tables`.
+//
+// The module is environment-agnostic: it operates on plain pixel buffers
+// ({ width, height, data: Uint8ClampedArray }) so it runs identically in a
+// browser (ImageData from a decoded <img>) and in Node (regression tests).
+
+export const TILE = 32;
+
+// Isometric bounding box (mirrors decoders::sceneProjection).
+export function sceneProjection(gw, gh, microLen) {
+  const Hm = (microLen / 2) * 32;
+  const minX = -(gh - 1) * 32;
+  const minY = -Hm + 1;
+  const maxX = (gw - 1) * 32 + 64;
+  const maxY = (gw + gh - 2) * 16;
+  return { minX, minY, width: maxX - minX + 1, height: maxY - minY + 1 };
+}
+
+// Read an axis-aligned region of an atlas pixel buffer into a fresh buffer.
+// `rect` may be [x, y] (assumed TILE x TILE) or [x, y, w, h].
+function readRegion(atlas, rect) {
+  const [x, y, w = TILE, h = TILE] = rect;
+  const out = new Uint8ClampedArray(w * h * 4);
+  const srcPitch = atlas.width * 4;
+  const dstPitch = w * 4;
+  for (let row = 0; row < h; ++row) {
+    let so = ((y + row) * atlas.width + x) * 4;
+    let doff = row * dstPitch;
+    for (let i = 0; i < dstPitch; ++i) out[doff + i] = atlas.data[so + i];
+  }
+  return { width: w, height: h, data: out };
+}
+
+// Blit a 32x32 (or w x h) index frame into `dst` at (dx, dy). Each drawn source
+// pixel (A != 0) is shaded through `shade(index)` -> palette rgb, then written.
+function blitFrame(dst, dstW, dstH, frame, dx, dy, shade, palette) {
+  const fw = frame.width, fh = frame.height;
+  const fd = frame.data;
+  for (let fy = 0; fy < fh; ++fy) {
+    const dr = dy + fy;
+    if (dr < 0 || dr >= dstH) continue;
+    for (let fx = 0; fx < fw; ++fx) {
+      const px = dx + fx;
+      if (px < 0 || px >= dstW) continue;
+      const si = (fy * fw + fx) * 4;
+      if (fd[si + 3] === 0) continue; // transparent
+      const idx = shade(fd[si]); // -> shaded palette index
+      const di = (dr * dstW + px) * 4;
+      const pi = idx * 4;
+      dst[di] = palette[pi];
+      dst[di + 1] = palette[pi + 1];
+      dst[di + 2] = palette[pi + 2];
+      dst[di + 3] = 255;
+    }
+  }
+}
+
+// Render the whole scene. `tileAtlas`/`specialAtlas` are {width,height,data}
+// with R=palette index, A=drawn/0. `layout` is the scene.tiles layout.json.
+// Returns { width, height, data } RGBA.
+export function renderScene(layout, tileAtlas, specialAtlas, opts = {}) {
+  const {
+    micro_len,
+    grid_width: gw,
+    grid_height: gh,
+    projection,
+    micro_grid,
+    atlas,
+    palette,
+    light_tables,
+    prefill_micro,
+    solid,
+    block_missile,
+    special,
+    special_atlas,
+  } = layout;
+
+  const nRows = micro_len / 2;
+  const Hm = nRows * 32;
+  const W = projection.width;
+  const H = projection.height;
+  const out = new Uint8ClampedArray(W * H * 4);
+
+  // Opaque background (matches renderMap filling every pixel, no black holes).
+  const bg = layout.background || [0, 0, 0, 255];
+  for (let i = 0; i < out.length; i += 4) {
+    out[i] = bg[0]; out[i + 1] = bg[1]; out[i + 2] = bg[2]; out[i + 3] = bg[3];
+  }
+
+  // Lighting: with a precomputed `light` array we shade via LightTables; without
+  // it (FullyLit) we use the plain palette, exactly like scene.build with
+  // lighting=false.
+  const light = layout.lighting && layout.light ? layout.light : null;
+  const shadeFor = (idx, cellIdx) => {
+    if (!light) return idx; // FullyLit: identity through the palette
+    const level = light[cellIdx] & 0x0f;
+    return light_tables[level][idx];
+  };
+
+  const frames = atlas.frames;
+  const frameCache = new Map();
+  const getFrame = (key) => {
+    if (frameCache.has(key)) return frameCache.get(key);
+    const rect = frames[key];
+    if (!rect) { frameCache.set(key, null); return null; }
+    const f = readRegion(tileAtlas, rect);
+    frameCache.set(key, f);
+    return f;
+  };
+
+  const cellX = (i, j) => (i - j) * 32 - projection.minX;
+  const colTop = (i, j) => (i + j) * 16 - projection.minY - Hm + 1;
+  const slotTop = (ct, b) => ct + (Hm - (b + 1) * 32);
+
+  const isFloor = (idx) => solid[idx] === 0 && block_missile[idx] === 0;
+  const resolveMi = (mi) =>
+    (mi === 65535 || mi >= 1e9) ? prefill_micro : mi; // kNoMicro sentinel
+
+  const maxSum = (gw - 1) + (gh - 1);
+
+  // ---- Pass 1: floor diamonds for every floor cell (complete ground plane) --
+  for (let s = 0; s <= maxSum; ++s) {
+    for (let i = 0; i < gw; ++i) {
+      const j = s - i;
+      if (j < 0 || j >= gh) continue;
+      const idx = j * gw + i;
+      if (!isFloor(idx)) continue;
+      const mi = resolveMi(micro_grid[idx]);
+      const x = cellX(i, j);
+      const slot = slotTop(colTop(i, j), 0);
+      // Forced Left/Right triangle (with the TransparentSquare exception already
+      // baked into the atlas frame by scene.tiles). Fall back to the prefill
+      // floor micro when the cell's own block is missing (renderMap behaviour).
+      let fl = getFrame(mi + ":0:L") || getFrame(prefill_micro + ":0:L");
+      let fr = getFrame(mi + ":1:R") || getFrame(prefill_micro + ":1:R");
+      if (fl) blitFrame(out, W, H, fl, x, slot, (k) => shadeFor(k, idx), palette);
+      if (fr) blitFrame(out, W, H, fr, x + 32, slot, (k) => shadeFor(k, idx), palette);
+    }
+  }
+
+  // ---- Pass 2: walls / objects back-to-front, then dSpecial overlay ---------
+  const spFrames = special_atlas ? special_atlas.frames : null;
+  const spCache = new Map();
+  const getSpecial = (id) => {
+    if (!spFrames || !specialAtlas) return null;
+    const key = String(id);
+    if (spCache.has(key)) return spCache.get(key);
+    const rect = spFrames[key];
+    if (!rect) { spCache.set(key, null); return null; }
+    const f = readRegion(specialAtlas, rect);
+    spCache.set(key, f);
+    return f;
+  };
+
+  for (let s = 0; s <= maxSum; ++s) {
+    for (let i = 0; i < gw; ++i) {
+      const j = s - i;
+      if (j < 0 || j >= gh) continue;
+      const idx = j * gw + i;
+      const mi = resolveMi(micro_grid[idx]);
+      const x = cellX(i, j);
+      const ct = colTop(i, j);
+
+      // Wall content: floor cells skip blocks 0/1 (already drawn as diamonds);
+      // non-floor cells draw blocks 0..microLen-1.
+      const kStart = isFloor(idx) ? 2 : 0;
+      for (let k = kStart; k < micro_len; ++k) {
+        const f = getFrame(mi + ":" + k);
+        if (!f) continue;
+        const b = k < 2 ? 0 : Math.floor(k / 2);
+        const side = k % 2;
+        blitFrame(out, W, H, f, x + side * 32, slotTop(ct, b),
+                  (kk) => shadeFor(kk, idx), palette);
+      }
+
+      // dSpecial overlay (town trees; dungeon arches / doors), bottom-anchored at
+      // the cell base like DrawDungeon's pSpecialCels pass.
+      const spId = special[idx];
+      if (spId) {
+        const spr = getSpecial(spId);
+        if (spr) {
+          const w = spr.width, h = spr.height;
+          const sx = x + (64 - w) / 2;
+          const baseY = ct + Hm - 1;
+          const fd = spr.data;
+          for (let fy = 0; fy < h; ++fy) {
+            const dr = baseY - (h - 1) + fy;
+            if (dr < 0 || dr >= H) continue;
+            for (let fx = 0; fx < w; ++fx) {
+              const px = sx + fx;
+              if (px < 0 || px >= W) continue;
+              const si = (fy * w + fx) * 4;
+              if (fd[si + 3] === 0) continue;
+              const idx2 = shadeFor(fd[si], idx);
+              const di = (dr * W + px) * 4;
+              const pi = idx2 * 4;
+              out[di] = palette[pi];
+              out[di + 1] = palette[pi + 1];
+              out[di + 2] = palette[pi + 2];
+              out[di + 3] = 255;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return { width: W, height: H, data: out };
+}
