@@ -164,6 +164,10 @@
     "sceneLoadFailed": "Scene load failed",
     "sceneNoArchive": "Not connected or no MPQ archives found: enter an MPQ path above",
     "sceneCacheClear": "Clear scene cache failed: {error}",
+    "sceneRandomGenerate": "Random dungeon generation failed: {error}",
+    "sceneRandomSave": "Random dungeon result save failed: {error}",
+    "sceneRandomList": "Random dungeon result list failed: {error}",
+    "sceneRandomLoad": "Random dungeon result load failed: {error}",
     "uiList": "ui.list failed: {error}",
     "uiBuild": "ui.build failed: {error}",
     "uiBuildNoImage": "ui.build returned no image",
@@ -197,6 +201,15 @@
     "noSelection": "(no scene selected — pick one from the dropdown above)",
     "loading": "Loading scene {id} …",
     "summary": "{title}  native {w}×{h}  grid {gw}×{gh}  Solid {solid}  lighting {light}",
+    "summaryRandom": "{title}  native {w}×{h}  grid {gw}×{gh}  seed {seed}  Solid {solid}  lighting {light}",
+    "regenBtn": "Regenerate",
+    "saveBtn": "Save Result",
+    "recentLabel": "Recent results",
+    "recentDefault": "Default (latest)",
+    "recentItem": "Seed {seed} · {time}",
+    "recentEmpty": "(no results yet)",
+    "saved": "Saved result: {name}",
+    "randomHint": "Random dungeons generate a full level from a seed (Cathedral L1–L4); Regenerate overwrites the default, Save Result stores the current layout as a switchable snapshot, Recent results switches between them; Clear map cache deletes all default and saved results.",
     "pngDecodeFailed": "Scene PNG decode failed",
     "httpError": "Scene image HTTP {status}",
     "option": "{title}  ({w}×{h})"
@@ -303,7 +316,11 @@
       "l1_skngdo": "Cathedral L1 · skngdo hall",
       "l2_blind": "Catacombs L2 · blind room",
       "l3_anvil": "Caves L3 · anvil room",
-      "l4_diab1": "Hell L4 · diab1 room"
+      "l4_diab1": "Hell L4 · diab1 room",
+      "random_l1": "Random Dungeon L1 · Cathedral",
+      "random_l2": "Random Dungeon L2 · Cathedral",
+      "random_l3": "Random Dungeon L3 · Cathedral",
+      "random_l4": "Random Dungeon L4 · Cathedral"
     }
   }
 }

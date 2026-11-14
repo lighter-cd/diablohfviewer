@@ -164,6 +164,10 @@
     "sceneLoadFailed": "场景加载失败",
     "sceneNoArchive": "未连接或未发现 MPQ 档案：请在上方填入 MPQ 路径",
     "sceneCacheClear": "清除场景缓存失败：{error}",
+    "sceneRandomGenerate": "随机地牢生成失败：{error}",
+    "sceneRandomSave": "随机地牢结果保存失败：{error}",
+    "sceneRandomList": "随机地牢结果列表加载失败：{error}",
+    "sceneRandomLoad": "随机地牢结果加载失败：{error}",
     "uiList": "ui.list 失败：{error}",
     "uiBuild": "ui.build 失败：{error}",
     "uiBuildNoImage": "ui.build 未返回图像",
@@ -197,6 +201,15 @@
     "noSelection": "（未选择场景 — 请在上方下拉框中选择一个场景）",
     "loading": "加载场景 {id} …",
     "summary": "{title}  原始 {w}×{h}  网格 {gw}×{gh}  Solid {solid}  光照 {light}",
+    "summaryRandom": "{title}  原始 {w}×{h}  网格 {gw}×{gh}  种子 {seed}  Solid {solid}  光照 {light}",
+    "regenBtn": "重新生成",
+    "saveBtn": "保存结果",
+    "recentLabel": "最近结果",
+    "recentDefault": "缺省（最近生成）",
+    "recentItem": "种子 {seed} · {time}",
+    "recentEmpty": "（暂无结果）",
+    "saved": "已保存结果：{name}",
+    "randomHint": "随机地牢按种子即时生成完整一层（大教堂 L1–L4）；「重新生成」覆盖缺省结果，「保存结果」把当前布局存为可切换快照，「最近结果」可切换加载；「清除地图缓存」删除所有缺省与已保存结果。",
     "pngDecodeFailed": "场景 PNG 解码失败",
     "httpError": "场景图 HTTP {status}",
     "option": "{title}  ({w}×{h})"
@@ -303,7 +316,11 @@
       "l1_skngdo": "大教堂 L1 · skngdo 大厅",
       "l2_blind": "地下墓穴 L2 · blind 房间",
       "l3_anvil": "洞穴 L3 · anvil 房间",
-      "l4_diab1": "地狱 L4 · diab1 房间"
+      "l4_diab1": "地狱 L4 · diab1 房间",
+      "random_l1": "随机地牢 L1 · 大教堂",
+      "random_l2": "随机地牢 L2 · 大教堂",
+      "random_l3": "随机地牢 L3 · 大教堂",
+      "random_l4": "随机地牢 L4 · 大教堂"
     }
   }
 }

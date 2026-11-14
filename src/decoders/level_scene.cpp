@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <initializer_list>
+#include <string>
 #include <tuple>
 
 namespace decoders {
@@ -389,6 +390,39 @@ const std::vector<SceneSpec>& sceneCatalog()
             s.dunH = ds.dunH;
             s.gridW = ds.dunW * 2;
             s.gridH = ds.dunH * 2;
+            v.push_back(s);
+        }
+
+        // Phase 5: dynamically generated Cathedral levels (drlg_l1, L1-L4).
+        // These share the l1_rnd2 Cathedral tileset but have NO fixed .dun:
+        // scene.random generateCathedral(level=N, seed) builds a full 40x40
+        // megatile grid (-> 80x80 micro grid) and injects it through
+        // loadSceneAssets' generatedDun override. Appended LAST so the existing
+        // catalog[1] == l1_rnd2 assertion in unit_tests.cpp stays valid.
+        for (int lvl = 1; lvl <= 4; ++lvl) {
+            SceneSpec s;
+            s.id = "random_l" + std::to_string(lvl);
+            s.title = "随机地牢 L" + std::to_string(lvl) + " · 大教堂（按种子生成）";
+            s.cel = "levels/l1data/l1.cel";
+            s.til = "levels/l1data/l1.til";
+            s.min = "levels/l1data/l1.min";
+            s.sol = "levels/l1data/l1.sol";
+            s.palette = "levels/l1data/l1_2.pal";
+            s.specialCel = "levels/l1data/l1s.cel";
+            s.specialCelWidth = 64;
+            s.layout = SceneLayout::Dungeon;
+            s.microLen = 10;
+            s.blocks = 10;
+            s.prefillMegaTile = 22; // Dirt
+            s.floorMegaTile = 13;   // Floor (LoadDungeonBase)
+            s.specialTable = DungeonSpecialTable::Cathedral;
+            s.ambientLight = 15;
+            s.lightStyle = 0;
+            s.dunW = 40;
+            s.dunH = 40;
+            s.gridW = 80;
+            s.gridH = 80;
+            s.randomLevel = lvl;
             v.push_back(s);
         }
         return v;

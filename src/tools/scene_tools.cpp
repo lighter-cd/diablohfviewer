@@ -11,12 +11,15 @@
 #include "tools/scene_tools.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <random>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -26,6 +29,7 @@
 #include "tools/base64.h"
 #include "decoders/cel.h"
 #include "decoders/clx.h"
+#include "decoders/dungeon_gen.h"
 #include "decoders/level.h"
 #include "decoders/level_light.h"
 #include "decoders/level_path.h"
@@ -93,7 +97,8 @@ struct SceneAssets {
 
 SceneAssets loadSceneAssets(const decoders::SceneSpec& spec,
                             const std::vector<std::string>& archives,
-                            bool dirtBorder = false) {
+                            bool dirtBorder = false,
+                            const decoders::DunFile* generatedDun = nullptr) {
     std::vector<uint8_t> celBuf, tilBuf, minBuf, solBuf, palBuf, dunBuf;
     std::vector<std::vector<uint8_t>> sectorBufs;
     auto need = [&](const std::string& n, std::vector<uint8_t>& b) {
@@ -111,6 +116,13 @@ SceneAssets loadSceneAssets(const decoders::SceneSpec& spec,
             need(s, b);
             sectorBufs.push_back(std::move(b));
         }
+    } else if (generatedDun) {
+        // Phase 5 (scene.random): the DUN grid was generated in memory from a
+        // seed; no fixed preset .dun exists in the MPQ.
+        (void)dunBuf;
+    } else if (spec.randomLevel > 0) {
+        throw std::runtime_error(
+            "random scene '" + spec.id + "' requires scene.random generate");
     } else {
         need(spec.dun, dunBuf);
     }
@@ -128,6 +140,8 @@ SceneAssets loadSceneAssets(const decoders::SceneSpec& spec,
 
     if (spec.layout == decoders::SceneLayout::Town)
         out.grid = decoders::buildTownScene(spec, megatiles, sectorBufs);
+    else if (generatedDun)
+        out.grid = decoders::buildDungeonScene(spec, megatiles, *generatedDun, dirtBorder);
     else
         out.grid = decoders::buildDungeonScene(
             spec, megatiles, decoders::loadDun(dunBuf), dirtBorder);
@@ -361,6 +375,7 @@ mcp::ToolResult toolSceneList(const mcp::json&) {
             {"grid_width", gw}, {"grid_height", gh},
             {"micro_len", s.microLen}, {"blocks", s.blocks},
             {"ambient_light", s.ambientLight}, {"light_style", s.lightStyle},
+            {"randomizable", s.randomLevel > 0}, {"random_level", s.randomLevel},
         });
     }
     mcp::ToolResult r;
@@ -431,7 +446,16 @@ std::string hashHex(const std::string& s) {
 
 } // namespace
 
-mcp::ToolResult toolSceneTiles(const mcp::json& params) {
+// Internal workhorse shared by `scene.tiles` (fixed scenes) and
+// `scene.random generate` (seed-generated dungeons). The extra parameters let
+// the random path override the output `stem` (stable per-level name instead of
+// a content hash), inject an in-memory generated DUN grid, and bypass the
+// on-disk cache markers (a fixed stem + changing seed must never hit a stale
+// `.tiles.result.json`). `skipCache=true` also suppresses writing those markers.
+mcp::ToolResult sceneTilesImpl(const mcp::json& params,
+                               const std::string& stemOverride,
+                               const decoders::DunFile* generatedDun,
+                               bool skipCache) {
     const std::string id = reqStr(params, "id");
     const decoders::SceneSpec* spec = decoders::findScene(id);
     if (!spec)
@@ -444,7 +468,8 @@ mcp::ToolResult toolSceneTiles(const mcp::json& params) {
     const std::string cacheKey =
         "tiles|" + buildCacheKey(id, archives, *spec, params, 0, outDir);
     const std::string tag = hashHex(cacheKey);
-    const std::string base = sanitize(id) + "_" + tag;
+    const std::string base = stemOverride.empty() ? (sanitize(id) + "_" + tag)
+                                                  : stemOverride;
 
     std::error_code ec;
     std::filesystem::create_directories(outDir, ec);
@@ -454,7 +479,8 @@ mcp::ToolResult toolSceneTiles(const mcp::json& params) {
     const std::string resultPath = outDir + "/" + base + ".tiles.result.json";
 
     // Cache reuse: identical parameters -> return stored result without rebuilding.
-    if (fileExists(keyPath) && fileExists(tilesPngPath) &&
+    // Random maps bypass this: their stem is fixed but the seed changes per run.
+    if (!skipCache && fileExists(keyPath) && fileExists(tilesPngPath) &&
         (spec->specialCel.empty() || fileExists(specialPngPath))) {
         std::string stored;
         if (readFile(keyPath, stored) && stored == cacheKey) {
@@ -469,7 +495,7 @@ mcp::ToolResult toolSceneTiles(const mcp::json& params) {
     }
 
     mcp::tools::reportProgress(5, "解析场景规格 " + id);
-    SceneAssets assets = loadSceneAssets(*spec, archives, dirtBorder);
+    SceneAssets assets = loadSceneAssets(*spec, archives, dirtBorder, generatedDun);
     const decoders::SceneGrid& grid = assets.grid;
     const int gw = grid.gw, gh = grid.gh;
     const size_t cells = static_cast<size_t>(gw) * gh;
@@ -805,13 +831,18 @@ mcp::ToolResult toolSceneTiles(const mcp::json& params) {
         {"has_lighting", lightingEnabled},
     };
 
-    // ---- persist cache markers ----
-    {
+    // ---- persist cache markers (fixed scenes only) ----
+    if (!skipCache) {
         std::ofstream fk(keyPath); if (fk) fk << cacheKey;
         std::ofstream fr(resultPath); if (fr) fr << r.value.dump();
     }
     mcp::tools::reportProgress(100, "完成");
     return r;
+}
+
+// Public scene.tiles: fixed scene, hash-derived stem, normal cache reuse.
+mcp::ToolResult toolSceneTiles(const mcp::json& params) {
+    return sceneTilesImpl(params, "", nullptr, false);
 }
 
 mcp::ToolResult toolSceneBuild(const mcp::json& params) {
@@ -1103,6 +1134,278 @@ mcp::ToolResult toolScenePath(const mcp::json& params) {
     return r;
 }
 
+// ---- Phase 5: random dungeon maps (scene.random) ----------------------------
+// Generates a full Cathedral level (drlg_l1, levels/l1data) from a seed via the
+// native dhfc::generateCathedral, then feeds it through the SAME scene.tiles
+// pipeline (sceneTilesImpl) so the front-end renders it exactly like a fixed
+// scene. Results are persisted as flat files in out/scenes/ (served at
+// /scenes/<flat>): one fixed "<id>_default" stem (overwritten on regenerate) +
+// normalized-name snapshots created by "save", listed by "list".
+
+static bool writeTextFile(const std::string& path, const std::string& text) {
+    std::ofstream f(path, std::ios::binary);
+    if (!f) return false;
+    f.write(text.data(), static_cast<std::streamsize>(text.size()));
+    return true;
+}
+
+// "YYYYMMDD_HHMMSS" (for stems) and "YYYY-MM-DD HH:MM:SS" (for display), UTC.
+static std::string utcStamp(bool display) {
+    std::time_t t = std::time(nullptr);
+    std::tm* g = std::gmtime(&t);
+    char buf[32];
+    if (!g) return std::string("19700101_000000");
+    std::strftime(buf, sizeof(buf),
+                  display ? "%Y-%m-%d %H:%M:%S" : "%Y%m%d_%H%M%S", g);
+    return std::string(buf);
+}
+
+static uint32_t makeRandomSeed() {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    uint32_t s = static_cast<uint32_t>(gen());
+    // Mix in the clock so two generators in the same second still differ.
+    s ^= static_cast<uint32_t>(std::chrono::steady_clock::now()
+                                   .time_since_epoch().count());
+    return s == 0 ? 0x9E3779B9u : s;
+}
+
+// List the persisted results for one random scene (small .meta.json files).
+static mcp::json sceneRandomList(const std::string& id) {
+    const std::string outDir = "out/scenes";
+    const std::string prefix = sanitize(id) + "_";
+    mcp::json results = mcp::json::array();
+    std::error_code ec;
+    if (std::filesystem::exists(outDir, ec)) {
+        for (auto it = std::filesystem::directory_iterator(outDir);
+             it != std::filesystem::directory_iterator(); ++it) {
+            if (!it->is_regular_file()) continue;
+            const std::string fn = it->path().filename().string();
+            const std::string suffix = ".meta.json";
+            if (fn.compare(0, prefix.size(), prefix) != 0 ||
+                fn.size() <= suffix.size() ||
+                fn.compare(fn.size() - suffix.size(), suffix.size(), suffix) != 0)
+                continue;
+            std::string txt;
+            if (!readFile(it->path().string(), txt)) continue;
+            try {
+                mcp::json meta = mcp::json::parse(txt);
+                if (!meta.contains("layout_url"))
+                    meta["layout_url"] = "/scenes/" +
+                        fn.substr(0, fn.size() - suffix.size()) + ".layout.json";
+                results.push_back(std::move(meta));
+            } catch (...) { /* ignore corrupt meta */ }
+        }
+    }
+    // Default first, then newest (created string sorts chronologically).
+    std::vector<mcp::json> v;
+    for (auto& e : results) v.push_back(e);
+    std::stable_sort(v.begin(), v.end(), [](const mcp::json& a, const mcp::json& b) {
+        const bool ad = a.value("is_default", false);
+        const bool bd = b.value("is_default", false);
+        if (ad != bd) return ad > bd;
+        return a.value("created", std::string()) > b.value("created", std::string());
+    });
+    mcp::json arr = mcp::json::array();
+    mcp::json def = nullptr;
+    for (auto& e : v) {
+        if (e.value("is_default", false) && (def.is_null()))
+            def = e.value("result_id", std::string());
+        arr.push_back(e);
+    }
+    return mcp::json{{"results", arr}, {"default", def}, {"count", arr.size()}};
+}
+
+// Resolve quest set-piece DUN layers from the MPQ stack. Missing files disable
+// just that quest (graceful) so every level remains generatable on any MPQ.
+static void loadCathedralSetPieces(const std::vector<std::string>& archives,
+                                   dhfc::CathedralOptions& opt,
+                                   dhfc::DunTileLayer& butcher,
+                                   dhfc::DunTileLayer& skng,
+                                   dhfc::DunTileLayer& banner) {
+    auto load = [&archives](const char* name, dhfc::DunTileLayer& out) -> bool {
+        std::vector<uint8_t> buf;
+        if (!extractAny(archives, name, buf)) return false;
+        dhfc::DunTileLayer layer = dhfc::parseDunTileLayer(buf);
+        if (!layer.valid()) return false;
+        out = std::move(layer);
+        return true;
+    };
+    if (opt.butcherQuest) {
+        if (load("levels/l1data/rnd6.dun", butcher)) opt.butcherSetPiece = &butcher;
+        else opt.butcherQuest = false;
+    }
+    if (opt.skeletonKingQuest) {
+        if (load("levels/l1data/skngdo.dun", skng)) opt.skeletonKingSetPiece = &skng;
+        else opt.skeletonKingQuest = false;
+    }
+    if (opt.bannerQuest) {
+        if (load("levels/l1data/banner2.dun", banner)) opt.bannerSetPiece = &banner;
+        else opt.bannerQuest = false;
+    }
+}
+
+mcp::ToolResult toolSceneRandom(const mcp::json& params) {
+    const std::string action = reqStr(params, "action");
+    const std::string id = reqStr(params, "id");
+    const decoders::SceneSpec* spec = decoders::findScene(id);
+    if (!spec)
+        throw std::runtime_error("unknown scene id: " + id);
+    if (spec->randomLevel <= 0)
+        throw std::runtime_error("scene '" + id + "' is not randomizable");
+    const std::string outDir = "out/scenes"; // serveHttp hardcodes this path
+    std::error_code ec;
+    std::filesystem::create_directories(outDir, ec);
+
+    if (action == "list") {
+        mcp::ToolResult r;
+        r.value = sceneRandomList(id);
+        return r;
+    }
+
+    if (action == "save") {
+        const std::string defaultStem = sanitize(id) + "_default";
+        const std::string from = params.value("from", defaultStem);
+        const std::string fromLayout = outDir + "/" + from + ".layout.json";
+        const std::string fromMeta = outDir + "/" + from + ".meta.json";
+        std::string layoutTxt, metaTxt;
+        if (!readFile(fromLayout, layoutTxt) || !readFile(fromMeta, metaTxt))
+            throw std::runtime_error("nothing to save: generate a layout first");
+        mcp::json result = mcp::json::parse(layoutTxt);
+        mcp::json meta = mcp::json::parse(metaTxt);
+
+        const uint32_t seed = static_cast<uint32_t>(meta.value("seed", 0ULL));
+        std::string stem = sanitize(id) + "_" + utcStamp(false) + "_s" +
+                           std::to_string(seed);
+        // Avoid clobbering an identical second+seed snapshot.
+        for (int n = 2; fileExists(outDir + "/" + stem + ".meta.json"); ++n)
+            stem = sanitize(id) + "_" + utcStamp(false) + "_s" +
+                   std::to_string(seed) + "_" + std::to_string(n);
+
+        // Copy the atlas PNGs so a later regenerate (overwriting _default)
+        // cannot corrupt this snapshot, then rewrite all atlas URLs.
+        const std::string tilesSrc = outDir + "/" + from + "_tiles.png";
+        const std::string tilesDst = outDir + "/" + stem + "_tiles.png";
+        if (fileExists(tilesSrc))
+            std::filesystem::copy_file(tilesSrc, tilesDst,
+                std::filesystem::copy_options::overwrite_existing, ec);
+        const std::string specSrc = outDir + "/" + from + "_special.png";
+        const std::string specDst = outDir + "/" + stem + "_special.png";
+        const bool hasSpecial = fileExists(specSrc);
+        if (hasSpecial)
+            std::filesystem::copy_file(specSrc, specDst,
+                std::filesystem::copy_options::overwrite_existing, ec);
+
+        const std::string newTilesUrl = "/scenes/" + stem + "_tiles.png";
+        const std::string newSpecUrl = "/scenes/" + stem + "_special.png";
+        result["tiles_url"] = newTilesUrl;
+        result["layout"]["atlas"]["url"] = newTilesUrl;
+        if (hasSpecial) {
+            result["special_url"] = newSpecUrl;
+            if (result["layout"].contains("special_atlas"))
+                result["layout"]["special_atlas"]["url"] = newSpecUrl;
+        }
+        result["is_default"] = false;
+        result["result_id"] = stem;
+        result["created"] = utcStamp(true);
+        result["layout_url"] = "/scenes/" + stem + ".layout.json";
+
+        meta["is_default"] = false;
+        meta["result_id"] = stem;
+        meta["created"] = result["created"].get<std::string>();
+        meta["layout_url"] = "/scenes/" + stem + ".layout.json";
+
+        writeTextFile(outDir + "/" + stem + ".layout.json", result.dump());
+        writeTextFile(outDir + "/" + stem + ".meta.json", meta.dump());
+        mcp::ToolResult r;
+        r.value = sceneRandomList(id);
+        r.value["saved"] = stem;
+        return r;
+    }
+
+    if (action != "generate")
+        throw std::runtime_error("scene.random action must be generate|save|list");
+
+    // ---- generate ----
+    const std::vector<std::string> archives = archiveStack(params);
+    uint32_t seed = 0;
+    auto seedIt = params.find("seed");
+    if (seedIt != params.end() && seedIt->is_number_integer())
+        seed = static_cast<uint32_t>(seedIt->get<uint64_t>() & 0xFFFFFFFFull);
+    else
+        seed = makeRandomSeed();
+
+    const std::string quests = params.value("quests", std::string("vanilla"));
+    dhfc::CathedralOptions opt;
+    opt.level = spec->randomLevel;
+    opt.seed = seed;
+    opt.originalCathedral = params.value("original_cathedral", true);
+    opt.multiplayerQuests = false;
+    if (quests == "vanilla") {
+        dhfc::applyVanillaCathedralQuests(opt);
+    } else if (quests == "none") {
+        opt.butcherQuest = opt.poisonWaterQuest = false;
+        opt.skeletonKingQuest = opt.bannerQuest = false;
+    } else if (quests == "all") {
+        opt.butcherQuest = opt.poisonWaterQuest = true;
+        opt.skeletonKingQuest = opt.bannerQuest = true;
+    } else {
+        throw std::runtime_error("quests must be one of: vanilla, none, all");
+    }
+
+    dhfc::DunTileLayer butcher, skng, banner;
+    loadCathedralSetPieces(archives, opt, butcher, skng, banner);
+
+    mcp::tools::reportProgress(1, "生成随机地牢 L" + std::to_string(spec->randomLevel));
+    const dhfc::DungeonTileGrid grid = dhfc::generateCathedral(opt);
+
+    // DungeonTileGrid (40x40 uint8, 1-based megatile ids) -> decoders::DunFile.
+    decoders::DunFile dun;
+    dun.width = static_cast<uint16_t>(grid.Width);
+    dun.height = static_cast<uint16_t>(grid.Height);
+    dun.tileLayer.resize(static_cast<size_t>(grid.Width) * grid.Height);
+    for (size_t i = 0; i < dun.tileLayer.size(); ++i)
+        dun.tileLayer[i] = grid.tiles[i];
+
+    // Run the SAME scene.tiles pipeline, with a stable stem + injected DUN,
+    // bypassing the cache (fixed stem + changing seed must never hit stale data).
+    mcp::json tileParams = mcp::json{
+        {"id", id},
+        {"out", outDir},
+        {"lighting", false}, // front-end owns lighting
+        {"dirt_border", params.value("dirt_border", false)},
+    };
+    if (params.contains("archive")) tileParams["archive"] = params["archive"];
+    if (params.contains("archives")) tileParams["archives"] = params["archives"];
+    const std::string stem = sanitize(id) + "_default";
+    mcp::ToolResult tiles = sceneTilesImpl(tileParams, stem, &dun, true);
+
+    // Merge metadata at the TOP LEVEL so the inline return and the persisted
+    // .layout.json are the exact same object the front-end consumes.
+    mcp::json result = tiles.value;
+    const std::string created = utcStamp(true);
+    result["random"] = true;
+    result["random_level"] = spec->randomLevel;
+    result["seed"] = static_cast<uint64_t>(seed);
+    result["quests"] = quests;
+    result["created"] = created;
+    result["result_id"] = stem;
+    result["is_default"] = true;
+    result["layout_url"] = "/scenes/" + stem + ".layout.json";
+
+    mcp::json meta = mcp::json{
+        {"id", id}, {"level", spec->randomLevel}, {"seed", static_cast<uint64_t>(seed)},
+        {"quests", quests}, {"created", created}, {"result_id", stem},
+        {"is_default", true}, {"layout_url", "/scenes/" + stem + ".layout.json"},
+    };
+    writeTextFile(outDir + "/" + stem + ".layout.json", result.dump());
+    writeTextFile(outDir + "/" + stem + ".meta.json", meta.dump());
+
+    mcp::ToolResult r;
+    r.value = std::move(result);
+    return r;
+}
+
 } // namespace
 
 namespace mcp {
@@ -1200,6 +1503,42 @@ void registerSceneTools(ToolRegistry& reg) {
              }},
              {"required", json::array({"id", "archive"})}},
         toolSceneTiles});
+
+    reg.registerTool(ToolDef{
+        "scene.random",
+        "Random dungeon map rendering for the 4 seed-generated Cathedral levels "
+        "(random_l1..random_l4, listed by scene.list as randomizable:true). Uses "
+        "the native DevilutionX drlg_l1 generator (dhfc::generateCathedral, "
+        "src/decoders/dungeon_gen_l1.cpp) and emits the SAME front-end-renderable "
+        "form as scene.tiles (index atlas PNG + layout JSON). action=generate "
+        "builds a fresh level from a random (or explicit) seed, overwrites that "
+        "level's default cache and returns the full scene.tiles result inline; "
+        "action=save normalizes-naming a snapshot of the current result so it can "
+        "be switched via the recent-results list; action=list enumerates default "
+        "+ saved results. scene.clearCache deletes all default + saved results. "
+        "Test script: tests/regress_scene_random.mjs.",
+        json{{"type", "object"},
+             {"properties", json{
+                 {"action", json{{"type", "string"},
+                                 {"description", "generate | save | list"}}},
+                 {"id", json{{"type", "string"},
+                             {"description", "random scene id: random_l1..random_l4"}}},
+                 {"seed", json{{"type", "integer"},
+                               {"description", "uint32 seed (generate); omit for a fresh random seed, echoed back"}}},
+                 {"quests", json{{"type", "string"},
+                                 {"description", "vanilla (default) | none | all (generate)"}}},
+                 {"original_cathedral", json{{"type", "boolean"},
+                                             {"description", "Diablo original Cathedral (default true); false=Hellfire (generate)"}}},
+                 {"dirt_border", json{{"type", "boolean"},
+                                      {"description", "draw the faithful 32-micro Dirt border (default false)"}}},
+                 {"from", json{{"type", "string"},
+                               {"description", "result_id/stem to snapshot (save); defaults to <id>_default"}}},
+                 {"archive", json{{"type", "string"}, {"description", "primary MPQ path (generate)"}}},
+                 {"archives", json{{"type", "array"}, {"items", json{{"type", "string"}}},
+                                   {"description", "additional MPQ search paths (generate)"}}},
+             }},
+             {"required", json::array({"action", "id"})}},
+        toolSceneRandom});
 
     reg.registerTool(ToolDef{
         "scene.clearCache",

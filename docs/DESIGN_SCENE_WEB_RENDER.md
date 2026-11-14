@@ -265,6 +265,9 @@ lighting/门 修复用过的 PNG 解码对比）确保 SceneRenderer 与后端�
    - 前端 `web/src/scene-render.js` 新增 `renderSceneOverlay`（按后端 `buildOverlay` 同投影 / 同槽位数学、step=1 原生分辨率移植：solid 红 / transparent 蓝 / blockLight 黄 半透明菱形 + 每 8 格白色参考网格），与 `renderScene` 输出逐像素对齐。元数据摘要改为 tiles 原生值（标题取自目录、`w/h` 原始宽高、`gw/gh` 网格、Solid 计数、光照），去掉后端专属的预览尺寸 / 缩放 / 透明像素字段。
    - `scene.build` 的 PNG 模式保留为「导出场景 PNG」按钮（反映当前光照开关，新标签页打开原生 PNG），并继续作为 `scene.build` 与前端渲染的回归基准。移除已无用的 `sceneDrawUrl` 辅助。
    - **验收**：`tests/regress_scene_overlay.mjs` 将前端 `renderSceneOverlay` 与后端 `scene.build` 原生叠加层 PNG 逐字节对照——`l1_rnd2`/`l2_blind`/`l3_anvil`/`l4_diab1`/`l1_skngdo` 均 100%；i18n 1396 断言全绿、`node --check` 通过、无后端改动。
+6. **Phase 5 — 随机地牢地图**：✅ **已完成**（2026-11-14），详见下文 §11。
+   - 新增 4 个可随机层 `random_l1..random_l4`（大教堂 L1–L4，按种子生成完整 40×40 一层），后端 `scene.random`（generate/save/list）复用 `scene.tiles` 图集管线，前端同一 `SceneRenderer` 渲染；重新生成 / 保存结果 / 最近结果 / 缺省缓存 / 清缓存生命周期齐备。
+   - **验收**：`tests/regress_scene_random.mjs` 17 项端到端（确定性、图集合法性、渲染、保存/覆盖/清缓存）；三套 C++ 测试（unit/integration 新增断言）+ 既有 node 回归 + i18n 1479 断言全绿。
 
 ---
 
@@ -284,3 +287,89 @@ lighting/门 修复用过的 PNG 解码对比）确保 SceneRenderer 与后端�
   已有测试（unit/core/integration 三套测试不破坏）。
 - 新增 `scene.tiles` 为增量能力；前端场景查看器在 Phase 4 才切换，此前双轨并行。
 - `scene.path`（A* 寻路）基于 SOL 网格，与渲染无关，不受影响。
+
+---
+
+## 11. Phase 5：随机地牢地图（种子生成 + 结果缓存/保存/切换）
+
+> 目标：让场景查看器除 Tristram 城镇与 5 个固定预设房间外，还能渲染**按种子动态生成的
+> 完整一层地牢**，且渲染方式与固定地图完全一致（后端只出图集 + 布局，前端拼装）。
+
+### 11.1 范围与生成器约束
+
+后端目前只有忠实 DevilutionX `drlg_l1.cpp` 的 **Cathedral（大教堂）** 生成器
+`dhfc::generateCathedral(level 1..4, seed)`（`src/decoders/dungeon_gen_l1.cpp`，
+40×40 megatile → 80×80 micro grid，14 个 fixture 0 差异），统一使用 `levels/l1data`
+图块集 + `l1s.cel` 特殊层。Catacombs / Caves / Hell 生成器尚未移植，故随机地图只有
+**4 个大教堂层** `random_l1..random_l4`，全部用 l1data 美术。Tristram 与 5 个固定
+预设房间**保持固定、不可随机**。
+
+`SceneSpec` 新增 `int randomLevel`（0=固定，1..4=第 N 层）；4 个 spec **追加在
+`sceneCatalog()` 末尾**（保护 `unit_tests.cpp` 的 `cat[1]` 索引断言）。`scene.list`
+据此发 `randomizable` / `random_level`，前端只对这 4 项显示随机控件。
+
+### 11.2 数据流（与固定地图同形）
+
+```
+scene.random generate {id, seed?}
+  → CathedralOptions(level=randomLevel, seed=随机或指定, vanilla quests)
+  → 从 MPQ 栈提取任务 set-piece（rnd6/skngdo/banner2.dun，缺失则关闭对应 quest）
+  → generateCathedral → DungeonTileGrid(40×40)
+  → 构造内存 DunFile{40,40,tileLayer}（不落 .dun）
+  → sceneTilesImpl(params, stem=<id>_default, generatedDun=&dun, skipCache=true)
+        （= 原 toolSceneTiles 主体：loadSceneAssets→微格→索引图集+special图集+layout）
+  → 写 <stem>_tiles.png / _special.png / <stem>.layout.json（完整 r.value+元数据）
+        / <stem>.meta.json（极小清单）
+  → 内联返回同一个 r.value（顶层合并 seed/level/created/result_id/is_default/random）
+```
+
+`loadSceneAssets` 加 `const DunFile* generatedDun` 覆盖参数：非 null 时跳过
+`need(spec.dun)` 直接把生成网格交给 `buildDungeonScene`；这是所有 scene 工具取 dungeon
+`.dun` 的唯一咽喉点，因此 `scene.build`/`scene.path`/`scene.tiles` 对随机 id 会自动
+抛清晰错误。`scene.tiles` 主体参数化为 `sceneTilesImpl(stem, generatedDun, skipCache)`，
+固定场景包装成 `toolSceneTiles` 行为完全不变（缓存 key/base 逻辑保留）；随机路径用
+固定 `stem` + `skipCache=true`——固定 stem 配合变化 seed 必须绕过 `.tiles.key` 复用，
+否则「重新生成」永远返回旧图。
+
+### 11.3 文件命名与生命周期
+
+所有产物**平铺**在 `out/scenes/`（`serveHttp` 的 `/scenes/<flat>` 拒绝子目录）：
+
+| 文件 | 内容 |
+|------|------|
+| `<stem>_tiles.png` / `<stem>_special.png` | 索引图集（R=调色板索引，A=绘制标记） |
+| `<stem>.layout.json` | 完整 `scene.tiles` r.value（含内嵌 `layout`）+ 顶层元数据 |
+| `<stem>.meta.json` | 极小清单 `{id,level,seed,quests,created,result_id,is_default,layout_url}` |
+
+- **缺省缓存**：每层固定 stem `<id>_default`，是「最近一次生成」。`scene.random generate`
+  **覆盖**它（重新生成覆盖上次结果）；首次选中/清缓存后无缺省时前端自动 `generate`。
+- **保存结果**：`action=save{from?}` 把当前结果**复制**成规范化命名
+  `<id>_<YYYYMMDD_HHMMSS>_s<seed>` 快照（同名加序号），**复制图集 PNG 并改写全部
+  `tiles_url`/`special_url`/`layout.atlas.url`/`special_atlas.url`**——不同 seed 用到的
+  micro 不同，图集不同，若复用 `<id>_default_tiles.png` 会被下次重新生成污染。
+- **最近结果**：`action=list` 只解析小 `.meta.json`（default 优先、其余按 created 倒序），
+  前端下拉切换时 HTTP GET 该项 `layout_url` 拿到完整 r.value 再走同一渲染路径。
+- **清除地图缓存**：现有 `scene.clearCache` 删除 `out/scenes/` 全部文件 = 删除所有缺省 +
+  已保存结果（连同固定场景缓存一起清空，前端随后 `loadScene` 自动重建）。
+
+### 11.4 前端（`web/src/main.js`）
+
+`loadScene()` 据 `randomizable` 分支：随机路径 `loadRandomScene()` → `list` 有缺省则
+HTTP GET 布局文件、无则 `generate` → `fetchSceneAtlases(res)` → `applySceneResult()`。
+固定路径仍走 `scene.tiles`。把原 `loadScene` 的「组装 sceneState.tiles / 门 / 渲染底图
++叠加层 / 摘要」抽成共享的 `applySceneResult(tiles, ctx)`，两种数据源只差来源不差渲染。
+随机场景摘要用 `scene.summaryRandom`（含 `{seed}`）。随机场景导出改走前端
+`#sceneBase` canvas（`toBlob`），避免 `scene.build` 对内存生成网格失败。
+`loadSceneTiles` 拆出通用 `fetchSceneAtlases(res)` 与 `fetchSceneLayout(url)`。
+
+### 11.5 验收
+
+- WS/HTTP 端到端 `tests/regress_scene_random.mjs`（17 项）：4 个 randomizable 场景、
+  generate 出 80×80 / 6400 格与合法图集、`renderScene` 绘出真实地图、同 seed 确定性、
+  异 seed 不同、缺省 `.layout.json` 与内联一致、save 生成有名快照、regenerate 覆盖缺省
+  但保留快照、快照可再渲染、`clearCache` 清空（随后重热固定场景缓存保证套件顺序无关）。
+- C++：`unit_tests.cpp`（4 个 spec 的 randomLevel/80×80/无固定 dun）、
+  `integration_tests.cpp::testSceneTools`（注册、list、确定性、save/list、异 seed）。
+- 既有 `regress_scene_tiles/door/overlay.mjs` 与 i18n（1479 断言）、三套 C++ 测试全绿。
+- 已知限制：随机层为大教堂（Cathedral）风格、无 L2 关门（537/539）标记；quest set-piece
+  缺失时自动关闭对应任务以保证任意 MPQ 都能生成。

@@ -245,6 +245,14 @@
         <button id="sceneFitBtn" type="button" data-i18n="scene.fitBtn">复位视图</button>
         <button id="sceneClearCacheBtn" type="button" data-i18n="scene.clearCacheBtn">清除地图缓存</button>
         <button id="sceneExportBtn" type="button" data-i18n="scene.exportBtn">导出场景 PNG</button>
+        <div id="sceneRandomControls" class="scene-random-controls" hidden>
+          <button id="sceneRegenBtn" type="button" data-i18n="scene.regenBtn">重新生成</button>
+          <button id="sceneSaveBtn" type="button" data-i18n="scene.saveBtn">保存结果</button>
+          <label class="scene-recent-label"><span data-i18n="scene.recentLabel">最近结果</span>
+            <select id="sceneRecentSel"></select>
+          </label>
+          <div class="scene-light-hint" data-i18n="scene.randomHint">随机地牢按种子即时生成完整一层；「重新生成」覆盖缺省结果，「保存结果」把当前布局存为可切换快照，「最近结果」可切换加载；「清除地图缓存」删除所有缺省与已保存结果。</div>
+        </div>
       </div>
       <div class="char-hint" data-i18n="scene.hint">选场景 → 立即加载：后端用 DevilutionX 两遍绘制（地板菱形 + 墙体）复原完整场景，返回 PNG 预览 + 对齐的叠加层。拖拽平移、下拉或滚轮缩放（支持 0.25×/0.5× 整体预览，缩放时保持地图中心）。切换「光照」会在有/无光照两种结果间复用后端缓存。红色=Solid，蓝色=透明，黄色=BlockLight。「清除地图缓存」可删除已生成的场景图并强制下次重新生成。</div>
     </aside>

@@ -1463,21 +1463,33 @@ static void testSceneTools(const std::string& mpq) {
 
     ToolRegistry reg;
     tools::registerSceneTools(reg);
-    CHECK(reg.has("scene.list") && reg.has("scene.build") && reg.has("scene.path"),
-          "scene.list / scene.build / scene.path registered");
+    CHECK(reg.has("scene.list") && reg.has("scene.build") && reg.has("scene.path") &&
+              reg.has("scene.random"),
+          "scene.list / scene.build / scene.path / scene.random registered");
 
     ToolResult lr = reg.dispatch("scene.list", json::object());
     CHECK(lr.ok, "scene.list dispatch ok");
     json scenes = lr.value.value("scenes", json::array());
     bool hasTristram = false, hasL2 = false, hasL4 = false;
+    int randomCount = 0;
+    bool randomLevelsOk = true;
     for (auto& s : scenes) {
         const std::string id = s.value("id", "");
         if (id == "tristram") hasTristram = true;
         if (id == "l2_blind") hasL2 = true;
         if (id == "l4_diab1") hasL4 = true;
+        if (s.value("randomizable", false)) {
+            ++randomCount;
+            const int lvl = s.value("random_level", 0);
+            if (lvl < 1 || lvl > 4 || s.value("grid_width", 0) != 80 ||
+                s.value("grid_height", 0) != 80)
+                randomLevelsOk = false;
+        }
     }
     CHECK(hasTristram, "scene.list contains tristram");
     CHECK(hasL2 && hasL4, "scene.list contains L2/L4 presets");
+    CHECK(randomCount == 4 && randomLevelsOk,
+          "scene.list exposes 4 randomizable levels (L1-L4, 80x80)");
 
     json args = json{{"id", "tristram"}, {"archive", archives[0]},
                      {"preview_max_width", 400}};
@@ -1652,7 +1664,66 @@ static void testSceneTools(const std::string& mpq) {
               "L4 has 0 transparent pixels");
         CHECK(l4r.value.value("frame_count", 0) > 0, "L4 reencoded CEL frames");
     }
-    printf("scene.* (tristram + lighting + L2 + L4 + path + dirt_border): %s\n",
+
+    // Phase 5: scene.random (seed-generated Cathedral dungeon). Requires the
+    // L1 Cathedral tileset in the MPQ stack; otherwise skip gracefully.
+    bool haveL1 = false;
+    for (auto& arch : archives) {
+        engine::Archive a;
+        if (!a.open(arch)) continue;
+        if (a.verify("levels/l1data/l1.cel") && a.verify("levels/l1data/l1.til") &&
+            a.verify("levels/l1data/l1.min") && a.verify("levels/l1data/l1.sol") &&
+            a.verify("levels/l1data/l1_2.pal") && a.verify("levels/l1data/l1s.cel")) {
+            haveL1 = true;
+            break;
+        }
+    }
+    if (!haveL1) {
+        printf("  (skipped scene.random; L1 Cathedral assets not found)\n");
+    } else {
+        json gargs = json{{"action", "generate"}, {"id", "random_l1"},
+                          {"seed", 1337}, {"archive", archives[0]},
+                          {"archives", stack}};
+        ToolResult gr = reg.dispatch("scene.random", gargs);
+        CHECK(gr.ok, "scene.random generate dispatch ok");
+        if (gr.ok) {
+            CHECK(gr.value.value("random", false) &&
+                      gr.value.value("random_level", 0) == 1 &&
+                      gr.value.value("seed", 0u) == 1337u,
+                  "scene.random generate echoes seed / level / random flag");
+            CHECK(gr.value.value("grid_width", 0) == 80 &&
+                      gr.value.value("grid_height", 0) == 80,
+                  "scene.random generate produces a full 80x80 micro grid");
+            CHECK(gr.value["layout"]["micro_grid"].size() == (size_t)(80 * 80),
+                  "scene.random layout.micro_grid sized gw*gh");
+            CHECK(gr.value.value("is_default", false) &&
+                      gr.value.value("result_id", "") == "random_l1_default",
+                  "scene.random generate writes the default cache");
+            // Determinism: same seed -> byte-identical micro_grid.
+            ToolResult gr2 = reg.dispatch("scene.random", gargs);
+            CHECK(gr2.ok && gr.value["layout"]["micro_grid"] == gr2.value["layout"]["micro_grid"],
+                  "scene.random generate is deterministic for a fixed seed");
+            // save -> a named snapshot appears in list; regenerate keeps it.
+            ToolResult sv = reg.dispatch("scene.random",
+                json{{"action", "save"}, {"id", "random_l1"}});
+            CHECK(sv.ok && sv.value.value("count", 0) >= 2 &&
+                      !sv.value.value("saved", std::string()).empty(),
+                  "scene.random save creates a named snapshot");
+            json lsResults = sv.value.value("results", json::array());
+            bool hasDefault = false, hasSnapshot = false;
+            for (auto& r : lsResults) {
+                if (r.value("is_default", false)) hasDefault = true;
+                else hasSnapshot = true;
+            }
+            CHECK(hasDefault && hasSnapshot, "scene.random list has default + saved");
+            // Different seed -> different grid (proves random, not constant).
+            gargs["seed"] = 4242;
+            ToolResult gr3 = reg.dispatch("scene.random", gargs);
+            CHECK(gr3.ok && gr.value["layout"]["micro_grid"] != gr3.value["layout"]["micro_grid"],
+                  "scene.random different seed yields a different layout");
+        }
+    }
+    printf("scene.* (tristram + lighting + L2 + L4 + path + dirt_border + random): %s\n",
            allOk ? "PASS" : "FAIL");
 }
 

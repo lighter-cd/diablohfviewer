@@ -119,7 +119,8 @@ for (const [group, ids] of Object.entries({
            "selyesno", "settings", "control_panel", "char_panel", "inventory",
            "spellbook", "quest_log", "store_list", "store_grid", "dialog_small",
            "dialog_large", "dialog_large_dvl"],
-  scene: ["tristram", "l1_rnd2", "l1_skngdo", "l2_blind", "l3_anvil", "l4_diab1"],
+  scene: ["tristram", "l1_rnd2", "l1_skngdo", "l2_blind", "l3_anvil", "l4_diab1",
+          "random_l1", "random_l2", "random_l3", "random_l4"],
 })) {
   for (const id of ids) {
     ok(en.has(`data.${group}.${id}`), `missing data.${group}.${id}`);

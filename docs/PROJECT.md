@@ -889,6 +889,7 @@ DiabloHFConverter/
 | 场景渲染前端化 — Phase 2（实时环境光滑块 + 拖拽火把，零服务端往返，与 `scene.build` 逐像素一致） | ✅ |
 | 场景渲染前端化 — Phase 3（门本地开关切换，零服务端往返） | ✅ |
 | 场景渲染前端化 — Phase 4（查看器管线切换：前端 SceneRenderer 默认接管，叠加层本地绘制，scene.build PNG 退为导出/缩略图与回归基准） | ✅ |
+| 场景渲染前端化 — Phase 5（随机地牢地图：4 个可随机层 `random_l1..random_l4` 按种子生成完整大教堂一层，后端 `scene.random` 出图集 + 布局文件、前端渲染；重新生成 / 保存结果 / 最近结果 / 缺省缓存 / 清缓存，见 `docs/DESIGN_SCENE_WEB_RENDER.md` §11） | ✅ |
 | 单元 / 集成 / core 三套测试 + mcp-server 构建 | ✅ |
 
 ### 游戏场景如何组织（对照 DevilutionX，2026-11-09 澄清）

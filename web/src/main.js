@@ -1523,6 +1523,9 @@ const sceneState = {
   doorOverride: null, // { idx -> open micro } passed to renderScene
   doorEls: [],      // door marker DOM elements, parallel to sceneState.doors
   doorEdit: false,  // mirrors sceneDoorEditToggle
+  // Phase 5 random dungeon maps:
+  currentResultId: null, // result_id/stem currently displayed (for save-from)
+  recentResults: {},     // result_id -> result descriptor (with layout_url)
 };
 let sceneCatalog = [];
 
@@ -1630,9 +1633,9 @@ async function fetchPngBuffer(url) {
   }
 }
 
-// Call scene.tiles (same args as scene.build) and pull the two index atlases.
-async function loadSceneTiles(args) {
-  const res = await client.callTool("scene.tiles", args, pushSceneProgress);
+// Fetch the two index atlases for ANY scene.tiles-shaped result (fixed scene
+// OR a random/dungeons result loaded from a .layout.json). Shared by both paths.
+async function fetchSceneAtlases(res) {
   if (!res || !res.layout) throw new Error(t("error.sceneTilesNoLayout"));
   const layout = res.layout;
   const origin = sceneHttpOrigin();
@@ -1643,6 +1646,19 @@ async function loadSceneTiles(args) {
     catch (e) { console.warn("special atlas load failed:", e); specialAtlas = null; }
   }
   return { layout, tileAtlas, specialAtlas };
+}
+
+// Call scene.tiles (same args as scene.build) and pull the two index atlases.
+async function loadSceneTiles(args) {
+  const res = await client.callTool("scene.tiles", args, pushSceneProgress);
+  return fetchSceneAtlases(res);
+}
+
+// Fetch a persisted random-result layout.json over HTTP (the "生成布局文件").
+async function fetchSceneLayout(url) {
+  const resp = await fetch(sceneHttpOrigin() + url);
+  if (!resp.ok) throw new Error(t("scene.httpError", { status: resp.status }));
+  return resp.json();
 }
 
 // Render the scene base from the cached tiles into #sceneBase (native res).
@@ -1975,14 +1991,154 @@ function renderSceneOverlayCanvas() {
   ctx.putImageData(new ImageData(ov.data, ov.width, ov.height), 0, 0);
 }
 
+// ---- Phase 5: random dungeon maps -------------------------------------------
+// A randomizable scene is one of the 4 seed-generated Cathedral levels
+// (scene.list marks it randomizable:true). Such scenes are rendered by the SAME
+// front-end SceneRenderer as fixed scenes: the backend just hands over an atlas
+// PNG + a layout JSON (scene.tiles-shaped). Only the DATA SOURCE differs.
+
+function isRandomScene(id) {
+  const c = sceneCatalog.find((s) => s.id === id);
+  return !!(c && c.randomizable);
+}
+
+function showSceneRandomControls(visible) {
+  const box = $("sceneRandomControls");
+  if (box) box.hidden = !visible;
+  if (!visible) {
+    sceneState.currentResultId = null;
+    sceneState.recentResults = {};
+  }
+}
+
+// Populate the "最近结果" dropdown. Default (most recent generation) is first.
+function renderRecentDropdown(results, currentId) {
+  const sel = $("sceneRecentSel");
+  sel.innerHTML = "";
+  sceneState.recentResults = {};
+  if (!results.length) {
+    const o = document.createElement("option");
+    o.value = "";
+    o.textContent = t("scene.recentEmpty");
+    sel.appendChild(o);
+    return;
+  }
+  for (const r of results) {
+    sceneState.recentResults[r.result_id] = r;
+    const o = document.createElement("option");
+    o.value = r.result_id;
+    o.textContent = r.is_default
+      ? t("scene.recentDefault")
+      : t("scene.recentItem", { seed: r.seed, time: r.created });
+    sel.appendChild(o);
+  }
+  if (currentId && [...sel.options].some((o) => o.value === currentId))
+    sel.value = currentId;
+}
+
+// Apply a scene.tiles-shaped atlas bundle (fixed OR random) to the viewer —
+// the shared state-assembly + render + summary step. `ctx` =
+// { isRandom, seed, resultId }.
+function applySceneResult(tiles, ctx) {
+  const id = $("sceneSel").value;
+  const isRandom = !!(ctx && ctx.isRandom);
+  const L = tiles.layout;
+  const lights = Array.isArray(L.lights)
+    ? L.lights.map((o) => ({ ...o })) : [];
+  const ambient = (L.default_ambient != null) ? L.default_ambient
+    : (L.ambient || 0);
+  sceneState.tiles = {
+    layout: L, tileAtlas: tiles.tileAtlas, specialAtlas: tiles.specialAtlas,
+    gw: L.grid_width, gh: L.grid_height, ambient,
+    softFalloff: !!L.soft_falloff, lights,
+    light: sceneState.lightOn
+      ? buildLightMap(L.grid_width, L.grid_height, ambient, lights, !!L.softFalloff)
+      : null,
+  };
+  // Phase 3 door definitions (closed <-> open micro swap), start all CLOSED.
+  sceneState.doors = Array.isArray(L.doors)
+    ? L.doors.map((d) => ({ x: d.x, y: d.y, open: d.open, closed: d.closed, idx: d.y * L.grid_width + d.x }))
+    : [];
+  sceneState.doorOpen = new Set();
+  sceneState.doorOverride = {};
+  renderSceneBase();
+  renderSceneOverlayCanvas();
+  showDoorControls(sceneState.doorEdit);
+  $("sceneOverlay").hidden = !$("sceneOverlayToggle").checked;
+  // Night-palette scenes render very dark; brighten defaults ON.
+  $("sceneLayers").classList.toggle("bright", $("sceneBrightToggle").checked);
+  sceneState.loaded = true;
+  sceneState.currentResultId = (ctx && ctx.resultId) || null;
+  sceneFit();
+  showSceneLightControls(sceneState.lightOn);
+
+  const cat = sceneCatalog.find((s) => s.id === id);
+  const title = cat ? cat.title : id;
+  let solidCount = 0;
+  const solidArr = L.solid;
+  if (Array.isArray(solidArr)) for (const v of solidArr) if (v) solidCount++;
+  const metaVars = {
+    title: dataTitle("scene", id, title),
+    w: sceneState.w, h: sceneState.h,
+    gw: sceneState.tiles.gw, gh: sceneState.tiles.gh,
+    solid: solidCount,
+    light: sceneState.lightOn ? t("common.on") : t("common.off"),
+  };
+  if (isRandom) {
+    metaVars.seed = (ctx && ctx.seed) != null ? ctx.seed : "?";
+    setMetaT("scene.summaryRandom", metaVars);
+  } else {
+    setMetaT("scene.summary", metaVars);
+  }
+}
+
+// Load a randomizable level: list results; auto-generate a default on first
+// visit / after cache clear; otherwise fetch the persisted default layout file.
+async function loadRandomScene(id) {
+  try {
+    sceneState.lightOn = !!$("sceneLightToggle").checked;
+    let listed = await client.callTool("scene.random", { action: "list", id });
+    let results = Array.isArray(listed.results) ? listed.results : [];
+    let def = results.find((r) => r.is_default) || null;
+    let res;
+    if (def && def.layout_url) {
+      res = await fetchSceneLayout(def.layout_url);
+    } else {
+      // No default cache yet -> generate one (new random seed) and re-list.
+      res = await client.callTool("scene.random",
+        { ...buildSceneArgs(), action: "generate", lighting: false },
+        pushSceneProgress);
+      listed = await client.callTool("scene.random", { action: "list", id });
+      results = Array.isArray(listed.results) ? listed.results : [];
+      def = results.find((r) => r.is_default) || null;
+    }
+    const tiles = await fetchSceneAtlases(res);
+    const resultId = def ? def.result_id : (res.result_id || null);
+    applySceneResult(tiles, { isRandom: true, seed: res.seed, resultId });
+    renderRecentDropdown(results, resultId);
+  } catch (e) {
+    showErrorT("error.sceneRandomLoad", { error: e.message || e });
+    setMetaT("error.sceneLoadFailed", null, true);
+  }
+}
+
 async function loadScene() {
   if (sceneState.loading) return;
   const id = $("sceneSel").value;
-  if (!id) return;   // nothing selected — don't auto-load a default scene
+  if (!id) {          // nothing selected — hide random controls, don't auto-load
+    showSceneRandomControls(false);
+    return;
+  }
   hideError();
   sceneState.loading = true;
   showSceneLoading(t("scene.loading", { id }));
+  const random = isRandomScene(id);
+  showSceneRandomControls(random);   // hide the random controls for fixed scenes
   try {
+    if (random) {
+      await loadRandomScene(id);
+      return;
+    }
     const args = buildSceneArgs();
     if (!args.archive) {
       showErrorT("error.sceneNoArchive");
@@ -1995,73 +2151,9 @@ async function loadScene() {
     // lighting (ambient slider + draggable torch), and the overlay (grid + SOL
     // tint) is now also drawn on the client (renderSceneOverlay). scene.build
     // is retained ONLY as an explicit export action (see exportScenePng).
-    // ALWAYS request lighting:false — the front-end owns lighting end-to-end;
-    // fetching lighting:true would make the server ship a precomputed
-    // layout.light that renderScene falls back to when the user turns lighting
-    // OFF (opts.light=null), wrongly lighting the scene against their wish.
-    let tiles = null;
-    try {
-      tiles = await loadSceneTiles({ ...args, lighting: false });
-    } catch (e) {
-      console.warn("scene.tiles failed:", e);
-      tiles = null;
-    }
-
-    if (tiles) {
-      const L = tiles.layout;
-      const lights = Array.isArray(L.lights)
-        ? L.lights.map((o) => ({ ...o })) : [];
-      const ambient = (L.default_ambient != null) ? L.default_ambient
-        : (L.ambient || 0);
-      sceneState.tiles = {
-        layout: L, tileAtlas: tiles.tileAtlas, specialAtlas: tiles.specialAtlas,
-        gw: L.grid_width, gh: L.grid_height, ambient,
-        softFalloff: !!L.soft_falloff, lights,
-        light: sceneState.lightOn
-          ? buildLightMap(L.grid_width, L.grid_height, ambient, lights, !!L.softFalloff)
-          : null,
-      };
-      // Phase 3: collect door definitions (closed <-> open micro swap). Start
-      // fully CLOSED (the layout ships the closed state), so the open override
-      // set begins empty.
-      sceneState.doors = Array.isArray(L.doors)
-        ? L.doors.map((d) => ({ x: d.x, y: d.y, open: d.open, closed: d.closed, idx: d.y * L.grid_width + d.x }))
-        : [];
-      sceneState.doorOpen = new Set();
-      sceneState.doorOverride = {};
-      renderSceneBase();
-      renderSceneOverlayCanvas();
-      showDoorControls(sceneState.doorEdit);
-    } else {
-      throw new Error(t("error.sceneTilesNoLayout"));
-    }
-
-    // Overlay is rendered locally; its visibility still follows the toggle.
-    $("sceneOverlay").hidden = !$("sceneOverlayToggle").checked;
-
-    // Night-palette scenes (e.g. Tristram) render very dark and look blank;
-    // the brighten toggle defaults to ON, so apply its state on every load.
-    $("sceneLayers").classList.toggle("bright", $("sceneBrightToggle").checked);
-    sceneState.loaded = true;
-    sceneFit();
-    showSceneLightControls(sceneState.lightOn);
-    // Mirror the GUI layout viewer: show one consolidated scene summary in the
-    // top-right "当前资源" line (#currentName) and keep the bottom status bar
-    // free of duplicates. The shared sprite control bar (#stageControls) is
-    // hidden in scene mode (see setMode), so show the info here instead.
-    const cat = sceneCatalog.find((s) => s.id === id);
-    const title = cat ? cat.title : id;
-    let solidCount = 0;
-    const solidArr = sceneState.tiles ? sceneState.tiles.layout.solid : null;
-    if (Array.isArray(solidArr)) for (const v of solidArr) if (v) solidCount++;
-    setMetaT("scene.summary", {
-      title: dataTitle("scene", id, title),
-      w: sceneState.w, h: sceneState.h,
-      gw: sceneState.tiles ? sceneState.tiles.gw : null,
-      gh: sceneState.tiles ? sceneState.tiles.gh : null,
-      solid: solidCount,
-      light: sceneState.lightOn ? t("common.on") : t("common.off"),
-    });
+    // ALWAYS request lighting:false — the front-end owns lighting end-to-end.
+    const tiles = await loadSceneTiles({ ...args, lighting: false });
+    applySceneResult(tiles, { isRandom: false });
   } catch (e) {
     showErrorT("error.sceneBuild", { error: e.message || e });
     setMetaT("error.sceneLoadFailed", null, true);
@@ -2078,6 +2170,20 @@ async function loadScene() {
 async function exportScenePng() {
   const id = $("sceneSel").value;
   if (!id || sceneState.loading) return;
+  // Phase 5: random scenes have no server-side scene.build render (their grid
+  // is generated in memory). Export the front-end-rendered #sceneBase canvas
+  // (the exact same pixels the viewer shows) — no server round-trip needed.
+  if (isRandomScene(id)) {
+    try {
+      const blob = await new Promise((resolve) =>
+        $("sceneBase").toBlob(resolve, "image/png"));
+      if (!blob) throw new Error(t("scene.exportNoUrl"));
+      window.open(URL.createObjectURL(blob), "_blank");
+    } catch (e) {
+      showErrorT("error.sceneBuild", { error: e.message || e });
+    }
+    return;
+  }
   const args = buildSceneArgs();
   args.lighting = !!$("sceneLightToggle").checked;
   showSceneLoading(t("scene.exporting", { id }));
@@ -2197,6 +2303,71 @@ function wireSceneControls() {
   // Phase 4: retained PNG export (scene.build). The viewer is tiles-driven, but
   // the server-rendered PNG is still available for export / thumbnail.
   $("sceneExportBtn").addEventListener("click", () => exportScenePng());
+
+  // Phase 5: random dungeon controls (only visible for randomizable scenes).
+  // 重新生成: backend makes a fresh seed, overwrites the default cache, and
+  // returns the full scene.tiles result inline -> render + refresh the list.
+  $("sceneRegenBtn").addEventListener("click", async () => {
+    const id = $("sceneSel").value;
+    if (!id || sceneState.loading || !isRandomScene(id)) return;
+    hideError();
+    sceneState.loading = true;
+    showSceneLoading(t("scene.loading", { id }));
+    try {
+      const res = await client.callTool("scene.random",
+        { ...buildSceneArgs(), action: "generate", lighting: false },
+        pushSceneProgress);
+      const tiles = await fetchSceneAtlases(res);
+      applySceneResult(tiles, { isRandom: true, seed: res.seed, resultId: res.result_id });
+      const listed = await client.callTool("scene.random", { action: "list", id });
+      renderRecentDropdown(Array.isArray(listed.results) ? listed.results : [], res.result_id);
+    } catch (e) {
+      showErrorT("error.sceneRandomGenerate", { error: e.message || e });
+    } finally {
+      sceneState.loading = false;
+      hideSceneLoading();
+    }
+  });
+  // 保存结果: snapshot the CURRENT result under a normalized name, then refresh
+  // the "最近结果" dropdown and select the new snapshot.
+  $("sceneSaveBtn").addEventListener("click", async () => {
+    const id = $("sceneSel").value;
+    if (!id || sceneState.loading || !isRandomScene(id)) return;
+    try {
+      const res = await client.callTool("scene.random", {
+        action: "save", id,
+        from: sceneState.currentResultId || (id + "_default"),
+      });
+      const results = Array.isArray(res.results) ? res.results : [];
+      const saved = res.saved || sceneState.currentResultId;
+      // Keep the currently displayed pixels/seed, just point save-from at the
+      // new snapshot and mark it selected.
+      sceneState.currentResultId = saved;
+      renderRecentDropdown(results, saved);
+      setMetaT("scene.saved", { name: saved });
+    } catch (e) {
+      showErrorT("error.sceneRandomSave", { error: e.message || e });
+    }
+  });
+  // 最近结果: switch to a saved/default result by fetching its layout file.
+  $("sceneRecentSel").addEventListener("change", async (e) => {
+    const id = $("sceneSel").value;
+    const r = sceneState.recentResults[e.target.value];
+    if (!id || !r || !r.layout_url || !isRandomScene(id)) return;
+    hideError();
+    sceneState.loading = true;
+    showSceneLoading(t("scene.loading", { id }));
+    try {
+      const res = await fetchSceneLayout(r.layout_url);
+      const tiles = await fetchSceneAtlases(res);
+      applySceneResult(tiles, { isRandom: true, seed: res.seed, resultId: r.result_id });
+    } catch (err) {
+      showErrorT("error.sceneRandomLoad", { error: err.message || err });
+    } finally {
+      sceneState.loading = false;
+      hideSceneLoading();
+    }
+  });
 
   const vp = $("sceneViewport");
   vp.addEventListener("wheel", (e) => {
@@ -2804,6 +2975,9 @@ function refreshAllText() {
   if (npcSprites.length) renderNpcOptions();
   if (spellCatalog) reselect("combatSpell", populateCombatSpells);
   if (sceneCatalog.length) renderSceneOptions();
+  // Phase 5: re-translate the "最近结果" dropdown labels on language switch.
+  if (Object.keys(sceneState.recentResults).length)
+    renderRecentDropdown(Object.values(sceneState.recentResults), $("sceneRecentSel").value);
   if (guiState.catalog.length) renderGuiOptions();
   if (guiState.loaded) populateGuiElementSelect(guiState.selectedIndex);
   else showGuiElementDetail(null);

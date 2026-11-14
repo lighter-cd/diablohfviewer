@@ -1614,6 +1614,26 @@ static void testLevelScene()
     auto dims = decoders::sceneGridDims(cat[1]);
     lvlChk(dims.first == 22 && dims.second == 22,
            "sceneGridDims reports cropped dungeon .dun bbox");
+
+    // Phase 5: 4 seed-generated Cathedral levels appended to the catalog.
+    // They have no fixed .dun (generated in memory), share the l1data tileset,
+    // and report an 80x80 micro grid for a full 40x40 megatile dungeon.
+    bool allRandom = true;
+    for (int lvl = 1; lvl <= 4; ++lvl) {
+        const std::string rid = "random_l" + std::to_string(lvl);
+        const decoders::SceneSpec* rs = decoders::findScene(rid);
+        const auto rdims = rs ? decoders::sceneGridDims(*rs)
+                              : std::make_pair(0, 0);
+        if (!rs || rs->randomLevel != lvl || rs->layout != decoders::SceneLayout::Dungeon ||
+            !rs->dun.empty() || rs->specialTable != decoders::DungeonSpecialTable::Cathedral ||
+            rs->microLen != 10 || rs->blocks != 10 ||
+            rdims.first != 80 || rdims.second != 80)
+            allRandom = false;
+    }
+    lvlChk(allRandom,
+           "sceneCatalog exposes 4 randomizable Cathedral levels (L1-L4, 80x80, no fixed dun)");
+    lvlChk(town && town->randomLevel == 0 && l4 && l4->randomLevel == 0,
+           "fixed scenes are not randomizable");
     printf("level.scene: %s\n", allOk ? "PASS" : "FAIL");
 }
 
