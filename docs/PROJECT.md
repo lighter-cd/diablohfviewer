@@ -1112,3 +1112,6 @@ SOL 碰撞网格 A* 寻路（`scene.path`）、L2/L3/L4 预设场景。`scene.bu
 - **幂等**：GitHub 按 tag 复用 release（同名资产先删后传）；Gitee 建失败按 tag 查询复用。
 - **测试**：`tests/release_pack_test.py`（临时目录 dry-run，35 项断言：zip 结构 / 校验和 /
   `--no-dict` / 禁 MPQ / `start.bat` 参数 / 前端文件齐全）；`build-mcp/mcp-server.exe` 缺失时 SKIP。
+- [x] **v0.1.0 已发布（2026-11-16）**：GitHub 与 Gitee 各一个 `v0.1.0` release，均含
+  `DiabloHFViewer-v0.1.0-win64.zip`（2,012,036 B）与 `.sha256`；两端下载实测 sha256 一致
+  `7aa3411be360ef8e30df6448e1e1ca63b57bd47eee50a504b461bb662e02cde9`；tag 打在 `a348330`。

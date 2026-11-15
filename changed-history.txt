@@ -595,3 +595,8 @@
 ## 2026-11-16 03:40:32
 - 新增双平台发布流程：`scripts/release.py`（纯 Python 标准库）一条命令完成「打包 → 打 vX.Y.Z annotated tag → 推送 tag 到 GitHub(origin)/Gitee(gitee) → 两边建 Release → 上传 zip 与 .sha256」；zip 含 exe + 按 PE 导入表自动识别的 MinGW 运行时 DLL + web/ + 可选 recovered.json + start.bat + LICENSE/README/VERSION，打包前拒绝任何 *.mpq，notes 自动附资源免责声明；新增 `tests/release_pack_test.py`（dry-run 35 项断言）并在 README / README_EN / docs/RELEASE_PLAN.md / docs/PROJECT.md 记录用法与平台限制，.gitignore 增加 dist/ 与 __pycache__/
 - 涉及: scripts/release.py, tests/release_pack_test.py, README.md, README_EN.md, docs/RELEASE_PLAN.md, docs/PROJECT.md, .gitignore, changed-history.txt
+
+
+## 2026-11-16 03:59:26
+- 发布 v0.1.0：脚本 `scripts/release.py --version v0.1.0` 建 annotated tag 并推送 origin/gitee，GitHub（release id 446325764）与 Gitee（id 1313451）各创建发行版并上传 `DiabloHFViewer-v0.1.0-win64.zip`(2,012,036 B) 与 `.sha256`；两端下载校验 sha256 一致（7aa3411b…cde9）；docs/PROJECT.md §12 记录里程碑
+- 涉及: docs/PROJECT.md, changed-history.txt
