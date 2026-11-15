@@ -1787,6 +1787,74 @@ static void testLevelLight()
     }
     lvlChk(edgeClean, "buildLightMap clips each quadrant by real edge distance "
                        "(no black wedges near grid borders)");
+
+    // Regression: quadrant upper-bound off-by-one. DevilutionX keeps
+    // minX/maxX/minY/maxY in [1,15] so x/y only reach 14. Capping at 16 lets
+    // x+blockX reach 16, reading past the 16-wide cone row into the next
+    // sub-cell offset block and lighting spurious fully-bright tiles. For an
+    // INTERIOR light the per-edge clipping is a no-op, so buildLightMap must be
+    // bit-exact with a faithful DoLighting that uses the original bounds (15).
+    auto faithfulInterior = [](int gw, int gh, int px, int py, int ox, int oy) {
+        static constexpr int sines[4] = { 0, 1, 0, -1 };
+        auto rot = [&](int x, int y, int q) -> std::pair<int, int> {
+            q = ((q % 4) + 4) % 4;
+            const int s = sines[q], c = sines[(q + 1) % 4];
+            return { x * c - y * s, x * s + y * c };
+        };
+        uint8_t fall[16][128], cone[8][8][16][16];
+        decoders::makeLightFalloffs(false, fall);
+        decoders::makeLightConeInterpolations(cone);
+        std::vector<uint8_t> levels(static_cast<size_t>(gw) * gh, 15);
+        const auto get = [&](int x, int y) { return levels[static_cast<size_t>(y) * gw + x]; };
+        const auto set = [&](int x, int y, uint8_t v) { levels[static_cast<size_t>(y) * gw + x] = v; };
+        const auto ib = [&](int x, int y) { return x >= 0 && x < gw && y >= 0 && y < gh; };
+        if (ox < 0) { ox += 8; px -= 1; }
+        if (oy < 0) { oy += 8; py -= 1; }
+        ox &= 7; oy &= 7;
+        int mnx = 15, mxx = 15, mny = 15, mxy = 15;
+        if (px - 15 < 0) mnx = px + 1;
+        if (px + 15 > gw) mxx = gw - px;
+        if (py - 15 < 0) mny = py + 1;
+        if (py + 15 > gh) mxy = gh - py;
+        set(px, py, 0);
+        int dx = ox, dy = oy, lx = 0, ly = 0, bx = 0, by = 0, offX = ox, offY = oy;
+        for (int i = 0; i < 4; ++i) {
+            const int yB = (i > 0 && i < 3) ? mxy : mny;
+            const int xB = i < 2 ? mxx : mnx;
+            for (int y = 0; y < yB; ++y)
+                for (int x = 1; x < xB; ++x) {
+                    const int ld = cone[offX][offY][x + bx][y + by];
+                    if (ld >= 128) continue;
+                    const auto [ax, ay] = rot(x, y, -i);
+                    const int tx = px + ax, ty = py + ay;
+                    if (!ib(tx, ty)) continue;
+                    const uint8_t v = fall[15][ld];
+                    if (v < get(tx, ty)) set(tx, ty, v);
+                }
+            const int ndx = 7 - dy, ndy = dx, nlx = 7 - ly, nly = lx;
+            dx = ndx; dy = ndy; lx = nlx; ly = nly;
+            int a = dx - lx, b = dy - ly;
+            bx = 0; if (a < 0) { a += 8; bx = 1; }
+            by = 0; if (b < 0) { b += 8; by = 1; }
+            offX = a; offY = b;
+        }
+        return levels;
+    };
+    bool interiorExact = true;
+    for (const auto& g : lightGrids) {
+        int gw = g[0], gh = g[1];
+        if (gw < 40 || gh < 40) continue; // need >=15-cell margin around the light
+        for (int py = 20; py <= gh - 21; py += 7)
+            for (int px = 20; px <= gw - 21; px += 7)
+                for (const auto& o : std::vector<std::pair<int, int>>{ {0,0}, {3,2}, {7,6}, {7,0} }) {
+                    auto got = decoders::buildLightMap(gw, gh, 15,
+                        { { px, py, 15, static_cast<int8_t>(o.first), static_cast<int8_t>(o.second) } }, false);
+                    auto ref = faithfulInterior(gw, gh, px, py, o.first, o.second);
+                    if (got.levels != ref) interiorExact = false;
+                }
+    }
+    lvlChk(interiorExact, "buildLightMap interior light is bit-exact with faithful "
+                          "DoLighting (quadrant bound capped at 15, not 16)");
     printf("level.light: %s\n", allOk ? "PASS" : "FAIL");
 }
 

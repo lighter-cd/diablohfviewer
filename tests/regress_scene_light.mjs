@@ -71,6 +71,87 @@ for (const [gw, gh] of GRIDS) {
   }
 }
 
+// Independent faithful transcription of DevilutionX DoLighting (lighting.cpp).
+// Unlike buildLightMap's per-edge clipping, this uses the ORIGINAL minX/maxX/
+// minY/maxY reuse, which for an interior light (all >=15 from every edge) are
+// all 15. Crucially those bounds are capped at 15, so x/y only reach 14. This
+// reference is only valid for interior lights and is what catches the
+// "capped at 16" off-by-one: with xBound=16 the cone row index x+blockX reaches
+// 16 and reads into the next sub-cell offset block, lighting spurious tiles.
+const SIN = [0, 1, 0, -1];
+function faithfulInterior(gw, gh, px, py, ox, oy, radius) {
+  const rot = (x, y, q) => {
+    q = ((q % 4) + 4) % 4;
+    const s = SIN[q], c = SIN[(q + 1) % 4];
+    return [x * c - y * s, x * s + y * c];
+  };
+  const falloff = (r, d) => {
+    const md = (r + 1) * 8;
+    if (d > md) return 15;
+    let v = (d / md) * 15 + 0.5;
+    return v | 0;
+  };
+  const cone = (offX, offY, x, y) => {
+    const a = 8 * x - offX, b = 8 * y - offY;
+    return Math.sqrt(a * a + b * b) | 0;
+  };
+  const L = new Uint8Array(gw * gh).fill(15);
+  const get = (x, y) => L[y * gw + x];
+  const set = (x, y, v) => { L[y * gw + x] = v; };
+  const ib = (x, y) => x >= 0 && x < gw && y >= 0 && y < gh;
+  if (ox < 0) { ox += 8; px -= 1; }
+  if (oy < 0) { oy += 8; py -= 1; }
+  ox &= 7; oy &= 7;
+  let minX = 15, maxX = 15, minY = 15, maxY = 15;
+  if (px - 15 < 0) minX = px + 1;
+  if (px + 15 > gw) maxX = gw - px;
+  if (py - 15 < 0) minY = py + 1;
+  if (py + 15 > gh) maxY = gh - py;
+  set(px, py, 0);
+  let dx = ox, dy = oy, lx = 0, ly = 0, bx = 0, by = 0, offX = ox, offY = oy;
+  for (let i = 0; i < 4; ++i) {
+    const yBound = (i > 0 && i < 3) ? maxY : minY;
+    const xBound = i < 2 ? maxX : minX;
+    for (let y = 0; y < yBound; ++y) {
+      for (let x = 1; x < xBound; ++x) {
+        const ld = cone(offX, offY, x + bx, y + by);
+        if (ld >= 128) continue;
+        const [ax, ay] = rot(x, y, -i);
+        const tx = px + ax, ty = py + ay;
+        if (!ib(tx, ty)) continue;
+        const v = falloff(radius, ld);
+        if (v < get(tx, ty)) set(tx, ty, v);
+      }
+    }
+    const ndx = 7 - dy, ndy = dx, nlx = 7 - ly, nly = lx;
+    dx = ndx; dy = ndy; lx = nlx; ly = nly;
+    let a = dx - lx, b = dy - ly;
+    bx = 0; if (a < 0) { a += 8; bx = 1; }
+    by = 0; if (b < 0) { b += 8; by = 1; }
+    offX = a; offY = b;
+  }
+  return L;
+}
+
+// Interior lights (>=15 from every edge): buildLightMap must be bit-exact with
+// the faithful DevilutionX reference. This is the guard against the quadrant
+// upper-bound off-by-one (16 vs 15) that produced a fully-bright tile strip.
+for (const [gw, gh] of [[40, 40], [80, 80]]) {
+  for (let py = 20; py <= gh - 21; py += 7) {
+    for (let px = 20; px <= gw - 21; px += 7) {
+      for (const [ox, oy] of [[0, 0], [3, 2], [7, 6], [7, 0]]) {
+        const got = buildLightMap(gw, gh, 15,
+          [{ x: px, y: py, radius: 15, offset_x: ox, offset_y: oy }], false);
+        const ref = faithfulInterior(gw, gh, px, py, ox, oy, 15);
+        let diff = 0;
+        for (let k = 0; k < got.length; ++k) if (got[k] !== ref[k]) diff++;
+        ok(diff === 0,
+          `${gw}x${gh} interior light(${px},${py}+${ox},${oy}): ${diff} cells differ from faithful DoLighting`);
+      }
+    }
+  }
+}
+
 // Keep the pre-existing invariants too (ambient fill, centre lit, falloff).
 const amb = buildLightMap(5, 4, 15, [], false);
 ok(amb.length === 20 && amb.every((v) => v === 15), 'ambient-only grid is all level 15');

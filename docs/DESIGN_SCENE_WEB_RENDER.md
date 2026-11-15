@@ -263,6 +263,13 @@ lighting/门 修复用过的 PNG 解码对比）确保 SceneRenderer 与后端�
      （`web/src/scene-light.js`、`src/decoders/level_light.cpp`）同步修改。验收 `tests/regress_scene_light.mjs`
      对 5 种网格 × 6 光源位置逐格对比「加 padding 的内部光源」真值 0 差异 + 半径内零黑格，C++ `level.light`
      同步加断言。
+   - **象限上界封顶 15（2026-11-15 二次修复）**：初版边界裁剪把循环上界写成 `min(16, dist+1)`，
+     但 DevilutionX 原文 `minX/maxX/minY/maxY` 恒在 [1,15]（x/y 最大 14）。封顶 16 时 x 可达 15，
+     叠加 `blockX/blockY` 后锥表索引 `x+blockX` 可达 16，**越过 16 宽锥查找表串入下一 subcell
+     偏移块**——反方向象限读到极小距离，拖光源向屏幕左下时右上方出现一条/一片「全亮」图块
+     （方向不对称、恰差一行一列）。改回 `min(15, dist+1)`；`tests/regress_scene_light.mjs` 新增
+     「内部光源 vs faithful `DoLighting` 逐格 bit-exact」断言（cap=16 失败 144 例、cap=15 全绿），
+     C++ `level.light` 同步加同款断言。
 4. **Phase 3 — 门开关本地切换（实时、零服务端往返）**：✅ **已完成**（2026-11-14）。
    - 后端 `scene.tiles` 缓存 key 升 **v7**，atlas 打包时额外收入门**开启**态 micro（L2 537/539→12/16；网格只存闭合态，开启态不在 `micro_grid` 里，必须打进 atlas 否则切换时门消失）。`layout.doors[]` 仍按 537/539↔12/16 发出关闭/开启 micro 对（Catacombs 门洞无 dSpecial 覆盖层，`open_special/closed_special=0`，开关是纯 micro 互换）。
    - 前端 `web/src/scene-render.js` 新增 `opts.microOverride`（`Map` 或 `{idx->microId}`），Pass1/Pass2 读取 micro 时优先用覆盖值，其余格保持 layout micro。

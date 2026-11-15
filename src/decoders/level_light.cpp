@@ -235,8 +235,13 @@ LightMapResult buildLightMap(int gridW, int gridH, uint8_t ambient,
             // against a padded interior light cropped to the small grid.
             static constexpr int xDir[4] = { Right, Up, Left, Down };
             static constexpr int yDir[4] = { Down, Right, Up, Left };
-            const int xBound = std::min(16, dist[xDir[i]] + 1);
-            const int yBound = std::min(16, dist[yDir[i]] + 1);
+            // Cap at 15 (DevilutionX lighting.cpp:136-163 keeps
+            // minX/maxX/minY/maxY in [1,15], so x/y only reach 14). Capping at
+            // 16 lets x+blockX reach 16 and read past the 16-wide cone row into
+            // the next sub-cell offset block, yielding spurious fully-bright
+            // tiles in the opposite quadrant.
+            const int xBound = std::min(15, dist[xDir[i]] + 1);
+            const int yBound = std::min(15, dist[yDir[i]] + 1);
             for (int y = 0; y < yBound; ++y) {
                 for (int x = 1; x < xBound; ++x) {
                     const int linearDistance =

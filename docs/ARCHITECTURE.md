@@ -486,6 +486,13 @@ sidecar JSON（`grid_width/grid_height/micro_len/frame_count` + 四个每格标�
 在光半径内留下楔形全黑块。现改为按光源到四边的真实距离分别裁每个象限
 （`xDir=[right,up,left,down]`、`yDir=[down,right,up,left]`），前端 `web/src/scene-light.js`
 同步修改；验收 `tests/regress_scene_light.mjs` 逐格对比加 padding 的内部光源真值 0 差异。
+**象限上界封顶 15（2026-11-15 二次修复）**：上述裁剪初版把循环上界写成
+`min(16, dist+1)`，但原文 `minX/maxX/minY/maxY` 恒在 [1,15]（`x=1; x<xBound` ⇒ x 最大 14）。
+封顶 16 时内部光源的 x/y 可达 15，叠加 `blockX/blockY`(0/1) 后锥表行索引 `x+blockX` 可达 16，
+**越过 16 宽锥查找表的行边界串入下一 subcell 偏移块**，在反方向象限读到极小 `linearDistance`
+→ 出现一条/一片"全亮"图块（方向不对称、恰差一行一列）。改回 `min(15, dist+1)`；验收新增
+「内部光源与 faithful `DoLighting`（沿用原文 15 上界）逐格 bit-exact」断言，cap=16 时该断言
+失败 144 例、cap=15 全绿（前后端同源）。
 
 **寻路（`level_path.cpp` + `scene.path`，2026-11-09）**：在 SOL `Solid` 网格上做 8 方向 A*：
 直行代价 100、斜行 101（照搬 `Source/engine/path.cpp`），斜向不额外限制转角（`CanStep`

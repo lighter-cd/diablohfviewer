@@ -146,8 +146,13 @@ export function buildLightMap(gridW, gridH, ambient, lights, softFalloff) {
       //   i=2 -> x:left, y:up    ; i=3 -> x:down,  y:left
       const xDir = ["right", "up", "left", "down"][i];
       const yDir = ["down", "right", "up", "left"][i];
-      const xBound = Math.min(16, dist[xDir] + 1);
-      const yBound = Math.min(16, dist[yDir] + 1);
+      // Upper bound is capped at 15 (DevilutionX lighting.cpp:136-163 keeps
+      // minX/maxX/minY/maxY in [1,15], so x/y only ever reach 14). Capping at
+      // 16 instead lets x+blockX reach 16 and read past the 16-wide cone row
+      // into the next sub-cell offset block, producing spurious fully-bright
+      // tiles in the opposite quadrant ("one-row/one-column" asymmetry).
+      const xBound = Math.min(15, dist[xDir] + 1);
+      const yBound = Math.min(15, dist[yDir] + 1);
       for (let y = 0; y < yBound; ++y) {
         for (let x = 1; x < xBound; ++x) {
           const linearDistance =
