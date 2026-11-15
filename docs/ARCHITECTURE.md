@@ -594,6 +594,11 @@ scene.path {id,archive,archives?,from:{x,y},to:{x,y},max_steps?=1024,preview_max
   `scene.tiles` 的门扫描**按 tileset 门控**（`spec.specialTable`）——门片 id 是各关卡
   MIN 表的局部编号，跨表复用同数值会把普通墙片误判成门（曾致 Catacombs 场景出现假门）。
   地下墓穴门同步补上开启态 `l2s.cel` 门框 `open_special 5/6`；缓存 key 升 v10。
+  **`micro_flags`（2026-11-16，key v11）**：`layout` 额外下发每个 micro 的 SOL 原始字节。
+  前端本地开门只换 micro，若沿用生成时的每格 `solid/block_light/block_missile`，开启门洞
+  （`12/16`，地板件）会保留关门门板（`537/539`）的 Solid/BlockMissile，`isFloor()` 为假、
+  地板菱形整块跳过 → 开门后门洞不绘制。`renderScene` / `renderSceneOverlay` 对被覆盖的格
+  用 `micro_flags[newMicro]` 重算（Pass1/Pass2 的 `isFloor` 与 SOL 红框），修复开门渲染。
   Tristram 另外应用非任务态 `FillTile`（水井/喷泉、传送入口）。地牢 object layer 的
   其余物件（箱子/火把等 `objects/*.cel`）与 `dTransVal`/`TransList` 透明遮挡仍未实现。
 - **tile 纵向翻转修复（2026-11-09）**：`DecodeLeft/RightTriangle` 与

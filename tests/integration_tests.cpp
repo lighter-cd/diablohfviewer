@@ -1804,6 +1804,32 @@ static void testSceneTools(const std::string& mpq) {
                     }
                     CHECK(closedOk,
                           std::string(c.id) + " layout marks doorways with closed leaves (537/539)");
+                    // micro_flags: per-micro SOL byte, so the front-end can
+                    // re-derive a cell's SOL flags after a local micro swap
+                    // (door open/close). Without it an opened doorway keeps the
+                    // closed leaf's Solid|BlockMissile flags and is never drawn.
+                    const json& mf = r.value["layout"]["micro_flags"];
+                    CHECK(mf.is_array() && mf.size() > 16,
+                          std::string(c.id) + " layout ships per-micro SOL flags");
+                    if (mf.is_array() && !doors.empty()) {
+                        bool openNotSolid = true, closedSolid = true;
+                        for (auto& d : doors) {
+                            const size_t open = d.value("open", 0);
+                            const size_t closed = d.value("closed", 0);
+                            const auto flagsAt = [&](size_t mi) -> unsigned {
+                                return mi < mf.size() ? mf[mi].get<unsigned>() : 0u;
+                            };
+                            if (open >= mf.size() ||
+                                (flagsAt(open) & decoders::TileFlags::Solid) != 0)
+                                openNotSolid = false;
+                            if (closed >= mf.size() ||
+                                (flagsAt(closed) & decoders::TileFlags::Solid) == 0)
+                                closedSolid = false;
+                        }
+                        CHECK(openNotSolid && closedSolid,
+                              std::string(c.id) +
+                                  " micro_flags: open doorway non-solid, closed leaf Solid");
+                    }
                 }
             }
         }

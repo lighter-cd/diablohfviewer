@@ -19,7 +19,7 @@ import fs from 'fs';
 import zlib from 'zlib';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { renderScene } from '../web/src/scene-render.js';
+import { renderScene, renderSceneOverlay } from '../web/src/scene-render.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -141,6 +141,30 @@ const renderClosedAgain = renderScene(layout, tileAtlas, specialAtlas, {
   specialOverride: door.open_special ? { [idx]: door.closed_special || 0 } : null,
 });
 
+// The override path must draw EXACTLY what a layout that already carries the
+// open micro + its SOL flags would draw. A closed Catacombs leaf (537/539) is
+// SOL Solid|BlockLight|BlockMissile while the open doorway (12/16) is a floor
+// piece, so without re-deriving the flags from `micro_flags` the floor pass
+// skipped the cell and the opened door was not drawn at all (a hole instead).
+const layoutOpen = JSON.parse(JSON.stringify(layout));
+layoutOpen.micro_grid[idx] = door.open;
+if (door.open_special) layoutOpen.special[idx] = door.open_special;
+if (Array.isArray(layout.micro_flags)) {
+  const f = layout.micro_flags[door.open];
+  layoutOpen.solid[idx] = (f & 1) ? 1 : 0;
+  layoutOpen.block_light[idx] = (f & 2) ? 1 : 0;
+  layoutOpen.block_missile[idx] = (f & 4) ? 1 : 0;
+  if (door.neighbor && Number.isInteger(door.neighbor.x)) {
+    const nIdx = door.neighbor.y * layout.grid_width + door.neighbor.x;
+    const nf = layout.micro_flags[door.neighbor.open];
+    layoutOpen.micro_grid[nIdx] = door.neighbor.open;
+    layoutOpen.solid[nIdx] = (nf & 1) ? 1 : 0;
+    layoutOpen.block_light[nIdx] = (nf & 2) ? 1 : 0;
+    layoutOpen.block_missile[nIdx] = (nf & 4) ? 1 : 0;
+  }
+}
+const renderOpenLayout = renderScene(layoutOpen, tileAtlas, specialAtlas);
+
 let fail = 0;
 if (bytesEqual(renderClosed, renderOpen)) {
   console.error('FAIL: overriding door to OPEN produced an identical image (door did not change)');
@@ -148,11 +172,41 @@ if (bytesEqual(renderClosed, renderOpen)) {
 } else {
   console.log('PASS: door OPEN override changes the rendered image');
 }
+if (!Array.isArray(layout.micro_flags)) {
+  console.error('FAIL: layout lacks micro_flags (regenerate the scene: front-end door open/close needs it)');
+  fail++;
+} else if (!bytesEqual(renderOpen, renderOpenLayout)) {
+  console.error('FAIL: door OPEN override != layout with the open micro (+SOL flags) — the override does not re-derive SOL flags');
+  fail++;
+} else {
+  console.log('PASS: door OPEN override == open micro + re-derived SOL flags (doorway floor drawn)');
+}
 if (!bytesEqual(renderClosed, renderClosedAgain)) {
   console.error('FAIL: overriding door to its CLOSED micro (== layout) changed the image (no-op expected)');
   fail++;
 } else {
   console.log('PASS: door CLOSED override == no-override image (no accidental shift)');
+}
+// The SOL tint overlay must follow the override too (open cell is no longer
+// Solid, so its red tint has to disappear).
+{
+  const ovClosed = renderSceneOverlay(layout);
+  const ovOpen = renderSceneOverlay(layout, { microOverride: overrideOpen });
+  const ovOpenLayout = renderSceneOverlay(layoutOpen);
+  const px = (door.x - door.y) * 32 - layout.projection.minX + 32;
+  // Overlay diamond centre: slot (baseY-31) + 16, identical to renderScene's
+  // slotTop(colTop(i,j),0) + 16.
+  const py = (door.x + door.y) * 16 - layout.projection.minY - 15;
+  const at = (img) => Array.from(img.data.subarray((py * img.width + px) * 4, (py * img.width + px) * 4 + 4));
+  if (bytesEqual(ovClosed, ovOpen)) {
+    console.error('FAIL: overlay did not change when the door opened (SOL tint ignored the micro override)');
+    fail++;
+  } else if (!bytesEqual(ovOpen, ovOpenLayout)) {
+    console.error('FAIL: overlay override != layout-open overlay (SOL tint not re-derived from micro_flags)');
+    fail++;
+  } else {
+    console.log(`PASS: overlay SOL tint follows the override (closed=${at(ovClosed)} open=${at(ovOpen)})`);
+  }
 }
 if (door.open_special) {
   if (bytesEqual(renderOpen, renderOpenNoSpecial)) {

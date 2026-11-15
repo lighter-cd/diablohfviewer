@@ -85,6 +85,9 @@ int decodeReencodedFrameAsIndex(const ReencodedLevelCel& cel, uint32_t frameInde
   "projection": { "minX": -672, "minY": -159, "width": 1408, "height": 736 },
   "grid_width": 12, "grid_height": 12,
   "micro_grid": [ 12, 0, 540, ... ],          // gw*gh，0 或 kNoMicro(65535) 表示空
+  "micro_flags": [ 0, 0, 1, ... ],             // 每个 micro 的 SOL 原始字节
+                                               // (Solid/BlockLight/BlockMissile)；
+                                               // 前端本地改 micro 时用它重算该格标志
   "atlas": {
     "url": "/scenes/<id>_<tag>_tiles.png",      // 索引 atlas（R=索引, A=透明）
     "tile": 32,
@@ -200,6 +203,16 @@ lighting/门 修复用过的 PNG 解码对比）确保 SceneRenderer 与后端�
 - 后端在 `doors[]` 给出每扇门的坐标与 open/closed micro 对（来自 `AddL2/L3/L4Objs` 分析）。
 - 前端持有可编辑的 `microGrid`；开/关 = 本地把该格 micro 索引在 open↔closed 间互换，并
   **仅重绘该格所在列**（atlas 已含两套帧），无请求、无等待，可做开合过渡动画。
+- **关键约束（SOL 标志必须跟着 micro 走，v11 修复）**：每格 `solid/block_light/
+  block_missile` 是从**生成时的 grid micro** 烘焙的。地下墓穴关门门板 micro `537/539`
+  自带 `Solid|BlockLight|BlockMissile`，而开启门洞 micro `12/16` 是地板件（`l2.sol`
+  里 `0x18/0x28`，仅 `Transparent*`）。只换 micro 不重算标志时，`renderScene` 的
+  `isFloor()` 仍为假 → 地板菱形整块跳过、门洞地板不画（表现为「开门后门消失」）。
+  因此 layout 下发 `micro_flags[]`（每个 micro 的 SOL 原始字节），前端 `renderScene` /
+  `renderSceneOverlay` 对**被覆盖的格**用新 micro 的字节重算 Solid/BlockMissile/BlockLight：
+  - Pass1 地板、Pass2 的 `kStart` 都用重算后的 `isFloor`；
+  - SOL 叠加层的红色 Solid 框同样随开门消失（`renderSceneOverlay(layout, {microOverride})`，
+    前端 `toggleDoor` 后同步重绘 base 与 overlay）。
 - 这是相对当前服务端烘焙方案的**确定性改进**：开门不再需要重跑 `scene.build`。
 
 ---
@@ -277,6 +290,8 @@ lighting/门 修复用过的 PNG 解码对比）确保 SceneRenderer 与后端�
    - **验收**：`tests/regress_scene_door.mjs` 验证门 microOverride 路径——覆盖为开启 micro 图像必变、覆盖为闭合 micro（==layout）图像不变；v7 `l2_blind` tiles 实测 `doors[]`（2 扇，537→12）且开启 micro 12 帧已打包；三套 C++ 测试 + i18n 1381 断言全绿、`node --check` 通过。
    - **大教堂门（Phase 3 增补，2026-11-15）**：`random_l1..l4` 等大教堂场景此前没有门标记、无法开关。按 DevilutionX `AddL1Objs`（`objects.cpp:3771-3784`，大教堂 dPiece 43/50/213=左门叶、45/55=右门叶，生成网格即关闭态）与 `SetDoorStateOpen`（`objects.cpp:1063-1076`：开启换门洞 micro 392/407（血泊特例）/394 + `l1s.cel` 门框 `dSpecial 7/8`）+ `DoorSet`（`objects.cpp:959-1000`：同时改写邻格门框片 42→391、44→393、49→410/411、410/411→395 等）：`scene.tiles` `doors[]` 现按 tileset 分派（**扫描必须按 tileset 门控——门片 id 是各关卡 MIN 的局部编号**，l2 的 MIN 里同样有数值 43/45 的普通墙片），大教堂门携带 `open_special 7/8` 与可选 `neighbor` jamb 补丁，地下墓穴门补上 `open_special 5/6`（`l2s.cel` 门框）；开启态 micro（392/394/407 + jamb 片）一并打包进图集。前端 `renderScene` 新增 `opts.specialOverride`（与 `microOverride` 同构），`toggleDoor` 同时切换门格 micro+special 与邻格 jamb micro。缓存 key 升 **v10**。
    - **验收（大教堂门）**：`tests/regress_scene_random.mjs` 断言 4 个大教堂 dlvl 门叶/开启对/门框/jamb 侧向，`tests/regress_scene_door.mjs` 增加开启 dSpecial 帧与 jamb 补丁生效断言；random_l5/6/7 断言地下墓穴门不被误标。
+    - **开门不绘制修复（2026-11-16，缓存 key v11）**：地下墓穴（如 `random_l5` 血石）门「关闭正确、打开画错」。原因：`solid/block_light/block_missile` 按生成时的 grid micro 烘焙，关门门板 `537/539` 是 `Solid|BlockLight|BlockMissile`，而开启门洞 `12/16` 是地板件（`l2.sol` 0x18/0x28，仅 `Transparent*`）。`microOverride` 只换 micro、没换标志 → `isFloor()` 仍为假 → Pass1 跳过整格地板、Pass2 把开启门洞当墙画，门洞地板整块不画。修复：layout 新增 `micro_flags[]`（每 micro 的 SOL 原始字节），`renderScene`/`renderSceneOverlay` 对**被覆盖的格**按新 micro 重算标志（`isFloor`、SOL 红框）；`toggleDoor` 同步重绘 base 与 overlay；旧版缺省随机布局在前端按同一 seed 自动重新生成。
+    - **验收（开门修复）**：`tests/regress_scene_door.mjs` 断言「microOverride 开启」与「把 layout 该格直接改成开启 micro + 按 `micro_flags` 重算 solid/block_light/block_missile」逐像素一致，且 overlay 覆盖后与 layout-open 完全一致；`random_l5`/`l2_blind`/`random_l1` 全绿，`regress_scene_tiles`/`regress_scene_overlay` 仍 100% 像素对齐。
 5. **Phase 4 — 切换查看器管线**：✅ **已完成**（2026-11-14）。
    - 场景查看器正式由 `scene.tiles` 全量接管：`loadScene` 不再调用 `scene.build` 取叠加层 / 元数据；基础图（前端 `SceneRenderer`）+ 叠加层（网格 / SOL 标志）均在浏览器本地绘制。`scene.tiles` 的 `layout` 本就下发 `solid`/`block_light`/`block_missile`/`transparent` SOL 标志与 `projection`，无需后端改动（缓存 key 维持 v7）。
    - 前端 `web/src/scene-render.js` 新增 `renderSceneOverlay`（按后端 `buildOverlay` 同投影 / 同槽位数学、step=1 原生分辨率移植：solid 红 / transparent 蓝 / blockLight 黄 半透明菱形 + 每 8 格白色参考网格），与 `renderScene` 输出逐像素对齐。元数据摘要改为 tiles 原生值（标题取自目录、`w/h` 原始宽高、`gw/gh` 网格、Solid 计数、光照），去掉后端专属的预览尺寸 / 缩放 / 透明像素字段。

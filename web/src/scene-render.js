@@ -114,6 +114,30 @@ export function renderScene(layout, tileAtlas, specialAtlas, opts = {}) {
     return special[idx];
   };
 
+  // Micro overrides change a cell's micro, so its SOL flags (solid /
+  // blockLight / blockMissile) MUST be re-derived from the NEW micro. They are
+  // baked per cell from the generated grid, and a closed Catacombs door leaf
+  // (micro 537/539, SOL Solid|BlockLight|BlockMissile) would otherwise keep
+  // flagging the OPENED doorway (micro 12/16, a floor piece) as solid: the floor
+  // pass would skip the cell entirely and the open door would not be drawn at
+  // all (just a hole in the ground). `micro_flags` is the shipped per-micro SOL
+  // byte; -1 means "no override, use the layout's per-cell arrays".
+  const microFlags = layout.micro_flags || null;
+  const overrideSol = (idx) => {
+    if (!microOverride || !microFlags) return -1;
+    const mi = resolveMi(effMicro(idx));
+    if (typeof mi !== "number" || mi === 65535 || mi < 0 || mi >= microFlags.length) return -1;
+    return microFlags[mi] | 0;
+  };
+  const isSolidAt = (idx) => {
+    const f = overrideSol(idx);
+    return f < 0 ? solid[idx] === 1 : (f & 1) !== 0;
+  };
+  const blocksMissileAt = (idx) => {
+    const f = overrideSol(idx);
+    return f < 0 ? block_missile[idx] === 1 : (f & 4) !== 0;
+  };
+
   // Opaque background (matches renderMap filling every pixel, no black holes).
   const bg = layout.background || [0, 0, 0, 255];
   for (let i = 0; i < out.length; i += 4) {
@@ -147,7 +171,7 @@ export function renderScene(layout, tileAtlas, specialAtlas, opts = {}) {
   const colTop = (i, j) => (i + j) * 16 - projection.minY - Hm + 1;
   const slotTop = (ct, b) => ct + (Hm - (b + 1) * 32);
 
-  const isFloor = (idx) => solid[idx] === 0 && block_missile[idx] === 0;
+  const isFloor = (idx) => !isSolidAt(idx) && !blocksMissileAt(idx);
   const resolveMi = (mi) =>
     (mi === 65535 || mi >= 1e9) ? prefill_micro : mi; // kNoMicro sentinel
 
@@ -282,7 +306,7 @@ function overlayFillDiamond(out, w, h, cx, cy, halfW, halfH, r, g, b, a) {
   }
 }
 
-export function renderSceneOverlay(layout) {
+export function renderSceneOverlay(layout, opts = {}) {
   const {
     micro_len,
     grid_width: gw,
@@ -297,6 +321,23 @@ export function renderSceneOverlay(layout) {
   const transparent = layout.transparent || [];
   const blockLight = layout.block_light || [];
   const { minX, minY } = projection;
+
+  // A micro override (door toggle) changes the cell's SOL flags, so the tint
+  // must follow the NEW micro's flags too — otherwise an opened doorway keeps
+  // the closed leaf's red "Solid" tint while the base shows the open floor.
+  const microOverride = opts.microOverride || null;
+  const microFlags = layout.micro_flags || null;
+  const microGrid = layout.micro_grid || [];
+  const prefillMicro = layout.prefill_micro;
+  const overrideSol = (idx) => {
+    if (!microOverride || !microFlags) return -1;
+    let mi = microGrid[idx];
+    const v = (microOverride instanceof Map) ? microOverride.get(idx) : microOverride[idx];
+    if (v !== undefined && v !== null) mi = v;
+    if (mi === 65535 || mi >= 1e9) mi = prefillMicro; // kNoMicro sentinel
+    if (typeof mi !== "number" || mi < 0 || mi >= microFlags.length) return -1;
+    return microFlags[mi] | 0;
+  };
 
   for (let j = 0; j < gh; ++j) {
     for (let i = 0; i < gw; ++i) {
@@ -315,10 +356,15 @@ export function renderSceneOverlay(layout) {
       const halfW = Math.max(1, (rightX - leftX) / 2);
       const halfH = Math.max(1, (botY - topY) / 2);
 
+      const sol = overrideSol(idx);
+      const isSolid = sol < 0 ? !!solid[idx] : (sol & 1) !== 0;
+      const isBlockLight = sol < 0
+        ? (idx < blockLight.length && !!blockLight[idx]) : (sol & 2) !== 0;
+
       let r = 0, g = 0, b = 0, a = 0;
-      if (solid[idx]) { r = 255; g = 60; b = 60; a = 55; }
+      if (isSolid) { r = 255; g = 60; b = 60; a = 55; }
       else if (idx < transparent.length && transparent[idx]) { r = 60; g = 160; b = 255; a = 55; }
-      else if (idx < blockLight.length && blockLight[idx]) { r = 255; g = 200; b = 60; a = 45; }
+      else if (isBlockLight) { r = 255; g = 200; b = 60; a = 45; }
       if (a > 0) overlayFillDiamond(out, W, H, cx, cy, halfW, halfH, r, g, b, a);
 
       // Major reference grid (every 8th cell) — keeps the coarse grid legible

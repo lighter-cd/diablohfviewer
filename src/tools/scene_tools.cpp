@@ -409,7 +409,10 @@ std::string buildCacheKey(const std::string& id,
                           const std::string& outDir) {
     std::string a;
     for (size_t i = 0; i < archives.size(); ++i) { if (i) a += ";"; a += archives[i]; }
-    // v10: doors[] now also emits Cathedral door leaves (AddL1Objs /
+    // v11: layout now ships `micro_flags` (per-micro SOL byte). Without it a
+    // front-end door toggle kept the CLOSED leaf's Solid|BlockMissile flags on
+    // the opened cell, so the floor pass skipped it and the open doorway was
+    // never drawn. v10: doors[] now also emits Cathedral door leaves (AddL1Objs /
     // SetDoorStateOpen: L 43/50/213 -> 392/407 + l1s frame 7, R 45/55 -> 394 +
     // frame 8) with DoorSet jamb patches, and Catacombs doors carry their
     // open-state l2s frame (open_special 5/6) — layout schema changed, so
@@ -431,7 +434,7 @@ std::string buildCacheKey(const std::string& id,
     // v4 shaded dungeon dSpecial sprites by dLight (ClxDrawLight); v3 cropped
     // presets to the .dun bbox. Assembly inputs and switches are all in the key
     // so catalog changes / toggles invalidate cached PNGs automatically.
-    return "v10|" + id + "|" + a + "|" +
+    return "v11|" + id + "|" + a + "|" +
            std::to_string(spec.floorMegaTile) + "|" + spec.specialCel + "|" +
            std::to_string(static_cast<int>(spec.specialTable)) + "|" +
            (params.value("dirt_border", false) ? "B1" : "B0") + "|" +
@@ -890,6 +893,21 @@ mcp::ToolResult sceneTilesImpl(const mcp::json& params,
     for (size_t idx = 0; idx < cells; ++idx)
         microGridJson.push_back(grid.micro[idx]);
 
+    // ---- per-micro SOL flags (front-end local micro edits) -------------------
+    // The per-cell solid/blockLight/blockMissile arrays below are baked from the
+    // GENERATED grid micro. A front-end local edit (Phase 3 door toggle swaps a
+    // cell's micro) must re-derive those flags from the NEW micro, otherwise an
+    // opened Catacombs doorway keeps its closed leaf's Solid|BlockMissile flags
+    // (537 -> 0x1F): the floor pass skips the cell and the open doorway is never
+    // drawn (it looks like the door vanished). Ship the raw SOL byte per micro so
+    // renderScene / renderSceneOverlay can recompute the flags of any cell whose
+    // micro was overridden.
+    mcp::json microFlagsJson = mcp::json::array();
+    for (size_t mi = 0; mi < micros.size(); ++mi)
+        microFlagsJson.push_back(
+            (!assets.solFlags.empty() && mi < assets.solFlags.size())
+                ? assets.solFlags[mi] : 0);
+
     auto flagArr = [](const std::vector<uint8_t>& v) {
         mcp::json a = mcp::json::array();
         for (uint8_t b : v) a.push_back(b);
@@ -915,6 +933,7 @@ mcp::ToolResult sceneTilesImpl(const mcp::json& params,
         {"projection", mcp::json{{"minX", proj.minX}, {"minY", proj.minY},
                                  {"width", proj.width}, {"height", proj.height}}},
         {"micro_grid", microGridJson},
+        {"micro_flags", microFlagsJson},
         {"atlas", mcp::json{{"url", "/scenes/" + base + "_tiles.png"},
                             {"tile", kTile}, {"cols", kAtlasCols},
                             {"frames", framesJson}}},

@@ -906,6 +906,7 @@ DiabloHFConverter/
 | 随机地牢四类地牢化（2026-11-15：`random_l1..random_l4` → L1 大教堂 / L5 地下墓穴 / L9 洞穴 / L13 地狱，各带正确 tileset、`scene.random` 四路派发、缓存 key v8、L2 关门标记断言） | ✅ |
 | 随机场景扩展为 11 个精确 dlvl（2026-11-15：`random_l1/2/3/4/5/6/7/10/13/15/16`，覆盖屠夫 L2 / 骷髅王 L3 / Ogden 招牌 L4 / 血石·骸骨密室·盲眼 L5/6/7 / 铁砧 L10 / 血之领主 L13 / 背叛者 L15 / 迪亚波罗 L16；按 DevilutionX `questdat.tsv` 修正 Catacombs/Hell 任务映射，`scene.list`/`scene.random` 回显 `fixed_room`，UI 提示固定房间，缓存 key v9） | ✅ |
 | 单元 / 集成 / core 三套测试 + mcp-server 构建 | ✅ |
+| 地下墓穴门开启态渲染修复（2026-11-16：layout 新增 `micro_flags[]`，前端对被覆盖格按新 micro 重算 SOL 标志，开门后门洞地板正常绘制、SOL 红框消失；缓存 key v11；`regress_scene_door` 增加逐像素等价断言） | ✅ |
 
 ### 游戏场景如何组织（对照 DevilutionX，2026-11-09 澄清）
 

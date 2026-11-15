@@ -1805,6 +1805,7 @@ function toggleDoor(idx) {
   }
   // Re-render the base (micro swap) + a brief flash as a transition cue.
   renderSceneBase();
+  renderSceneOverlayCanvas();
   applySceneTransform();
   const el = sceneState.doorEls[sceneState.doors.findIndex((o) => o.idx === idx)];
   if (el) {
@@ -1992,7 +1993,12 @@ function buildSceneArgs() {
 function renderSceneOverlayCanvas() {
   const t = sceneState.tiles;
   if (!t) return;
-  const ov = renderSceneOverlay(t.layout);
+  // Door toggles swap a cell's micro, so the SOL tint must be recomputed with the
+  // same override (an opened doorway must stop showing the red Solid tint).
+  const ov = renderSceneOverlay(t.layout, {
+    microOverride: (sceneState.doorOverride && Object.keys(sceneState.doorOverride).length)
+      ? sceneState.doorOverride : null,
+  });
   const canvas = $("sceneOverlay");
   canvas.width = ov.width;
   canvas.height = ov.height;
@@ -2142,6 +2148,15 @@ async function loadRandomScene(id) {
     let res;
     if (def && def.layout_url) {
       res = await fetchSceneLayout(def.layout_url);
+      // A default persisted by an older backend lacks layout.micro_flags (the
+      // per-micro SOL byte the local door open/close needs to re-derive a cell's
+      // Solid/BlockMissile flags). Regenerate from the SAME seed so the map is
+      // unchanged but the layout gains the current schema.
+      if (!res || !res.layout || !Array.isArray(res.layout.micro_flags)) {
+        res = await client.callTool("scene.random",
+          { ...buildSceneArgs(), action: "generate", seed: def.seed, lighting: false },
+          pushSceneProgress);
+      }
     } else {
       // No default cache yet -> generate one (new random seed) and re-list.
       res = await client.callTool("scene.random",
