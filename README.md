@@ -665,6 +665,14 @@ http://localhost:8000/level.html
 git push                    # → origin = Gitee（默认，无需任何额外参数）
 git push github master      # → GitHub（显式声明才推）
 git push --dry-run          # 先看这次会推到哪
+git pushall                 # 两端一起推（可选别名，见下）
+```
+
+快捷别名（需要一次同步两端时用；本机已配置）：
+
+```bash
+git config --local alias.pushall "!git push origin master && git push github master"
+# 之后：git pushall  ==  git push origin master && git push github master
 ```
 
 约定与原因：
