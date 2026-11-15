@@ -1,8 +1,10 @@
 // tests/regress_scene_random.mjs
 //
-// End-to-end regression for Phase 5 random dungeon maps (scene.random) WITHOUT
-// a browser. Drives the mcp-server WS bridge + its /scenes/ HTTP endpoint:
-//   1. scene.list exposes 4 randomizable Cathedral levels (L1-L4, 80x80)
+// End-to-end regression for Phase 5/P6 random dungeon maps (scene.random)
+// WITHOUT a browser. Drives the mcp-server WS bridge + its /scenes/ HTTP endpoint:
+//   1. scene.list exposes 4 randomizable levels, one per dungeon type
+//      (random_l1=L1 Cathedral, random_l2=L5 Catacombs, random_l3=L9 Caves,
+//      random_l4=L13 Hell), each 80x80
 //   2. scene.random generate -> full scene.tiles-shaped result; atlas PNG valid;
 //      renderScene(layout, atlas, special) draws a real map (non-bg pixels)
 //   3. determinism (same seed -> identical micro_grid), different seed differs
@@ -114,6 +116,12 @@ async function fetchPNG(url) {
   return png;
 }
 
+function buffersEqual(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; ++i) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 let checks = 0;
 function ok(cond, msg) {
   checks++;
@@ -149,9 +157,53 @@ async function main() {
     const list = await call('scene.list', {});
     const rand = (list.scenes || []).filter((s) => s.randomizable);
     ok(rand.length === 4, 'scene.list exposes 4 randomizable levels');
-    ok(rand.every((s) => s.random_level >= 1 && s.random_level <= 4 &&
-                        s.grid_width === 80 && s.grid_height === 80),
-       'randomizable levels are L1-L4 @ 80x80');
+    const expected = { random_l1: 1, random_l2: 5, random_l3: 9, random_l4: 13 };
+    ok(rand.every((s) => expected[s.id] === s.random_level &&
+                        s.grid_width === 80 && s.grid_height === 80 &&
+                        s.micro_len === (s.id === 'random_l4' ? 12 : 10)),
+       'randomizable levels are L1/L5/L9/L13 (Cathedral/Catacombs/Caves/Hell) @ 80x80');
+
+    // Generate + render every dungeon type; each must produce a real map with
+    // the matching generator and tileset (regression against all-Cathedral).
+    const types = { random_l1: 'Cathedral', random_l2: 'Catacombs',
+                    random_l3: 'Caves', random_l4: 'Hell' };
+    for (const id of Object.keys(types)) {
+      const g = await call('scene.random',
+        { action: 'generate', id, seed: 424242, archive: mpq });
+      ok(g.random === true && g.random_level === expected[id] &&
+         g.dungeon_type === types[id],
+         id + ' generates via ' + types[id] + ' (L' + expected[id] + ')');
+      ok(g.grid_width === 80 && g.grid_height === 80 &&
+         g.layout.micro_grid.length === 6400 && g.frame_count > 0,
+         id + ' emits a full 80x80 micro_grid + atlas');
+      const atlas = await fetchPNG(g.tiles_url);
+      const special = g.special_url ? await fetchPNG(g.special_url) : null;
+      const rendered = renderScene(g.layout, atlas, special);
+      const bg = g.layout.background || [0, 0, 0, 255];
+      let drawn = 0;
+      for (let i = 0; i < rendered.data.length; i += 4) {
+        if (rendered.data[i] !== bg[0] || rendered.data[i + 1] !== bg[1] ||
+            rendered.data[i + 2] !== bg[2]) drawn++;
+      }
+      ok(drawn > 10000, id + ' renders substantial non-bg art (' + drawn + ' px)');
+      if (id === 'random_l2') {
+        const doors = g.layout.doors || [];
+        ok(doors.length > 0 &&
+           doors.every((d) => d.closed === 537 || d.closed === 539),
+           'random_l2 marks L2 doorways with closed leaves (537/539)');
+        // Front-end local toggle (same path as regress_scene_door.mjs).
+        const d = doors[0];
+        const idx = d.y * g.layout.grid_width + d.x;
+        const opened = renderScene(g.layout, atlas, special,
+          { microOverride: { [idx]: d.open } });
+        const closedAgain = renderScene(g.layout, atlas, special,
+          { microOverride: { [idx]: d.closed } });
+        ok(!buffersEqual(rendered.data, opened.data),
+           'random_l2 OPEN door override changes the rendered image');
+        ok(buffersEqual(rendered.data, closedAgain.data),
+           'random_l2 CLOSED door override == no-op');
+      }
+    }
 
     const gen = await call('scene.random',
       { action: 'generate', id: 'random_l1', seed: 20261114, archive: mpq });

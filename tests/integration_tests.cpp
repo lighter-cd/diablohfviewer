@@ -1480,16 +1480,22 @@ static void testSceneTools(const std::string& mpq) {
         if (id == "l4_diab1") hasL4 = true;
         if (s.value("randomizable", false)) {
             ++randomCount;
+            const std::string rid = s.value("id", "");
             const int lvl = s.value("random_level", 0);
-            if (lvl < 1 || lvl > 4 || s.value("grid_width", 0) != 80 ||
-                s.value("grid_height", 0) != 80)
+            const int expectedLvl = rid == "random_l1" ? 1 :
+                                    rid == "random_l2" ? 5 :
+                                    rid == "random_l3" ? 9 :
+                                    rid == "random_l4" ? 13 : 0;
+            if (expectedLvl == 0 || lvl != expectedLvl ||
+                s.value("grid_width", 0) != 80 || s.value("grid_height", 0) != 80 ||
+                s.value("micro_len", 0) != (rid == "random_l4" ? 12 : 10))
                 randomLevelsOk = false;
         }
     }
     CHECK(hasTristram, "scene.list contains tristram");
     CHECK(hasL2 && hasL4, "scene.list contains L2/L4 presets");
     CHECK(randomCount == 4 && randomLevelsOk,
-          "scene.list exposes 4 randomizable levels (L1-L4, 80x80)");
+          "scene.list exposes 4 randomizable levels (L1/L5/L9/L13, 4 tilesets, 80x80)");
 
     json args = json{{"id", "tristram"}, {"archive", archives[0]},
                      {"preview_max_width", 400}};
@@ -1721,6 +1727,55 @@ static void testSceneTools(const std::string& mpq) {
             ToolResult gr3 = reg.dispatch("scene.random", gargs);
             CHECK(gr3.ok && gr.value["layout"]["micro_grid"] != gr3.value["layout"]["micro_grid"],
                   "scene.random different seed yields a different layout");
+
+            // P6: one random scene per dungeon type. Each must use the matching
+            // generator/tileset (regression vs the old all-Cathedral behaviour).
+            struct RndCase {
+                const char* id; int level; const char* type; const char* msg;
+                const char* til; const char* pal;
+            };
+            const RndCase cases[] = {
+                { "random_l2", 5,  "Catacombs",
+                  "scene.random random_l2 generates Catacombs L5 @ 80x80",
+                  "levels/l2data/l2.til", "levels/l2data/l2_2.pal" },
+                { "random_l3", 9,  "Caves",
+                  "scene.random random_l3 generates Caves L9 @ 80x80",
+                  "levels/l3data/l3.til", "levels/l3data/l3_2.pal" },
+                { "random_l4", 13, "Hell",
+                  "scene.random random_l4 generates Hell L13 @ 80x80",
+                  "levels/l4data/l4.til", "levels/l4data/l4_2.pal" },
+            };
+            for (const auto& c : cases) {
+                bool have = false;
+                for (auto& arch : archives) {
+                    engine::Archive a;
+                    if (!a.open(arch)) continue;
+                    if (a.verify(c.til) && a.verify(c.pal)) { have = true; break; }
+                }
+                if (!have) continue;
+                json args = json{{"action", "generate"}, {"id", c.id},
+                                 {"seed", 424242}, {"archive", archives[0]},
+                                 {"archives", stack}};
+                ToolResult r = reg.dispatch("scene.random", args);
+                CHECK(r.ok && r.value.value("random_level", 0) == c.level &&
+                          r.value.value("dungeon_type", std::string()) == c.type &&
+                          r.value.value("grid_width", 0) == 80 &&
+                          r.value.value("grid_height", 0) == 80 &&
+                          r.value["layout"]["micro_grid"].size() == (size_t)(80 * 80),
+                      c.msg);
+                // Catacombs only: AddL2Objs -> SetDoorStateClosed must leave
+                // closed leaf micros (537/539) plus the open-override markers.
+                if (std::string(c.id) == "random_l2" && r.ok) {
+                    json doors = r.value["layout"].value("doors", json::array());
+                    bool closedOk = !doors.empty();
+                    for (auto& d : doors) {
+                        const int closed = d.value("closed", 0);
+                        if (closed != 537 && closed != 539) closedOk = false;
+                    }
+                    CHECK(closedOk,
+                          "random_l2 layout marks L2 doorways with closed leaves (537/539)");
+                }
+            }
         }
     }
     printf("scene.* (tristram + lighting + L2 + L4 + path + dirt_border + random): %s\n",

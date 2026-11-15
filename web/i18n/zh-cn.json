@@ -318,9 +318,9 @@
       "l3_anvil": "洞穴 L3 · anvil 房间",
       "l4_diab1": "地狱 L4 · diab1 房间",
       "random_l1": "随机地牢 L1 · 大教堂",
-      "random_l2": "随机地牢 L2 · 大教堂",
-      "random_l3": "随机地牢 L3 · 大教堂",
-      "random_l4": "随机地牢 L4 · 大教堂"
+      "random_l2": "随机地牢 L5 · 地下墓穴",
+      "random_l3": "随机地牢 L9 · 洞穴",
+      "random_l4": "随机地牢 L13 · 地狱"
     }
   }
 }

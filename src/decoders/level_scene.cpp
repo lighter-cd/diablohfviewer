@@ -393,36 +393,64 @@ const std::vector<SceneSpec>& sceneCatalog()
             v.push_back(s);
         }
 
-        // Phase 5: dynamically generated Cathedral levels (drlg_l1, L1-L4).
-        // These share the l1_rnd2 Cathedral tileset but have NO fixed .dun:
-        // scene.random generateCathedral(level=N, seed) builds a full 40x40
-        // megatile grid (-> 80x80 micro grid) and injects it through
-        // loadSceneAssets' generatedDun override. Appended LAST so the existing
-        // catalog[1] == l1_rnd2 assertion in unit_tests.cpp stays valid.
-        for (int lvl = 1; lvl <= 4; ++lvl) {
+        // Phase 5/P6: one seed-generated level per dungeon TYPE. These have NO
+        // fixed .dun: scene.random builds a full 40x40 megatile grid (-> 80x80
+        // micro grid) with the matching drlg_l1..l4 generator and injects it
+        // through loadSceneAssets' generatedDun override. Each spec carries the
+        // tileset / megatile ids / special table of its type (see DunScene
+        // above). Appended LAST so catalog[1] == l1_rnd2 stays valid.
+        struct RandomScene {
+            const char* id;
+            const char* title;
+            const char* dataDir;   // levels/lNdata
+            const char* palette;
+            uint8_t microLen, blocks;
+            uint16_t dirt, floor;
+            const char* specialCel;
+            DungeonSpecialTable specialTable;
+            uint8_t ambient, lightStyle;
+            int level;             // representative game level of this type
+        };
+        const RandomScene randomScenes[] = {
+            { "random_l1", "随机地牢 L1 · 大教堂（按种子生成）", "levels/l1data",
+              "levels/l1data/l1_2.pal", 10, 10, 22, 13, "levels/l1data/l1s.cel",
+              DungeonSpecialTable::Cathedral, 15, 0, 1 },
+            { "random_l2", "随机地牢 L5 · 地下墓穴（按种子生成）", "levels/l2data",
+              "levels/l2data/l2_2.pal", 10, 10, 12, 3, "levels/l2data/l2s.cel",
+              DungeonSpecialTable::Catacombs, 15, 0, 5 },
+            { "random_l3", "随机地牢 L9 · 洞穴（按种子生成）", "levels/l3data",
+              "levels/l3data/l3_2.pal", 10, 10, 8, 7, "",
+              DungeonSpecialTable::None, 15, 0, 9 },
+            { "random_l4", "随机地牢 L13 · 地狱（按种子生成）", "levels/l4data",
+              "levels/l4data/l4_2.pal", 12, 16, 30, 6, "",
+              DungeonSpecialTable::None, 15, 1, 13 },
+        };
+        for (const RandomScene& rs : randomScenes) {
             SceneSpec s;
-            s.id = "random_l" + std::to_string(lvl);
-            s.title = "随机地牢 L" + std::to_string(lvl) + " · 大教堂（按种子生成）";
-            s.cel = "levels/l1data/l1.cel";
-            s.til = "levels/l1data/l1.til";
-            s.min = "levels/l1data/l1.min";
-            s.sol = "levels/l1data/l1.sol";
-            s.palette = "levels/l1data/l1_2.pal";
-            s.specialCel = "levels/l1data/l1s.cel";
+            s.id = rs.id;
+            s.title = rs.title;
+            const std::string dir = rs.dataDir;
+            const char lv = dir[dir.find_last_of('/') + 2]; // '1'..'4' (after 'l')
+            s.cel = dir + "/l" + lv + ".cel";
+            s.til = dir + "/l" + lv + ".til";
+            s.min = dir + "/l" + lv + ".min";
+            s.sol = dir + "/l" + lv + ".sol";
+            s.palette = rs.palette;
+            s.specialCel = rs.specialCel;
             s.specialCelWidth = 64;
             s.layout = SceneLayout::Dungeon;
-            s.microLen = 10;
-            s.blocks = 10;
-            s.prefillMegaTile = 22; // Dirt
-            s.floorMegaTile = 13;   // Floor (LoadDungeonBase)
-            s.specialTable = DungeonSpecialTable::Cathedral;
-            s.ambientLight = 15;
-            s.lightStyle = 0;
+            s.microLen = rs.microLen;
+            s.blocks = rs.blocks;
+            s.prefillMegaTile = rs.dirt;
+            s.floorMegaTile = rs.floor;
+            s.specialTable = rs.specialTable;
+            s.ambientLight = rs.ambient;
+            s.lightStyle = rs.lightStyle;
             s.dunW = 40;
             s.dunH = 40;
             s.gridW = 80;
             s.gridH = 80;
-            s.randomLevel = lvl;
+            s.randomLevel = rs.level;
             v.push_back(s);
         }
         return v;

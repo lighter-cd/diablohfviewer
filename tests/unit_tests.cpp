@@ -1615,23 +1615,40 @@ static void testLevelScene()
     lvlChk(dims.first == 22 && dims.second == 22,
            "sceneGridDims reports cropped dungeon .dun bbox");
 
-    // Phase 5: 4 seed-generated Cathedral levels appended to the catalog.
-    // They have no fixed .dun (generated in memory), share the l1data tileset,
-    // and report an 80x80 micro grid for a full 40x40 megatile dungeon.
+    // Phase 5/P6: 4 seed-generated levels, one per dungeon type. No fixed .dun
+    // (generated in memory); each carries its type's tileset ids and reports
+    // an 80x80 micro grid for a full 40x40 megatile dungeon.
+    struct RSpec {
+        const char* id; int level; const char* cel; const char* pal;
+        int micro, blocks, dirt, floor;
+        decoders::DungeonSpecialTable table; int lightStyle;
+    };
+    const RSpec rspecs[] = {
+        { "random_l1", 1,  "levels/l1data/l1.cel", "levels/l1data/l1_2.pal",
+          10, 10, 22, 13, decoders::DungeonSpecialTable::Cathedral, 0 },
+        { "random_l2", 5,  "levels/l2data/l2.cel", "levels/l2data/l2_2.pal",
+          10, 10, 12, 3, decoders::DungeonSpecialTable::Catacombs, 0 },
+        { "random_l3", 9,  "levels/l3data/l3.cel", "levels/l3data/l3_2.pal",
+          10, 10, 8, 7, decoders::DungeonSpecialTable::None, 0 },
+        { "random_l4", 13, "levels/l4data/l4.cel", "levels/l4data/l4_2.pal",
+          12, 16, 30, 6, decoders::DungeonSpecialTable::None, 1 },
+    };
     bool allRandom = true;
-    for (int lvl = 1; lvl <= 4; ++lvl) {
-        const std::string rid = "random_l" + std::to_string(lvl);
-        const decoders::SceneSpec* rs = decoders::findScene(rid);
+    for (const auto& r : rspecs) {
+        const decoders::SceneSpec* rs = decoders::findScene(r.id);
         const auto rdims = rs ? decoders::sceneGridDims(*rs)
                               : std::make_pair(0, 0);
-        if (!rs || rs->randomLevel != lvl || rs->layout != decoders::SceneLayout::Dungeon ||
-            !rs->dun.empty() || rs->specialTable != decoders::DungeonSpecialTable::Cathedral ||
-            rs->microLen != 10 || rs->blocks != 10 ||
+        if (!rs || rs->randomLevel != r.level ||
+            rs->layout != decoders::SceneLayout::Dungeon ||
+            !rs->dun.empty() || rs->cel != r.cel || rs->palette != r.pal ||
+            rs->specialTable != r.table || rs->microLen != r.micro ||
+            rs->blocks != r.blocks || rs->prefillMegaTile != r.dirt ||
+            rs->floorMegaTile != r.floor || rs->lightStyle != r.lightStyle ||
             rdims.first != 80 || rdims.second != 80)
             allRandom = false;
     }
     lvlChk(allRandom,
-           "sceneCatalog exposes 4 randomizable Cathedral levels (L1-L4, 80x80, no fixed dun)");
+           "sceneCatalog exposes 4 randomizable levels (L1/L5/L9/L13, 4 tilesets, 80x80)");
     lvlChk(town && town->randomLevel == 0 && l4 && l4->randomLevel == 0,
            "fixed scenes are not randomizable");
     printf("level.scene: %s\n", allOk ? "PASS" : "FAIL");

@@ -318,9 +318,9 @@
       "l3_anvil": "Caves L3 · anvil room",
       "l4_diab1": "Hell L4 · diab1 room",
       "random_l1": "Random Dungeon L1 · Cathedral",
-      "random_l2": "Random Dungeon L2 · Cathedral",
-      "random_l3": "Random Dungeon L3 · Cathedral",
-      "random_l4": "Random Dungeon L4 · Cathedral"
+      "random_l2": "Random Dungeon L5 · Catacombs",
+      "random_l3": "Random Dungeon L9 · Caves",
+      "random_l4": "Random Dungeon L13 · Hell"
     }
   }
 }

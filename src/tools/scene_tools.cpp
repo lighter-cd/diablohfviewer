@@ -11,6 +11,7 @@
 #include "tools/scene_tools.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -19,6 +20,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <optional>
 #include <random>
 #include <set>
 #include <stdexcept>
@@ -406,9 +408,12 @@ std::string buildCacheKey(const std::string& id,
                           const std::string& outDir) {
     std::string a;
     for (size_t i = 0; i < archives.size(); ++i) { if (i) a += ";"; a += archives[i]; }
-    // v7: the tile atlas now also packs the OPEN-door micros (L2 537/539 ->
-    // 12/16) so the front-end can swap a closed door leaf for the open doorway
-    // locally (Phase 3 door toggle) without a server round-trip. v6: layout now
+    // v8: random_l2/l3/l4 now use the Catacombs/Caves/Hell tilesets (distinct
+    // floor/dirt megatiles, microLen/blocks, special table, palette), so stale
+    // v7 Cathedral-tileset PNGs must be invalidated. v7: the tile atlas now
+    // also packs the OPEN-door micros (L2 537/539 -> 12/16) so the front-end
+    // can swap a closed door leaf for the open doorway locally (Phase 3 door
+    // toggle) without a server round-trip. v6: layout now
     // also ships light-source definitions (default_ambient / lights /
     // soft_falloff) for the front-end Phase 2 real-time lighting, which changes
     // the layout schema — bump to invalidate stale pre-v6 caches that lacked
@@ -417,7 +422,7 @@ std::string buildCacheKey(const std::string& id,
     // v4 shaded dungeon dSpecial sprites by dLight (ClxDrawLight); v3 cropped
     // presets to the .dun bbox. Assembly inputs and switches are all in the key
     // so catalog changes / toggles invalidate cached PNGs automatically.
-    return "v7|" + id + "|" + a + "|" +
+    return "v8|" + id + "|" + a + "|" +
            std::to_string(spec.floorMegaTile) + "|" + spec.specialCel + "|" +
            std::to_string(static_cast<int>(spec.specialTable)) + "|" +
            (params.value("dirt_border", false) ? "B1" : "B0") + "|" +
@@ -1336,28 +1341,91 @@ mcp::ToolResult toolSceneRandom(const mcp::json& params) {
         seed = makeRandomSeed();
 
     const std::string quests = params.value("quests", std::string("vanilla"));
-    dhfc::CathedralOptions opt;
-    opt.level = spec->randomLevel;
-    opt.seed = seed;
-    opt.originalCathedral = params.value("original_cathedral", true);
-    opt.multiplayerQuests = false;
-    if (quests == "vanilla") {
-        dhfc::applyVanillaCathedralQuests(opt);
-    } else if (quests == "none") {
-        opt.butcherQuest = opt.poisonWaterQuest = false;
-        opt.skeletonKingQuest = opt.bannerQuest = false;
-    } else if (quests == "all") {
-        opt.butcherQuest = opt.poisonWaterQuest = true;
-        opt.skeletonKingQuest = opt.bannerQuest = true;
-    } else {
+    if (quests != "vanilla" && quests != "none" && quests != "all")
         throw std::runtime_error("quests must be one of: vanilla, none, all");
+    const int level = spec->randomLevel;
+
+    // Set-piece loader: graceful on missing file (generators tolerate null).
+    const auto loadOpt = [&archives](const std::string& rel) -> std::optional<dhfc::DunTileLayer> {
+        std::vector<uint8_t> buf;
+        if (!extractAny(archives, rel, buf)) return std::nullopt;
+        dhfc::DunTileLayer layer = dhfc::parseDunTileLayer(buf);
+        if (!layer.valid()) return std::nullopt;
+        return layer;
+    };
+
+    mcp::tools::reportProgress(1, "生成随机地牢 L" + std::to_string(level));
+    dhfc::DungeonTileGrid grid;
+    std::string dungeonType;
+    if (level <= 4) {
+        dungeonType = "Cathedral";
+        dhfc::CathedralOptions opt;
+        opt.level = level; opt.seed = seed;
+        opt.originalCathedral = params.value("original_cathedral", true);
+        opt.multiplayerQuests = false;
+        if (quests == "vanilla")      dhfc::applyVanillaCathedralQuests(opt);
+        else if (quests == "none")  { opt.butcherQuest = opt.poisonWaterQuest = false;
+                                      opt.skeletonKingQuest = opt.bannerQuest = false; }
+        else                        { opt.butcherQuest = opt.poisonWaterQuest = true;
+                                      opt.skeletonKingQuest = opt.bannerQuest = true; }
+        dhfc::DunTileLayer butcher, skng, banner;
+        loadCathedralSetPieces(archives, opt, butcher, skng, banner);
+        grid = dhfc::generateCathedral(opt);
+    } else if (level <= 8) {
+        dungeonType = "Catacombs";
+        dhfc::CatacombsOptions opt;
+        opt.level = level; opt.seed = seed;
+        if (quests == "vanilla")      dhfc::applyVanillaCatacombsQuests(opt);
+        else if (quests == "none")  { opt.bloodQuest = opt.schambQuest = opt.blindQuest = false; }
+        else                        { opt.bloodQuest = opt.schambQuest = opt.blindQuest = true; }
+        const std::string ofs = "levels/l2data/";
+        auto blind = opt.blindQuest ? loadOpt(ofs + "blind1.dun") : std::nullopt;
+        auto blood1 = opt.bloodQuest ? loadOpt(ofs + "blood1.dun") : std::nullopt;
+        auto blood2 = opt.bloodQuest ? loadOpt(ofs + "blood2.dun") : std::nullopt;
+        auto bonestr1 = opt.schambQuest ? loadOpt(ofs + "bonestr1.dun") : std::nullopt;
+        auto bonestr2 = opt.schambQuest ? loadOpt(ofs + "bonestr2.dun") : std::nullopt;
+        opt.blind1 = blind ? &*blind : nullptr;
+        opt.blood1 = blood1 ? &*blood1 : nullptr;
+        opt.blood2 = blood2 ? &*blood2 : nullptr;
+        opt.bonestr1 = bonestr1 ? &*bonestr1 : nullptr;
+        opt.bonestr2 = bonestr2 ? &*bonestr2 : nullptr;
+        grid = dhfc::generateCatacombs(opt);
+    } else if (level <= 12) {
+        dungeonType = "Caves";
+        dhfc::CavesOptions opt;
+        opt.level = level; opt.seed = seed;
+        if (quests == "vanilla")      dhfc::applyVanillaCavesQuests(opt);
+        else if (quests == "none")    opt.anvilQuest = false;
+        else                        { opt.anvilQuest = true; opt.anvilQuestLevel = 10; }
+        auto anvil = opt.anvilQuest ? loadOpt("levels/l3data/anvil.dun") : std::nullopt;
+        opt.anvil = anvil ? &*anvil : nullptr;
+        grid = dhfc::generateCaves(opt);
+    } else {
+        dungeonType = "Hell";
+        dhfc::HellOptions opt;
+        opt.level = level; opt.seed = seed;
+        if (quests == "vanilla")      dhfc::applyVanillaHellQuests(opt);
+        else if (quests == "none")  { opt.warlordQuest = opt.betrayerQuest = opt.diabloQuest = false; }
+        else                        { opt.warlordQuest = true; opt.betrayerQuest = true;
+                                      opt.diabloQuest = (level == 16); }
+        const std::string ofs = "levels/l4data/";
+        auto warlord = opt.warlordQuest ? loadOpt(ofs + "warlord.dun") : std::nullopt;
+        auto warlord2 = opt.warlordQuest ? loadOpt(ofs + "warlord2.dun") : std::nullopt;
+        auto vile1 = opt.warlordQuest ? loadOpt(ofs + "vile1.dun") : std::nullopt;
+        opt.warlord = warlord ? &*warlord : nullptr;
+        opt.warlord2 = warlord2 ? &*warlord2 : nullptr;
+        opt.vile1 = vile1 ? &*vile1 : nullptr;
+        std::array<std::optional<dhfc::DunTileLayer>, 7> diab;
+        if (opt.diabloQuest) {
+            static const char* diabNames[7] = { "diab1.dun", "diab2a.dun", "diab2b.dun",
+                                                "diab3a.dun", "diab3b.dun", "diab4a.dun", "diab4b.dun" };
+            for (int i = 0; i < 7; ++i) {
+                diab[i] = loadOpt(ofs + diabNames[i]);
+                opt.diab[i] = diab[i] ? &*diab[i] : nullptr;
+            }
+        }
+        grid = dhfc::generateHell(opt);
     }
-
-    dhfc::DunTileLayer butcher, skng, banner;
-    loadCathedralSetPieces(archives, opt, butcher, skng, banner);
-
-    mcp::tools::reportProgress(1, "生成随机地牢 L" + std::to_string(spec->randomLevel));
-    const dhfc::DungeonTileGrid grid = dhfc::generateCathedral(opt);
 
     // DungeonTileGrid (40x40 uint8, 1-based megatile ids) -> decoders::DunFile.
     decoders::DunFile dun;
@@ -1386,6 +1454,7 @@ mcp::ToolResult toolSceneRandom(const mcp::json& params) {
     const std::string created = utcStamp(true);
     result["random"] = true;
     result["random_level"] = spec->randomLevel;
+    result["dungeon_type"] = dungeonType;
     result["seed"] = static_cast<uint64_t>(seed);
     result["quests"] = quests;
     result["created"] = created;
@@ -1394,7 +1463,8 @@ mcp::ToolResult toolSceneRandom(const mcp::json& params) {
     result["layout_url"] = "/scenes/" + stem + ".layout.json";
 
     mcp::json meta = mcp::json{
-        {"id", id}, {"level", spec->randomLevel}, {"seed", static_cast<uint64_t>(seed)},
+        {"id", id}, {"level", spec->randomLevel}, {"dungeon_type", dungeonType},
+        {"seed", static_cast<uint64_t>(seed)},
         {"quests", quests}, {"created", created}, {"result_id", stem},
         {"is_default", true}, {"layout_url", "/scenes/" + stem + ".layout.json"},
     };
@@ -1506,13 +1576,15 @@ void registerSceneTools(ToolRegistry& reg) {
 
     reg.registerTool(ToolDef{
         "scene.random",
-        "Random dungeon map rendering for the 4 seed-generated Cathedral levels "
-        "(random_l1..random_l4, listed by scene.list as randomizable:true). Uses "
-        "the native DevilutionX drlg_l1 generator (dhfc::generateCathedral, "
-        "src/decoders/dungeon_gen_l1.cpp) and emits the SAME front-end-renderable "
-        "form as scene.tiles (index atlas PNG + layout JSON). action=generate "
-        "builds a fresh level from a random (or explicit) seed, overwrites that "
-        "level's default cache and returns the full scene.tiles result inline; "
+        "Random dungeon map rendering for 4 seed-generated levels, one per "
+        "dungeon type: random_l1=L1 Cathedral (drlg_l1), random_l2=L5 Catacombs "
+        "(drlg_l2), random_l3=L9 Caves (drlg_l3), random_l4=L13 Hell (drlg_l4). "
+        "Listed by scene.list as randomizable:true. Each uses the matching native "
+        "DevilutionX generator (dhfc::generateCathedral/Catacombs/Caves/Hell) and "
+        "tileset, and emits the SAME front-end-renderable form as scene.tiles "
+        "(index atlas PNG + layout JSON). action=generate builds a fresh level "
+        "from a random (or explicit) seed, overwrites that level's default cache "
+        "and returns the full scene.tiles result inline (with dungeon_type); "
         "action=save normalizes-naming a snapshot of the current result so it can "
         "be switched via the recent-results list; action=list enumerates default "
         "+ saved results. scene.clearCache deletes all default + saved results. "
@@ -1522,7 +1594,7 @@ void registerSceneTools(ToolRegistry& reg) {
                  {"action", json{{"type", "string"},
                                  {"description", "generate | save | list"}}},
                  {"id", json{{"type", "string"},
-                             {"description", "random scene id: random_l1..random_l4"}}},
+                             {"description", "random scene id: random_l1..random_l4 (Cathedral/Catacombs/Caves/Hell)"}}},
                  {"seed", json{{"type", "integer"},
                                {"description", "uint32 seed (generate); omit for a fresh random seed, echoed back"}}},
                  {"quests", json{{"type", "string"},

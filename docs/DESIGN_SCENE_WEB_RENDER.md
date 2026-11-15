@@ -265,9 +265,9 @@ lighting/门 修复用过的 PNG 解码对比）确保 SceneRenderer 与后端�
    - 前端 `web/src/scene-render.js` 新增 `renderSceneOverlay`（按后端 `buildOverlay` 同投影 / 同槽位数学、step=1 原生分辨率移植：solid 红 / transparent 蓝 / blockLight 黄 半透明菱形 + 每 8 格白色参考网格），与 `renderScene` 输出逐像素对齐。元数据摘要改为 tiles 原生值（标题取自目录、`w/h` 原始宽高、`gw/gh` 网格、Solid 计数、光照），去掉后端专属的预览尺寸 / 缩放 / 透明像素字段。
    - `scene.build` 的 PNG 模式保留为「导出场景 PNG」按钮（反映当前光照开关，新标签页打开原生 PNG），并继续作为 `scene.build` 与前端渲染的回归基准。移除已无用的 `sceneDrawUrl` 辅助。
    - **验收**：`tests/regress_scene_overlay.mjs` 将前端 `renderSceneOverlay` 与后端 `scene.build` 原生叠加层 PNG 逐字节对照——`l1_rnd2`/`l2_blind`/`l3_anvil`/`l4_diab1`/`l1_skngdo` 均 100%；i18n 1396 断言全绿、`node --check` 通过、无后端改动。
-6. **Phase 5 — 随机地牢地图**：✅ **已完成**（2026-11-14），详见下文 §11。
-   - 新增 4 个可随机层 `random_l1..random_l4`（大教堂 L1–L4，按种子生成完整 40×40 一层），后端 `scene.random`（generate/save/list）复用 `scene.tiles` 图集管线，前端同一 `SceneRenderer` 渲染；重新生成 / 保存结果 / 最近结果 / 缺省缓存 / 清缓存生命周期齐备。
-   - **验收**：`tests/regress_scene_random.mjs` 17 项端到端（确定性、图集合法性、渲染、保存/覆盖/清缓存）；三套 C++ 测试（unit/integration 新增断言）+ 既有 node 回归 + i18n 1479 断言全绿。
+6. **Phase 5 — 随机地牢地图**：✅ **已完成**（2026-11-14；2026-11-15 扩展到 4 类地牢），详见下文 §11。
+   - 新增 4 个可随机层 `random_l1..random_l4`（每类地牢一层：L1 大教堂 / L5 地下墓穴 / L9 洞穴 / L13 地狱，按种子生成完整 40×40 一层），后端 `scene.random`（generate/save/list）按类型派发四个原生生成器、复用 `scene.tiles` 图集管线，前端同一 `SceneRenderer` 渲染；重新生成 / 保存结果 / 最近结果 / 缺省缓存 / 清缓存生命周期齐备。
+   - **验收**：`tests/regress_scene_random.mjs` 32 项端到端（四类生成 + 关门标记 + 本地开关、确定性、图集合法性、渲染、保存/覆盖/清缓存）；三套 C++ 测试（unit/integration 新增断言）+ 既有 node 回归（含 `regress_scene_door.mjs random_l2`）+ i18n 1479 断言全绿。
 
 ---
 
@@ -297,24 +297,36 @@ lighting/门 修复用过的 PNG 解码对比）确保 SceneRenderer 与后端�
 
 ### 11.1 范围与生成器约束
 
-后端目前只有忠实 DevilutionX `drlg_l1.cpp` 的 **Cathedral（大教堂）** 生成器
-`dhfc::generateCathedral(level 1..4, seed)`（`src/decoders/dungeon_gen_l1.cpp`，
-40×40 megatile → 80×80 micro grid，14 个 fixture 0 差异），统一使用 `levels/l1data`
-图块集 + `l1s.cel` 特殊层。Catacombs / Caves / Hell 生成器尚未移植，故随机地图只有
-**4 个大教堂层** `random_l1..random_l4`，全部用 l1data 美术。Tristram 与 5 个固定
-预设房间**保持固定、不可随机**。
+后端已移植全部四类 DevilutionX 原生生成器（均 40×40 megatile → 80×80 micro grid，
+保持同一 Borland LCG 与 RNG 调用顺序）：
 
-`SceneSpec` 新增 `int randomLevel`（0=固定，1..4=第 N 层）；4 个 spec **追加在
-`sceneCatalog()` 末尾**（保护 `unit_tests.cpp` 的 `cat[1]` 索引断言）。`scene.list`
-据此发 `randomizable` / `random_level`，前端只对这 4 项显示随机控件。
+| 随机 id | 关卡 | 生成器 | tileset / 调色板 | Dirt/Floor | micro/blocks | dSpecial |
+|---------|------|--------|------------------|------------|--------------|----------|
+| `random_l1` | L1 | `drlg_l1` (`generateCathedral`) | `l1data` / `l1_2.pal` | 22/13 | 10/10 | Cathedral (`l1s.cel`) |
+| `random_l2` | L5 | `drlg_l2` (`generateCatacombs`) | `l2data` / `l2_2.pal` | 12/3 | 10/10 | Catacombs (`l2s.cel`，含关门) |
+| `random_l3` | L9 | `drlg_l3` (`generateCaves`) | `l3data` / `l3_2.pal` | 8/7 | 10/10 | None |
+| `random_l4` | L13 | `drlg_l4` (`generateHell`) | `l4data` / `l4_2.pal` | 30/6 | 12/16 | None（Hell 光照） |
+
+Cathedral 通过 14 个 fixture 的 0 差异校验；L2/L3/L4 保持结构确定性（DevilutionX golden
+依赖越界数组读取，逐格 0 差异不可移植）。每层的任务 set-piece 从 MPQ 读取，缺失则关闭
+对应 quest，任意 MPQ 都能生成。Tristram 与 5 个固定预设房间**保持固定、不可随机**。
+
+`SceneSpec` 新增 `int randomLevel`（0=固定，非 0=关卡号，按 1–4 / 5–8 / 9–12 / 13–16
+分段决定类型）；4 个 spec **追加在 `sceneCatalog()` 末尾**（保护 `unit_tests.cpp` 的
+`cat[1]` 索引断言）。`scene.list` 据此发 `randomizable` / `random_level`，前端只对这
+4 项显示随机控件。
 
 ### 11.2 数据流（与固定地图同形）
 
 ```
 scene.random generate {id, seed?}
-  → CathedralOptions(level=randomLevel, seed=随机或指定, vanilla quests)
-  → 从 MPQ 栈提取任务 set-piece（rnd6/skngdo/banner2.dun，缺失则关闭对应 quest）
-  → generateCathedral → DungeonTileGrid(40×40)
+  → 按 randomLevel 分段选 dhfc::DungeonType 与 Options：
+      1..4  → CathedralOptions (l1data: rnd6/skngdo/banner2.dun)
+      5..8  → CatacombsOptions(l2data: blind1/blood1/blood2/bonestr1/bonestr2.dun)
+      9..12 → CavesOptions    (l3data: anvil.dun)
+      13..16→ HellOptions     (l4data: warlord/warlord2/vile1/diab*.dun)
+  → 从 MPQ 栈提取对应 set-piece（缺失则关闭对应 quest）
+  → generateCathedral/Catacombs/Caves/Hell → DungeonTileGrid(40×40)
   → 构造内存 DunFile{40,40,tileLayer}（不落 .dun）
   → sceneTilesImpl(params, stem=<id>_default, generatedDun=&dun, skipCache=true)
         （= 原 toolSceneTiles 主体：loadSceneAssets→微格→索引图集+special图集+layout）
@@ -364,12 +376,15 @@ HTTP GET 布局文件、无则 `generate` → `fetchSceneAtlases(res)` → `appl
 
 ### 11.5 验收
 
-- WS/HTTP 端到端 `tests/regress_scene_random.mjs`（17 项）：4 个 randomizable 场景、
-  generate 出 80×80 / 6400 格与合法图集、`renderScene` 绘出真实地图、同 seed 确定性、
+- WS/HTTP 端到端 `tests/regress_scene_random.mjs`（32 项）：4 个 randomizable 场景各按
+  对应 `dungeon_type` 生成、80×80 / 6400 格与合法图集、`renderScene` 绘出真实地图；
+  `random_l2` 额外断言关门标记（537/539）与前端 OPEN/CLOSED 本地开关；同 seed 确定性、
   异 seed 不同、缺省 `.layout.json` 与内联一致、save 生成有名快照、regenerate 覆盖缺省
   但保留快照、快照可再渲染、`clearCache` 清空（随后重热固定场景缓存保证套件顺序无关）。
-- C++：`unit_tests.cpp`（4 个 spec 的 randomLevel/80×80/无固定 dun）、
-  `integration_tests.cpp::testSceneTools`（注册、list、确定性、save/list、异 seed）。
-- 既有 `regress_scene_tiles/door/overlay.mjs` 与 i18n（1479 断言）、三套 C++ 测试全绿。
-- 已知限制：随机层为大教堂（Cathedral）风格、无 L2 关门（537/539）标记；quest set-piece
-  缺失时自动关闭对应任务以保证任意 MPQ 都能生成。
+- C++：`unit_tests.cpp`（4 个 spec 的 tileset/randomLevel/80×80/无固定 dun）、
+  `integration_tests.cpp::testSceneTools`（注册、list、四类生成 + `random_l2` 关门、确定性、
+  save/list、异 seed）。
+- 既有 `regress_scene_tiles/door/overlay.mjs`（`door` 同时覆盖 `l2_blind` 与 `random_l2`）
+  与 i18n（1479 断言）、三套 C++ 测试全绿。缓存 key 已 bump 到 v8。
+- 已知限制：L2/L3/L4 的 DevilutionX golden 依赖越界数组读取，无法逐格 0 差异复现（仅保证
+  结构确定性）；quest set-piece 缺失时自动关闭对应任务以保证任意 MPQ 都能生成。

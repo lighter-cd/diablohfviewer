@@ -6,7 +6,10 @@
 //   3. override a door's cell to its CLOSED micro (== layout) -> image identical
 //
 // Usage: node tests/regress_scene_door.mjs <sceneId>
-//        (auto-discovers the newest tile artifact set under out/scenes)
+//        sceneId may be a fixed preset (l2_blind) or a random Catacombs scene
+//        (random_l2, produced by scene.random -> <id>_default.layout.json).
+//        Picks the newest matching layout and its same-stem atlas under
+//        out/scenes.
 
 import fs from 'fs';
 import zlib from 'zlib';
@@ -76,18 +79,34 @@ function bytesEqual(a, b) {
 }
 
 const sceneId = process.argv[2] || 'l2_blind';
-const tilesResult = newest(new RegExp(`^${sceneId}_.*\\.tiles\\.result\\.json$`));
-if (!tilesResult) throw new Error('no tiles result for ' + sceneId);
-const parsed = JSON.parse(fs.readFileSync(tilesResult, 'utf8'));
+// scene.tiles writes <id>_<hash>.tiles.result.json; scene.random writes the
+// fixed stem <id>_default.layout.json. Accept both, then prefer the atlas that
+// shares the layout's stem so stale artifacts from earlier runs cannot mix.
+const layoutFile = newest(new RegExp(
+  `^${sceneId}_.*(?:\\.tiles\\.result\\.json|\\.layout\\.json)$`));
+if (!layoutFile) {
+  // Random scenes live only until scene.clearCache; regenerate them via
+  // tests/regress_scene_random.mjs first, or just run this on a preset.
+  console.log(`SKIP: no layout result for ${sceneId}`);
+  process.exit(0);
+}
+const parsed = JSON.parse(fs.readFileSync(layoutFile, 'utf8'));
 const L = parsed.result ? parsed.result.layout : parsed.layout;
 if (!L.doors || !L.doors.length) {
   console.log(`scene ${sceneId} has no doors — nothing to test (OK, skip)`);
   process.exit(0);
 }
-const tilesPng = newest(new RegExp(`^${sceneId}_.*_tiles\\.png$`));
+const stem = path.basename(layoutFile)
+  .replace(/(?:\.tiles\.result\.json|\.layout\.json)$/, '');
+const preferSameStem = (suffix) => {
+  const exact = path.join(SCENES, stem + suffix);
+  if (fs.existsSync(exact)) return exact;
+  return newest(new RegExp(`^${sceneId}_.*${suffix.replace('.', '\\.')}$`));
+};
+const tilesPng = preferSameStem('_tiles.png');
 const layout = L;
 const tileAtlas = readPNG(tilesPng);
-const specialPng = newest(new RegExp(`^${sceneId}_.*_special\\.png$`));
+const specialPng = preferSameStem('_special.png');
 const specialAtlas = specialPng ? readPNG(specialPng) : null;
 
 console.log(`scene=${sceneId} doors=${L.doors.length} tiles=${tileAtlas.width}x${tileAtlas.height}`);
