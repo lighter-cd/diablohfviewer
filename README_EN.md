@@ -38,7 +38,8 @@ All decoding, viewing, and reconstruction features depend on the legitimate MPQ 
 
 ## License
 
-This project's code is released under the **MIT License** (full text in [`LICENSE`](LICENSE)).
+This project's code is released under the **MIT License** (full text in [`LICENSE`](LICENSE));
+copyright holder: **lighter_cd** `<lighter_cd@hotmail.com>`.
 
 In short: **anyone may use this code freely and for anything** — use, copy, modify, merge, publish, distribute, sublicense, and even sell it, with no prior permission and no fee. The only obligation is to keep the original copyright notice and this permission notice (ship a copy of `LICENSE` with the source or binary). The software is provided "as is", without warranty of any kind.
 

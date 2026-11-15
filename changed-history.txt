@@ -575,3 +575,8 @@
 ## 2026-11-16 03:00:09
 - 为项目新增 MIT 许可证，实现“随意使用”授权：根目录新建 LICENSE（Copyright (c) 2026 lighter_cd，允许使用/复制/修改/分发/再许可/商业销售，仅需保留版权与许可声明）；README 与 README_EN 增加「许可证 / License」章节（授权范围、义务、第三方依赖 MIT、游戏素材排除）；docs/COMPLIANCE.md 新增 §7 界定 MIT 只覆盖代码与文本、不覆盖游戏资源与第三方依赖；docs/PROJECT.md 新增 §11 记录完成项
 - 涉及: LICENSE, README.md, README_EN.md, docs/COMPLIANCE.md, docs/PROJECT.md, changed-history.txt
+
+
+## 2026-11-16 03:02:02
+- 将许可证署名落实到持有人本人：LICENSE 版权行改为 `Copyright (c) 2026 lighter_cd <lighter_cd@hotmail.com>`，README / README_EN 许可证章节标注版权持有人，docs/COMPLIANCE.md §7 与 docs/PROJECT.md §11 同步该署名（无代码改动，无需重建）
+- 涉及: LICENSE, README.md, README_EN.md, docs/COMPLIANCE.md, docs/PROJECT.md, changed-history.txt

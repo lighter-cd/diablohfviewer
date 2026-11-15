@@ -1082,7 +1082,7 @@ SOL 碰撞网格 A* 寻路（`scene.path`）、L2/L3/L4 预设场景。`scene.bu
 ## 11. 许可证（2026-11-16，已完成）
 
 - [x] **为项目添加 MIT 许可证**：根目录新增 [`LICENSE`](../LICENSE)
-  （`Copyright (c) 2026 lighter_cd`），明确本项目代码可被**任意使用**（使用/复制/修改/合并/
+  （`Copyright (c) 2026 lighter_cd <lighter_cd@hotmail.com>`），明确本项目代码可被**任意使用**（使用/复制/修改/合并/
   发布/分发/再许可/商业销售均无需事先许可），唯一义务是保留版权与许可声明，软件按「原样」提供。
 - **边界**：MIT **只覆盖代码与文本**（`src/`、`web/`、`docs/`、构建脚本等）；不含任何
   Diablo 1 / Hellfire 游戏资源；第三方依赖保留各自许可——`3rdparty/StormLib/`（MIT，
