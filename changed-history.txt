@@ -565,3 +565,8 @@
 - 修复场景查看器地下墓穴门（random_l5 · 血石等）开启状态不绘制的问题：每格 SOL 标志原先按生成时的 grid micro 烘焙，关门门板 537/539 为 Solid|BlockLight|BlockMissile，而开启门洞 12/16 是地板件（l2.sol 0x18/0x28），前端 microOverride 只换 micro 不换标志，isFloor() 仍为假 → 地板 pass 整格跳过、门洞地板不画。后端 layout 新增 micro_flags[]（每个 micro 的 SOL 原始字节），前端 renderScene / renderSceneOverlay 对被覆盖格按新 micro 重算 isFloor 与 SOL 红框，toggleDoor 同步重绘 base+overlay，旧版缺省随机布局按同 seed 自动重生成；缓存 key 升 v11。
 - 验收：regress_scene_door 新增「override 开启 == layout 直接改开启 micro+重算标志」逐像素断言、overlay 一致性断言，random_l5 / l2_blind / random_l1 全绿；regress_scene_random 70 项、regress_scene_tiles/overlay 100% 像素、unit/core/integration 三套 C++ 全绿、i18n 1563 断言；mcp-server 重建 + sync-web（token 20261116022302），WS 重启于 18765。
 - 涉及: src/tools/scene_tools.cpp, web/src/scene-render.js, web/src/main.js, tests/regress_scene_door.mjs, tests/integration_tests.cpp, README.md, docs/ARCHITECTURE.md, docs/DESIGN_SCENE_WEB_RENDER.md, docs/PROJECT.md, TODO, changed-history.txt
+
+## 2026-11-16 02:41:50
+- 修复上一轮前端同步把 build-mcp/web 写成乱码、JS 报 Uncaught SyntaxError 导致所有按钮（含 mpq 配置）失灵：手工用 PowerShell Get-Content -Raw + WriteAllText 同步时按系统 GBK 读入无 BOM 的 UTF-8，中文变 mpq閰嶇疆 且模块整体不执行。现已整体重新同步 build-mcp/web（UTF-8 正确、node --check 全绿、token 20261116024126，服务端实测返回正确中文），并新增 Windows 等价脚本 sync-web.py（全程按字节复制 + 刷新 ?v= token，避免编码参与），在 README / AGENTS / docs 写明禁止用 PowerShell 手工同步。
+- 验收：build-mcp/web 无乱码与 U+FFFD、全部 JS node --check 通过；HTTP 实测 index.html/src/main.js 返回正确 UTF-8 且 token 已更新；浏览器普通刷新（或 Ctrl+F5）即可恢复，「mpq 配置」按钮事件已重新绑定。
+- 涉及: sync-web.py, README.md, AGENTS.md, docs/PROJECT.md, changed-history.txt

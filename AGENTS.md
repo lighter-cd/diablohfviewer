@@ -60,6 +60,12 @@
   缓存号一步完成：
   - `./sync-web.sh` —— 把 `web/` 复制到 `build-mcp/web/`，并改写其中所有 `?v=<token>`
     为新的时间戳 token（破除浏览器缓存）。**优先用它，不要手动 cp + 手改 ?v**。
+  - Windows 上没有 bash（`bash ./sync-web.sh` 报 `execvpe(/bin/bash) failed`）时，用
+    **`python sync-web.py`**：效果与 `sync-web.sh` 完全相同（同样整体复制 + 刷新 token）。
+  - **严禁**用 PowerShell `Get-Content -Raw` + `[IO.File]::WriteAllText` 代替同步：PowerShell
+    5.1 会用系统 ANSI 代码页（中文 Windows 为 GBK）读取无 BOM 的 UTF-8 文件，中文会被写成
+    `mpq閰嶇疆` 这类乱码，并让 JS 报 `Uncaught SyntaxError: Invalid or unexpected token`
+    （整个模块不执行，页面按钮全部失灵）。`sync-web.py` 全程按字节处理，不会改编码。
   - 手动等价命令（不推荐，易漏缓存号）：`cp -r web build-mcp/web` 后 `sed -i -E
     's/\?v=[A-Za-z0-9]+/?v=NEWTOKEN/g' build-mcp/web/index.html build-mcp/web/src/main.js`。
   - 该同步与是否重新编译 C++ 无关：即便只改了前端，也要同步；C++ 未改动时无需停 exe、也无需

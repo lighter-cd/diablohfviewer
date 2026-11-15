@@ -77,6 +77,20 @@ cmake -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -S . -B build-mcp
 cmake --build build-mcp --target mcp-server
 ```
 
+构建完成后、以及**每次改动 `web/` 后**，都要把前端同步到 exe 同级的 `build-mcp/web/`
+（mcp-server 只从那里读页面），并刷新 `?v=` 缓存号：
+
+```bash
+./sync-web.sh          # Linux / macOS / Git-Bash
+python sync-web.py     # Windows 无 bash 时用这个（效果完全相同）
+```
+
+> ⚠️ 不要在 PowerShell 里用 `Get-Content -Raw` + `[IO.File]::WriteAllText` 手工同步：
+> PowerShell 5.1 按系统 ANSI 代码页（中文 Windows 为 GBK）读取无 BOM 的 UTF-8，会把
+> 中文写成 `mpq閰嶇疆` 这类乱码，并让 JS 报
+> `Uncaught SyntaxError: Invalid or unexpected token`（模块整体不执行，按钮全部失灵）。
+> `sync-web.py` 全程按字节处理，不会改动编码。
+
 ## 运行
 
 ```bash
