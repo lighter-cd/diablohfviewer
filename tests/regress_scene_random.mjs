@@ -216,20 +216,59 @@ async function main() {
         ok(doors.length > 0 &&
            doors.every((d) => d.closed === 537 || d.closed === 539),
            id + ' marks L2 doorways with closed leaves (537/539)');
+        ok(doors.every((d) => d.open_special === 5 || d.open_special === 6),
+           id + ' doors carry the open-state l2s frame (5/6)');
         // Front-end local toggle (same path as regress_scene_door.mjs); one
         // Catacombs scene is enough to cover the shared microOverride path.
         if (!overrideChecked && doors.length > 0) {
           const d = doors[0];
           const idx = d.y * g.layout.grid_width + d.x;
           const opened = renderScene(g.layout, atlas, special,
-            { microOverride: { [idx]: d.open } });
+            { microOverride: { [idx]: d.open },
+              specialOverride: { [idx]: d.open_special } });
           const closedAgain = renderScene(g.layout, atlas, special,
-            { microOverride: { [idx]: d.closed } });
+            { microOverride: { [idx]: d.closed },
+              specialOverride: { [idx]: 0 } });
           ok(!buffersEqual(rendered.data, opened.data),
              id + ' OPEN door override changes the rendered image');
           ok(buffersEqual(rendered.data, closedAgain.data),
              id + ' CLOSED door override == no-op');
           overrideChecked = true;
+        }
+      }
+      // AddL1Objs / SetDoorStateOpen on Cathedral (L1-L4): the grid keeps the
+      // generated closed leaves (L 43/50/213, R 45/55); doors[] emits the open
+      // pair with the l1s frame (7/8) and the DoorSet jamb patch.
+      if (e.type === 'Cathedral') {
+        const doors = g.layout.doors || [];
+        ok(doors.length > 0 &&
+           doors.every((d) => [43, 50, 213].includes(d.closed) ||
+                             [45, 55].includes(d.closed)),
+           id + ' exposes Cathedral door leaves (43/50/213 L, 45/55 R)');
+        ok(doors.every((d) => {
+            const isLeft = [43, 50, 213].includes(d.closed);
+            const wantOpen = (d.closed === 213) ? 407
+                           : isLeft ? 392 : 394;
+            const wantSp = isLeft ? 7 : 8;
+            const nOk = d.neighbor == null ||
+              (Number.isInteger(d.neighbor.x) &&
+               d.neighbor.y === (isLeft ? d.y - 1 : d.y) &&
+               d.neighbor.x === (isLeft ? d.x : d.x - 1) &&
+               d.neighbor.open > 0 && d.neighbor.open !== d.neighbor.closed);
+            return d.open === wantOpen && d.open_special === wantSp &&
+                   d.closed_special === 0 && nOk;
+          }),
+           id + ' door entries carry faithful open micro/frame/jamb side');
+        if (doors.length > 0 && !overrideChecked) {
+          const d = doors[0];
+          const idx = d.y * g.layout.grid_width + d.x;
+          const mo = { [idx]: d.open };
+          if (d.neighbor && Number.isInteger(d.neighbor.x))
+            mo[d.neighbor.y * g.layout.grid_width + d.neighbor.x] = d.neighbor.open;
+          const opened = renderScene(g.layout, atlas, special,
+            { microOverride: mo, specialOverride: { [idx]: d.open_special } });
+          ok(!buffersEqual(rendered.data, opened.data),
+             id + ' OPEN Cathedral door (leaf+frame+jamb) changes the image');
         }
       }
     }

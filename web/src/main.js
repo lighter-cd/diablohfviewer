@@ -1518,9 +1518,10 @@ const sceneState = {
   lightOn: false,   // mirrors sceneLightToggle
   torchDragging: false,
   // Phase 3 door local toggle state:
-  doors: [],        // [{ x, y, open, closed, idx }]
+  doors: [],        // [{ x, y, open, closed, open_special, idx, neighbor }]
   doorOpen: null,   // Set<idx> of currently-open doors
   doorOverride: null, // { idx -> open micro } passed to renderScene
+  doorSpecialOverride: null, // { idx -> open dSpecial frame } passed to renderScene
   doorEls: [],      // door marker DOM elements, parallel to sceneState.doors
   doorEdit: false,  // mirrors sceneDoorEditToggle
   // Phase 5 random dungeon maps:
@@ -1669,6 +1670,8 @@ function renderSceneBase() {
     light: t.light,
     microOverride: (sceneState.doorOverride && Object.keys(sceneState.doorOverride).length)
       ? sceneState.doorOverride : null,
+    specialOverride: (sceneState.doorSpecialOverride && Object.keys(sceneState.doorSpecialOverride).length)
+      ? sceneState.doorSpecialOverride : null,
   });
   const canvas = $("sceneBase");
   canvas.width = out.width;
@@ -1789,9 +1792,16 @@ function toggleDoor(idx) {
   if (sceneState.doorOpen.has(idx)) {
     sceneState.doorOpen.delete(idx);
     delete sceneState.doorOverride[idx];
+    delete sceneState.doorSpecialOverride[idx];
+    // Restore the DoorSet jamb cell as well.
+    if (d.neighbor) delete sceneState.doorOverride[d.neighbor.idx];
   } else {
     sceneState.doorOpen.add(idx);
     sceneState.doorOverride[idx] = d.open;
+    sceneState.doorSpecialOverride[idx] = d.open_special || 0;
+    // DoorSet: opening rewrites the adjacent jamb cell's piece
+    // (42->391, 44->393, 49->410/411, ...). Its dSpecial is untouched.
+    if (d.neighbor) sceneState.doorOverride[d.neighbor.idx] = d.neighbor.open;
   }
   // Re-render the base (micro swap) + a brief flash as a transition cue.
   renderSceneBase();
@@ -2073,11 +2083,23 @@ function applySceneResult(tiles, ctx) {
       : null,
   };
   // Phase 3 door definitions (closed <-> open micro swap), start all CLOSED.
+  // `neighbor` is the Cathedral DoorSet jamb patch (objects.cpp:959): opening
+  // the door also swaps the adjacent cell's piece (42->391, 44->393, ...).
   sceneState.doors = Array.isArray(L.doors)
-    ? L.doors.map((d) => ({ x: d.x, y: d.y, open: d.open, closed: d.closed, idx: d.y * L.grid_width + d.x }))
+    ? L.doors.map((d) => ({
+        x: d.x, y: d.y, open: d.open, closed: d.closed,
+        open_special: d.open_special || 0,
+        idx: d.y * L.grid_width + d.x,
+        neighbor: (d.neighbor && Number.isInteger(d.neighbor.x))
+          ? { x: d.neighbor.x, y: d.neighbor.y,
+              open: d.neighbor.open, closed: d.neighbor.closed,
+              idx: d.neighbor.y * L.grid_width + d.neighbor.x }
+          : null,
+      }))
     : [];
   sceneState.doorOpen = new Set();
   sceneState.doorOverride = {};
+  sceneState.doorSpecialOverride = {};
   renderSceneBase();
   renderSceneOverlayCanvas();
   showDoorControls(sceneState.doorEdit);

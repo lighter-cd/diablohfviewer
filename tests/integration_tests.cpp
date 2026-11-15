@@ -62,7 +62,7 @@ static bool allOk = true;
     do {                                                                    \
         if (!(cond)) {                                                      \
             allOk = false;                                                  \
-            printf("  FAIL: %s\n", msg);                                    \
+            printf("  FAIL: %s\n", std::string(msg).c_str());               \
         }                                                                   \
     } while (0)
 

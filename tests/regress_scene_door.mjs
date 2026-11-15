@@ -4,13 +4,15 @@
 //   1. render the scene base with no override (closed doors)
 //   2. override a door's cell to its OPEN micro -> image must DIFFER (door opens)
 //   3. override a door's cell to its CLOSED micro (== layout) -> image identical
+//   4. when the door carries an open-state dSpecial frame (open_special), the
+//      specialOverride must change the image too (l1s 7/8 cathedral, l2s 5/6)
+//   5. when the door carries a DoorSet jamb patch (`neighbor`), applying it must
+//      change the image (cathedral only)
 //
 // Usage: node tests/regress_scene_door.mjs <sceneId>
-//        sceneId may be a fixed preset (l2_blind) or a random Catacombs scene
-//        (random_l5 / random_l6 / random_l7, produced by scene.random ->
-//        <id>_default.layout.json). Catacombs ids moved off random_l2 when the
-//        random catalog was expanded to exact dlvls: random_l2 is now Cathedral
-//        L2 / Butcher and has no L2 closed-door leaves. Picks the newest matching
+//        sceneId may be a fixed preset (l2_blind), a random Catacombs scene
+//        (random_l5/l6/l7), or a random Cathedral scene (random_l1, produced by
+//        scene.random -> <id>_default.layout.json). Picks the newest matching
 //        layout and its same-stem atlas under out/scenes.
 
 import fs from 'fs';
@@ -116,11 +118,28 @@ console.log(`scene=${sceneId} doors=${L.doors.length} tiles=${tileAtlas.width}x$
 const renderClosed = renderScene(layout, tileAtlas, specialAtlas); // no override
 const door = L.doors[0];
 const idx = door.y * layout.grid_width + door.x;
+// Mirror the frontend toggleDoor: swap the leaf micro, draw the open-state
+// dSpecial frame, and apply the DoorSet jamb patch when present.
 const overrideOpen = { [idx]: door.open };     // swap to open doorway micro
 const overrideClosed = { [idx]: door.closed }; // == layout micro (no-op expected)
+const specialOpen = door.open_special ? { [idx]: door.open_special } : null;
+if (door.neighbor && Number.isInteger(door.neighbor.x)) {
+  const nIdx = door.neighbor.y * layout.grid_width + door.neighbor.x;
+  overrideOpen[nIdx] = door.neighbor.open;
+  overrideClosed[nIdx] = door.neighbor.closed;
+}
 
-const renderOpen = renderScene(layout, tileAtlas, specialAtlas, { microOverride: overrideOpen });
-const renderClosedAgain = renderScene(layout, tileAtlas, specialAtlas, { microOverride: overrideClosed });
+const renderOpen = renderScene(layout, tileAtlas, specialAtlas, {
+  microOverride: overrideOpen,
+  specialOverride: specialOpen,
+});
+const renderOpenNoSpecial = renderScene(layout, tileAtlas, specialAtlas, {
+  microOverride: overrideOpen,
+});
+const renderClosedAgain = renderScene(layout, tileAtlas, specialAtlas, {
+  microOverride: overrideClosed,
+  specialOverride: door.open_special ? { [idx]: door.closed_special || 0 } : null,
+});
 
 let fail = 0;
 if (bytesEqual(renderClosed, renderOpen)) {
@@ -134,6 +153,31 @@ if (!bytesEqual(renderClosed, renderClosedAgain)) {
   fail++;
 } else {
   console.log('PASS: door CLOSED override == no-override image (no accidental shift)');
+}
+if (door.open_special) {
+  if (bytesEqual(renderOpen, renderOpenNoSpecial)) {
+    console.error(`FAIL: open door dSpecial frame ${door.open_special} drew nothing (specialOverride ignored)`);
+    fail++;
+  } else {
+    console.log(`PASS: open door draws its dSpecial frame ${door.open_special}`);
+  }
+} else {
+  console.log('INFO: door has no open-state dSpecial frame (pure micro swap)');
+}
+if (door.neighbor && Number.isInteger(door.neighbor.x)) {
+  // Same open state WITHOUT the jamb patch — isolates the neighbour rewrite.
+  const renderNoJamb = renderScene(layout, tileAtlas, specialAtlas, {
+    microOverride: { [idx]: door.open },
+    specialOverride: specialOpen,
+  });
+  if (bytesEqual(renderOpen, renderNoJamb)) {
+    console.error('FAIL: DoorSet jamb patch changed nothing (neighbor override ignored)');
+    fail++;
+  } else {
+    console.log(`PASS: DoorSet jamb patch rewrites neighbour (${door.neighbor.closed} -> ${door.neighbor.open})`);
+  }
+} else {
+  console.log('INFO: door has no jamb patch (Catacombs doors are single-cell swaps)');
 }
 
 console.log(fail ? 'DOOR REGRESSION FAILED' : 'OK: door local-toggle override path works');

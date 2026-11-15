@@ -409,6 +409,11 @@ std::string buildCacheKey(const std::string& id,
                           const std::string& outDir) {
     std::string a;
     for (size_t i = 0; i < archives.size(); ++i) { if (i) a += ";"; a += archives[i]; }
+    // v10: doors[] now also emits Cathedral door leaves (AddL1Objs /
+    // SetDoorStateOpen: L 43/50/213 -> 392/407 + l1s frame 7, R 45/55 -> 394 +
+    // frame 8) with DoorSet jamb patches, and Catacombs doors carry their
+    // open-state l2s frame (open_special 5/6) — layout schema changed, so
+    // stale v9 caches lacking those fields must go.
     // v9: random scene ids are now exact dlvls (random_l2=L2 Cathedral,
     // random_l3=L3 Cathedral, random_l4=L4 Cathedral, plus L5/6/7/10/13/15/16);
     // random_l2/l3/l4 changed generator/tileset, so stale v8 PNGs must go.
@@ -426,7 +431,7 @@ std::string buildCacheKey(const std::string& id,
     // v4 shaded dungeon dSpecial sprites by dLight (ClxDrawLight); v3 cropped
     // presets to the .dun bbox. Assembly inputs and switches are all in the key
     // so catalog changes / toggles invalidate cached PNGs automatically.
-    return "v9|" + id + "|" + a + "|" +
+    return "v10|" + id + "|" + a + "|" +
            std::to_string(spec.floorMegaTile) + "|" + spec.specialCel + "|" +
            std::to_string(static_cast<int>(spec.specialTable)) + "|" +
            (params.value("dirt_border", false) ? "B1" : "B0") + "|" +
@@ -572,16 +577,92 @@ mcp::ToolResult sceneTilesImpl(const mcp::json& params,
     // (e.g. L2 537/539) for the OPEN doorway micro (12/16) with zero server
     // round-trip. Those open micros are NOT in `grid.micro` (the grid stores the
     // closed state), so they would be missing from the atlas and the door would
-    // vanish when toggled. Pre-collect every door's open micro and pack it too.
+    // vanish when toggled. Pre-collect every door's open micro — plus the
+    // DoorSet jamb piece of the adjacent cell — and pack those too.
+    //
+    // The scan MUST be gated by the level's tileset: door piece ids are
+    // per-tileset MIN indices (the game scans them through the level-specific
+    // AddL1Objs / AddL2Objs), and the same numeric id is an ordinary wall in
+    // another tileset's MIN table.
+    const bool isCathedral =
+        spec->specialTable == decoders::DungeonSpecialTable::Cathedral;
+    const bool isCatacombs =
+        spec->specialTable == decoders::DungeonSpecialTable::Catacombs;
     {
+        // Cathedral SetDoorStateOpen (objects.cpp:1063-1076) + DoorSet
+        // (objects.cpp:959-1000): opening a door swaps its leaf for the open
+        // doorway micro and rewrites the adjacent jamb cell's piece.
+        const auto doorOpenPair = [&](uint16_t closed)
+            -> std::pair<uint16_t, uint8_t> {
+            if (isCathedral) {
+                switch (closed) {
+                case 43: case 50: return { 392, 7 };  // OBJ_L1LDOOR + l1s frame 7
+                case 213: return { 407, 7 };          // blood-splatter variant
+                case 45: case 55: return { 394, 8 };  // OBJ_L1RDOOR + l1s frame 8
+                default: return { 0, 0 };
+                }
+            }
+            if (isCatacombs) {
+                switch (closed) {
+                case 537: return { 12, 5 };           // OBJ_L2LDOOR + l2s frame 5
+                case 539: return { 16, 6 };           // OBJ_L2RDOOR + l2s frame 6
+                default: return { 0, 0 };
+                }
+            }
+            return { 0, 0 };
+        };
+        // DoorSet jamb mapping (DoorSet reads the neighbour's CURRENT piece; a
+        // piece not in the table stays unchanged when the door opens). The
+        // 49->410/411 split is per door side (objects.cpp:966-970).
+        const auto jambOpenPiece = [&](uint16_t closed, bool isLeftDoor) -> uint16_t {
+            if (!isCathedral)
+                return 0;
+            switch (closed) {
+            case 42: return 391;
+            case 44: return 393;
+            case 49: return isLeftDoor ? 410 : 411;
+            case 53: return 396;
+            case 54: return 397;
+            case 60: return 398;
+            case 66: return 399;
+            case 67: return 400;
+            case 68: return 402;
+            case 69: return 403;
+            case 71: return 405;
+            case 211: return 406;
+            case 353: return 408;
+            case 354: return 409;
+            case 410: case 411: return 395;
+            default: return 0;
+            }
+        };
         std::set<uint16_t> doorOpenMicros;
         for (size_t idx = 0; idx < cells; ++idx) {
             const uint16_t mi = resolveMi(grid.micro[idx]);
-            uint16_t open = 0;
-            if (mi == 537) open = 12;       // OBJ_L2LDOOR (closed) -> open
-            else if (mi == 539) open = 16;  // OBJ_L2RDOOR (closed) -> open
+            const auto [open, sp] = doorOpenPair(mi);
             if (open != 0 && open < micros.size())
                 doorOpenMicros.insert(open);
+            // Jamb neighbour: L doors patch the cell above (NorthEast = {0,-1},
+            // objects.cpp:1186-1192), R doors the cell to the left
+            // (NorthWest = {-1,0}).
+            if (isCathedral &&
+                (mi == 43 || mi == 50 || mi == 213 || mi == 45 || mi == 55)) {
+                const bool isLeft = (mi != 45 && mi != 55);
+                const size_t gwSize = static_cast<size_t>(gw);
+                const int j = static_cast<int>(idx / gwSize);
+                const int i = static_cast<int>(idx % gwSize);
+                if (isLeft && j > 0) {
+                    const uint16_t jc = resolveMi(grid.micro[idx - gw]);
+                    const uint16_t jo = jambOpenPiece(jc, true);
+                    if (jo != 0 && jo < micros.size())
+                        doorOpenMicros.insert(jo);
+                } else if (!isLeft && i > 0) {
+                    const uint16_t jc = resolveMi(grid.micro[idx - 1]);
+                    const uint16_t jo = jambOpenPiece(jc, false);
+                    if (jo != 0 && jo < micros.size())
+                        doorOpenMicros.insert(jo);
+                }
+            }
         }
         for (uint16_t m : doorOpenMicros) used.insert(m);
     }
@@ -696,20 +777,81 @@ mcp::ToolResult sceneTilesImpl(const mcp::json& params,
 
     // ---- doors: closed-door micro -> open/closed pair (Phase 3 toggle) -----
     // Catacombs applyL2ClosedDoors maps left doorway 12/540 -> 537, right 16/541
-    // -> 539. Emit the opposite mapping so the frontend can swap the cell micro
-    // (and its dSpecial) between the closed leaf and the open doorway stub.
+    // -> 539. Cathedral door cells keep their generated CLOSED leaves
+    // (AddL1Objs: L 43/50/213, R 45/55). Emit the opposite mapping so the
+    // frontend can swap the cell micro (and its dSpecial frame) between the
+    // closed leaf and the open doorway; Cathedral doors additionally carry the
+    // DoorSet jamb patch for their adjacent cell.
+    const auto doorOpenPair = [&](uint16_t closed) -> std::pair<uint16_t, uint8_t> {
+        if (isCathedral) {
+            switch (closed) {
+            case 43: case 50: return { 392, 7 };  // OBJ_L1LDOOR
+            case 213: return { 407, 7 };          // OBJ_L1LDOOR blood-splatter variant
+            case 45: case 55: return { 394, 8 };  // OBJ_L1RDOOR
+            default: return { 0, 0 };
+            }
+        }
+        if (isCatacombs) {
+            switch (closed) {
+            case 537: return { 12, 5 };           // OBJ_L2LDOOR
+            case 539: return { 16, 6 };           // OBJ_L2RDOOR
+            default: return { 0, 0 };
+            }
+        }
+        return { 0, 0 };
+    };
+    const auto jambOpenPiece = [&](uint16_t closed, bool isLeftDoor) -> uint16_t {
+        if (!isCathedral)
+            return 0;
+        switch (closed) { // DoorSet (objects.cpp:959-1000)
+        case 42: return 391;
+        case 44: return 393;
+        case 49: return isLeftDoor ? 410 : 411;
+        case 53: return 396;
+        case 54: return 397;
+        case 60: return 398;
+        case 66: return 399;
+        case 67: return 400;
+        case 68: return 402;
+        case 69: return 403;
+        case 71: return 405;
+        case 211: return 406;
+        case 353: return 408;
+        case 354: return 409;
+        case 410: case 411: return 395;
+        default: return 0;
+        }
+    };
     mcp::json doorsJson = mcp::json::array();
     for (int j = 0; j < gh; ++j) {
         for (int i = 0; i < gw; ++i) {
             const size_t idx = static_cast<size_t>(j) * gw + i;
             const uint16_t mi = grid.micro[idx];
-            uint16_t open = 0;
-            if (mi == 537) open = 12;       // OBJ_L2LDOOR (left, closed)
-            else if (mi == 539) open = 16;  // OBJ_L2RDOOR (right, closed)
+            const auto [open, openSpecial] = doorOpenPair(mi);
             if (open == 0) continue;
-            doorsJson.push_back(mcp::json{
+            mcp::json entry = mcp::json{
                 {"x", i}, {"y", j}, {"open", open}, {"closed", mi},
-                {"open_special", 0}, {"closed_special", 0}});
+                {"open_special", openSpecial}, {"closed_special", 0}};
+            // Cathedral DoorSet jamb patch (L door: cell above; R door: left).
+            if (mi == 43 || mi == 50 || mi == 213 || mi == 45 || mi == 55) {
+                const bool isLeft = (mi != 45 && mi != 55);
+                if (isLeft && j > 0) {
+                    const uint16_t jc = grid.micro[idx - gw];
+                    const uint16_t jo = jambOpenPiece(jc, true);
+                    if (jo != 0)
+                        entry["neighbor"] = mcp::json{
+                            {"x", i}, {"y", j - 1},
+                            {"open", jo}, {"closed", jc}};
+                } else if (!isLeft && i > 0) {
+                    const uint16_t jc = grid.micro[idx - 1];
+                    const uint16_t jo = jambOpenPiece(jc, false);
+                    if (jo != 0)
+                        entry["neighbor"] = mcp::json{
+                            {"x", i - 1}, {"y", j},
+                            {"open", jo}, {"closed", jc}};
+                }
+            }
+            doorsJson.push_back(std::move(entry));
         }
     }
 

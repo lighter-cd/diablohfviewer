@@ -586,6 +586,14 @@ scene.path {id,archive,archives?,from:{x,y},to:{x,y},max_steps?=1024,preview_max
   把门洞 micro `12/540→537`、`16/541→539` 并清 `dSpecial`；`.dun` 的 object 层本身全 0。
   `buildDungeonScene` 对 Catacombs 模拟这一步（仅关闭态的 `dPiece` 结果），用 `l2.min`
   的实心门板帧补上缺口，否则 `blind1.dun` 的 micro 12 只剩空门框。
+  **大教堂门元数据（2026-11-15）**：大教堂网格由生成器直接产出关闭门叶
+  （`AddL1Objs` `objects.cpp:3771-3784`：dPiece 43/50/213=左门、45/55=右门），开启态按
+  `SetDoorStateOpen`（`objects.cpp:1063-1076`：392/407（血泊特例）/394 + `l1s.cel`
+  门框 dSpecial 7/8）与 `DoorSet`（`objects.cpp:959-1000`：邻格门框片 42→391、
+  44→393、49→410/411、410/411→395 等，左门改上方格、右门改左格）建模。
+  `scene.tiles` 的门扫描**按 tileset 门控**（`spec.specialTable`）——门片 id 是各关卡
+  MIN 表的局部编号，跨表复用同数值会把普通墙片误判成门（曾致 Catacombs 场景出现假门）。
+  地下墓穴门同步补上开启态 `l2s.cel` 门框 `open_special 5/6`；缓存 key 升 v10。
   Tristram 另外应用非任务态 `FillTile`（水井/喷泉、传送入口）。地牢 object layer 的
   其余物件（箱子/火把等 `objects/*.cel`）与 `dTransVal`/`TransList` 透明遮挡仍未实现。
 - **tile 纵向翻转修复（2026-11-09）**：`DecodeLeft/RightTriangle` 与

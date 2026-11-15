@@ -101,6 +101,19 @@ export function renderScene(layout, tileAtlas, specialAtlas, opts = {}) {
     return micro_grid[idx];
   };
 
+  // Same override mechanism for the dSpecial overlay id: an open door swaps its
+  // leaf micro for the doorway hole AND draws the special-CEL door frame
+  // (l1s.cel 7/8 cathedral, l2s.cel 5/6 catacombs). Cells absent from the
+  // override keep their layout special id.
+  const specialOverride = opts.specialOverride || null;
+  const effSpecial = (idx) => {
+    if (specialOverride) {
+      const v = (specialOverride instanceof Map) ? specialOverride.get(idx) : specialOverride[idx];
+      if (v !== undefined && v !== null) return v;
+    }
+    return special[idx];
+  };
+
   // Opaque background (matches renderMap filling every pixel, no black holes).
   const bg = layout.background || [0, 0, 0, 255];
   for (let i = 0; i < out.length; i += 4) {
@@ -197,7 +210,7 @@ export function renderScene(layout, tileAtlas, specialAtlas, opts = {}) {
 
       // dSpecial overlay (town trees; dungeon arches / doors), bottom-anchored at
       // the cell base like DrawDungeon's pSpecialCels pass.
-      const spId = special[idx];
+      const spId = effSpecial(idx);
       if (spId) {
         const spr = getSpecial(spId);
         if (spr) {
