@@ -1090,3 +1090,8 @@ SOL 碰撞网格 A* 寻路（`scene.path`）、L2/L3/L4 预设场景。`scene.bu
   [`docs/COMPLIANCE.md`](COMPLIANCE.md) §7。
 - **使用方视角**：README（中/英）新增「许可证 / License」章节，说明授权范围、义务与
   游戏资源的排除条款，避免读者误以为 MIT 覆盖游戏素材。
+- [x] **提交身份与署名的桥接（`.mailmap`）**：仓库根新增 `.mailmap`，把按机器区分的提交身份
+  `lighter_cd@desktop_pc.com` 映射到规范身份 `lighter_cd <lighter_cd@hotmail.com>`，使
+  `git log` / `git shortlog` 按 `LICENSE` 的署名统一显示，且不改写已提交历史；`README.md` /
+  `README_EN.md` 许可证章节与 `docs/COMPLIANCE.md` §7 均补充说明「版权与联系方式以 `LICENSE`
+  为准」，并提示 Gitee / GitHub 的网页归属仍取决于账号绑定邮箱。

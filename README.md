@@ -672,3 +672,7 @@ http://localhost:8000/level.html
 | `3rdparty/nlohmann/json.hpp` | MIT（Copyright (c) 2013-2022 Niels Lohmann） |
 
 > ⚠️ **MIT 只覆盖本项目的代码。** Diablo 1 / Hellfire 的游戏本体资源（MPQ、精灵、调色板、音频等）不在本许可范围内，其版权归原权利人所有；本项目不提供、不托管、不分发任何游戏资源，使用者须自备官方正版文件（见上文「⚠️ 关于游戏资源的重要声明」与 [`docs/COMPLIANCE.md`](docs/COMPLIANCE.md)）。
+
+> **关于提交邮箱**：git 提交记录中的 `*@desktop_pc.com` 是同一作者按机器区分的提交身份，
+> 版权与联系方式以 `LICENSE` 为准；仓库根 [`.mailmap`](.mailmap) 会把它们统一显示为
+> `lighter_cd <lighter_cd@hotmail.com>`（仅影响本地 `git log` / `git shortlog` 显示，不改写历史）。

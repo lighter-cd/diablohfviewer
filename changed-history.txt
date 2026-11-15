@@ -580,3 +580,8 @@
 ## 2026-11-16 03:02:02
 - 将许可证署名落实到持有人本人：LICENSE 版权行改为 `Copyright (c) 2026 lighter_cd <lighter_cd@hotmail.com>`，README / README_EN 许可证章节标注版权持有人，docs/COMPLIANCE.md §7 与 docs/PROJECT.md §11 同步该署名（无代码改动，无需重建）
 - 涉及: LICENSE, README.md, README_EN.md, docs/COMPLIANCE.md, docs/PROJECT.md, changed-history.txt
+
+
+## 2026-11-16 03:07:24
+- 新增 `.mailmap`（`lighter_cd <lighter_cd@hotmail.com>` 映射按机器区分的提交身份 `lighter_cd@desktop_pc.com`，`git log`/`git shortlog` 统一显示且不改写历史），并在 README / README_EN 许可证章节、docs/COMPLIANCE.md §7、docs/PROJECT.md §11 说明「提交邮箱为同一作者按机器区分，版权与联系方式以 LICENSE 为准」（纯文档/配置改动，无代码变更、无需重建）
+- 涉及: .mailmap, README.md, README_EN.md, docs/COMPLIANCE.md, docs/PROJECT.md, changed-history.txt

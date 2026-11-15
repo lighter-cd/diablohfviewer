@@ -1,0 +1,4 @@
+# libgit2-style mailmap: canonical identity -> aliases
+# 提交记录中的 *@desktop_pc.com 是同一作者按机器区分的提交身份，
+# 版权与联系方式以 LICENSE 为准（见 docs/COMPLIANCE.md §7）。
+lighter_cd <lighter_cd@hotmail.com> <lighter_cd@desktop_pc.com>

@@ -113,3 +113,9 @@
   升级/替换依赖时须同步其许可证文件。
 - **不暗示官方背书**：MIT 授权的是本项目代码的使用权，与 Blizzard Entertainment 的商标/版权
   许可无关；继续沿用 §3 的中性表述，不得把本项目描述为「官方授权」。
+
+**提交身份与署名（`.mailmap`）**：git 提交记录中的 `*@desktop_pc.com` 是同一作者按机器区分的
+提交身份，**版权与联系方式以 [`LICENSE`](../LICENSE) 为准**。仓库根 `.mailmap` 把该别名映射到
+规范身份 `lighter_cd <lighter_cd@hotmail.com>`，`git log` / `git shortlog` 统一按规范身份显示，
+而提交对象里的原始邮箱保持不变（历史不改写、可追溯）。该文件只影响本地 git 显示；Gitee / GitHub
+网页上的提交归属仍由账号绑定的邮箱决定，需自行把各机器邮箱加入账号。

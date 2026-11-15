@@ -52,6 +52,11 @@ Bundled dependencies keep their own licenses, both compatible with MIT:
 
 > ⚠️ **MIT covers this project's code only.** The Diablo 1 / Hellfire game assets (MPQs, sprites, palettes, audio, …) are *not* covered by this license and remain the property of their rights holders. This project does not provide, host, link to, or distribute any game assets; you must own your own legitimate copy (see the notice above and [`docs/COMPLIANCE.md`](docs/COMPLIANCE.md)).
 
+> **About commit emails**: `*@desktop_pc.com` addresses in the git history are the same author's
+> per-machine commit identities; copyright and contact details are as stated in `LICENSE`. The
+> repository's [`.mailmap`](.mailmap) folds them into `lighter_cd <lighter_cd@hotmail.com>` for local
+> `git log` / `git shortlog` display only — history is not rewritten.
+
 ## Front-end i18n
 
 The viewer UI is bilingual: use the **Language / 语言** dropdown in the top-right of `index.html`
