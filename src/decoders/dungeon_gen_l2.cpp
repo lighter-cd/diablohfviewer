@@ -1392,4 +1392,24 @@ DungeonTileGrid generateCatacombs(const CatacombsOptions& options)
 	return grid;
 }
 
+void applyVanillaCatacombsQuests(CatacombsOptions& options)
+{
+    options.bloodQuest = false;
+    options.schambQuest = false;
+    options.blindQuest = false;
+    switch (options.level) {
+    case 5:
+        options.bloodQuest = true;
+        break;
+    case 7:
+        options.schambQuest = true;
+        break;
+    case 8:
+        options.blindQuest = true;
+        break;
+    default:
+        break;
+    }
+}
+
 } // namespace dhfc

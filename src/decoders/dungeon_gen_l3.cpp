@@ -1384,4 +1384,14 @@ DungeonTileGrid generateCaves(const CavesOptions& opts)
     return grid;
 }
 
+void applyVanillaCavesQuests(CavesOptions& options)
+{
+    options.anvilQuest = false;
+    options.anvilQuestLevel = 0;
+    if (options.level == 10) {
+        options.anvilQuest = true;
+        options.anvilQuestLevel = 10;
+    }
+}
+
 } // namespace dhfc

@@ -416,6 +416,10 @@
 - 于 README.md 开头新增中文项目介绍：称赞 Diablo: Hellfire 资料片，明确说明本项目「是什么 / 不是什么」，并郑重声明使用者须自备官方正版 Hellfire 文件、本项目不提供任何游戏资源。
 - 涉及: README.md
 
+## 2026-11-15 16:33:47
+- 扩展 `level.generate` 支持全关卡 1–16 分派：按关卡区间（Cathedral 1–4 / Catacombs 5–8 / Caves 9–12 / Hell 13–16）分派到四套生成器，保留各生成器原版 RNG 调用顺序；从 MPQ 按需加载各类型任务 set-piece（blood/bonestr/blind、anvil、warlord/vile1/diab1..4a/b，缺失则优雅降级），输出 tileset/palette 与类型感知的 floor/dirt/楼梯计数。补上此前缺失的 `applyVanillaCatacombsQuests`/`applyVanillaCavesQuests` 定义（按关卡硬编码：L5=blood、L7=schamb、L8=blind；L10=anvil）。集成测试 `level.generate` 扩展覆盖 2/5/9/13/16 四类型生成、确定性与结构不变量；三套 C++ 测试 + 前端 node/i18n 回归全部 ALL PASS，mcp-server 重建并现场 WS 校验 L9→Caves、L13/L16→Hell 分派正确。
+- 涉及: src/tools/level_tools.cpp, src/decoders/dungeon_gen_l2.cpp, src/decoders/dungeon_gen_l3.cpp, tests/integration_tests.cpp, docs/PROJECT.md, changed-history.txt
+
 ## 2026-11-12 19:04:42
 - 新增英文版项目介绍 README_EN.md（称赞 Hellfire、项目初衷、是什么/不是什么、正版资源声明），并在中文 README 顶部加英文版入口链接。
 - 涉及: README_EN.md, README.md

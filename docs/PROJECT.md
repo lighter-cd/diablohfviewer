@@ -847,8 +847,13 @@ DiabloHFConverter/
       `dungeon_gen_l1.cpp` 逐函数移植 `drlg_l1.cpp` Cathedral 分支（LCG/GenerateRnd/FlipCoin、
       FirstRoom/GenerateRoom/MakeDmt/FillChambers/FixTilesPatterns/AddWall/PlaceStairs/
       Substitution/ApplyShadowsPatterns/LAMPS/FillFloor，含原版重试循环与 width/height 交换 bug）。
-      MCP 工具 `level.generate` 按 seed 生成 L1–L4，支持 `quests: vanilla|none|all` 与
-      Butcher/Skeleton King/Ogden's Sign set-piece，写出 ExportDun 兼容 `.dun`。
+      MCP 工具 `level.generate` 按 seed 生成 **1–16**，按关卡区间分派到四套生成器
+      （Cathedral 1–4 / Catacombs 5–8 / Caves 9–12 / Hell 13–16，各自保留原版 RNG 调用
+      顺序），支持 `quests: vanilla|none|all` 与各类型任务 set-piece（Cathedral 的
+      Butcher/Skeleton King/Ogden's Sign、Catacombs 的 blood/bonestr/blind、Caves 的
+      anvil、Hell 的 warlord/vile1/diab*），写出 ExportDun 兼容 `.dun` 并回传对应
+      tileset/palette（l1..l4data、palette_variant 1..4）与 40×40 兆瓦片 hex 网格。
+      集成测试已覆盖四类型各代表性关卡（2/5/9/13/16）的生成、确定性、结构不变量。
       已与 DevilutionX `test/fixtures/{diablo,hellfire}` 的 **14 个 Cathedral fixture 全格
       0 差异**（单元测试 oracle）。
 - [x] **其余原生动态生成器移植（2026-11-15）**：按 `docs/MAP_GENERATION.md` §6.2 完成

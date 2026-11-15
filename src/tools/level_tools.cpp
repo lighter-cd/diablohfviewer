@@ -9,8 +9,10 @@
 #include "tools/level_tools.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -392,67 +394,143 @@ mcp::ToolResult toolLevelGenerate(const mcp::json& params)
     const auto archives = archiveStack(params);
 
     const int level = reqInt(params, "level");
-    if (level < 1 || level > 4)
-        throw std::invalid_argument("`level` must be 1..4 (Cathedral)");
+    if (level < 1 || level > 16)
+        throw std::invalid_argument("`level` must be 1..16 (Cathedral 1-4, Catacombs 5-8, Caves 9-12, Hell 13-16)");
 
     auto seedIt = params.find("seed");
     if (seedIt == params.end() || !seedIt->is_number_integer())
         throw std::invalid_argument("missing unsigned integer param: seed");
     const uint32_t seed = static_cast<uint32_t>(seedIt->get<uint64_t>());
 
-    const bool originalCathedral = params.value("original_cathedral", true);
     const std::string questMode = params.value("quests", std::string("vanilla"));
     const std::string outDir = params.value("out", std::string("out/gen"));
 
-    // In-game `LoadRndLvlPal` picks one of l1_1..l1_4 randomly when the level
+    // Map level band -> dungeon type, tileset and per-type megatile ids.
+    dhfc::DungeonType dtype;
+    std::string tileset, palPrefix;
+    int floorId = 0, dirtId = 0, microLen = 10, blocks = 10;
+    std::vector<int> stairsUpIds, stairsDownIds;
+    if (level <= 4) {
+        dtype = dhfc::DungeonType::Cathedral; tileset = "levels/l1data"; palPrefix = "l1";
+        floorId = 13; dirtId = 22;
+        stairsUpIds = { 64 };
+        stairsDownIds = { 57, 58, 59, 60, 61, 62 };
+    } else if (level <= 8) {
+        dtype = dhfc::DungeonType::Catacombs; tileset = "levels/l2data"; palPrefix = "l2";
+        floorId = 3; dirtId = 12;
+        stairsUpIds = { 72, 76, 77 };
+        stairsDownIds = { 48, 50, 71, 78, 158, 159, 160 };
+    } else if (level <= 12) {
+        dtype = dhfc::DungeonType::Caves; tileset = "levels/l3data"; palPrefix = "l3";
+        floorId = 7; dirtId = 8;
+        stairsUpIds = { 48, 49, 50, 51 };
+        stairsDownIds = { 46, 47, 125 };
+    } else {
+        dtype = dhfc::DungeonType::Hell; tileset = "levels/l4data"; palPrefix = "l4";
+        floorId = 6; dirtId = 30; microLen = 12; blocks = 12;
+        stairsUpIds = { 31, 32, 33, 34, 35, 36, 37, 38 };
+        stairsDownIds = { 39, 40, 41, 42, 43, 44, 45, 46, 129, 130, 131, 132, 133, 134, 135, 136 };
+    }
+
+    // In-game `LoadRndLvlPal` picks one of l<d>_1..l<d>_4 randomly when the level
     // is loaded; the palette is not part of the .dun, so let the caller choose.
     const int paletteVariant = params.value("palette_variant", 2);
     if (paletteVariant < 1 || paletteVariant > 4)
-        throw std::invalid_argument("`palette_variant` must be 1..4 (levels/l1data/l1_<n>.pal)");
+        throw std::invalid_argument("`palette_variant` must be 1..4 (levels/<tileset>/<prefix>_<n>.pal)");
 
-    dhfc::CathedralOptions options;
-    options.level = level;
-    options.seed = seed;
-    options.originalCathedral = originalCathedral;
-
-    if (questMode == "vanilla") {
-        dhfc::applyVanillaCathedralQuests(options);
-    } else if (questMode == "none") {
-        options.butcherQuest = options.poisonWaterQuest = false;
-        options.skeletonKingQuest = options.bannerQuest = false;
-    } else if (questMode == "all") {
-        options.butcherQuest = options.poisonWaterQuest = true;
-        options.skeletonKingQuest = options.bannerQuest = true;
-    } else {
-        throw std::invalid_argument("`quests` must be one of: vanilla, none, all");
-    }
-
-    // Load set pieces on demand from the same MPQ stack.
-    const auto loadSetPiece = [&archives](const char* name) {
+    // Set-piece loader: graceful on missing file (generator tolerates null).
+    const auto loadOpt = [&archives](const std::string& rel) -> std::optional<dhfc::DunTileLayer> {
         std::vector<uint8_t> buf;
-        if (!extractAny(archives, name, buf))
-            throw std::runtime_error(std::string("extract failed (name not found?): ") + name);
+        if (!extractAny(archives, rel, buf))
+            return std::nullopt;
         dhfc::DunTileLayer layer = dhfc::parseDunTileLayer(buf);
         if (!layer.valid())
-            throw std::runtime_error(std::string("invalid DUN tile layer: ") + name);
+            return std::nullopt;
         return layer;
     };
 
-    dhfc::DunTileLayer butcherLayer, skeletonKingLayer, bannerLayer;
-    if (options.butcherQuest) {
-        butcherLayer = loadSetPiece("levels/l1data/rnd6.dun");
-        options.butcherSetPiece = &butcherLayer;
-    }
-    if (options.skeletonKingQuest) {
-        skeletonKingLayer = loadSetPiece("levels/l1data/skngdo.dun");
-        options.skeletonKingSetPiece = &skeletonKingLayer;
-    }
-    if (options.bannerQuest) {
-        bannerLayer = loadSetPiece("levels/l1data/banner2.dun");
-        options.bannerSetPiece = &bannerLayer;
-    }
+    dhfc::DungeonTileGrid grid;
+    const std::string ofs = tileset + "/";
 
-    const dhfc::DungeonTileGrid grid = dhfc::generateCathedral(options);
+    switch (dtype) {
+    case dhfc::DungeonType::Cathedral: {
+        dhfc::CathedralOptions options;
+        options.level = level; options.seed = seed;
+        options.originalCathedral = params.value("original_cathedral", true);
+        if (questMode == "vanilla")      dhfc::applyVanillaCathedralQuests(options);
+        else if (questMode == "none") { options.butcherQuest = options.poisonWaterQuest = false;
+                                        options.skeletonKingQuest = options.bannerQuest = false; }
+        else if (questMode == "all")  { options.butcherQuest = options.poisonWaterQuest = true;
+                                        options.skeletonKingQuest = options.bannerQuest = true; }
+        else throw std::invalid_argument("`quests` must be one of: vanilla, none, all");
+        auto butcher = options.butcherQuest ? loadOpt(ofs + "rnd6.dun") : std::nullopt;
+        auto skel = options.skeletonKingQuest ? loadOpt(ofs + "skngdo.dun") : std::nullopt;
+        auto banner = options.bannerQuest ? loadOpt(ofs + "banner2.dun") : std::nullopt;
+        options.butcherSetPiece = butcher ? &*butcher : nullptr;
+        options.skeletonKingSetPiece = skel ? &*skel : nullptr;
+        options.bannerSetPiece = banner ? &*banner : nullptr;
+        grid = dhfc::generateCathedral(options);
+        break;
+    }
+    case dhfc::DungeonType::Catacombs: {
+        dhfc::CatacombsOptions options;
+        options.level = level; options.seed = seed;
+        if (questMode == "vanilla")      dhfc::applyVanillaCatacombsQuests(options);
+        else if (questMode == "none") { options.bloodQuest = options.schambQuest = options.blindQuest = false; }
+        else if (questMode == "all")  { options.bloodQuest = options.schambQuest = options.blindQuest = true; }
+        else throw std::invalid_argument("`quests` must be one of: vanilla, none, all");
+        auto blind = options.blindQuest ? loadOpt(ofs + "blind1.dun") : std::nullopt;
+        auto blood1 = options.bloodQuest ? loadOpt(ofs + "blood1.dun") : std::nullopt;
+        auto blood2 = options.bloodQuest ? loadOpt(ofs + "blood2.dun") : std::nullopt;
+        auto bonestr1 = options.schambQuest ? loadOpt(ofs + "bonestr1.dun") : std::nullopt;
+        auto bonestr2 = options.schambQuest ? loadOpt(ofs + "bonestr2.dun") : std::nullopt;
+        options.blind1 = blind ? &*blind : nullptr;
+        options.blood1 = blood1 ? &*blood1 : nullptr;
+        options.blood2 = blood2 ? &*blood2 : nullptr;
+        options.bonestr1 = bonestr1 ? &*bonestr1 : nullptr;
+        options.bonestr2 = bonestr2 ? &*bonestr2 : nullptr;
+        grid = dhfc::generateCatacombs(options);
+        break;
+    }
+    case dhfc::DungeonType::Caves: {
+        dhfc::CavesOptions options;
+        options.level = level; options.seed = seed;
+        if (questMode == "vanilla")      dhfc::applyVanillaCavesQuests(options);
+        else if (questMode == "none") { options.anvilQuest = false; }
+        else if (questMode == "all")  { options.anvilQuest = true; options.anvilQuestLevel = 10; }
+        else throw std::invalid_argument("`quests` must be one of: vanilla, none, all");
+        auto anvil = options.anvilQuest ? loadOpt(ofs + "anvil.dun") : std::nullopt;
+        options.anvil = anvil ? &*anvil : nullptr;
+        grid = dhfc::generateCaves(options);
+        break;
+    }
+    case dhfc::DungeonType::Hell: {
+        dhfc::HellOptions options;
+        options.level = level; options.seed = seed;
+        if (questMode == "vanilla")      dhfc::applyVanillaHellQuests(options);
+        else if (questMode == "none") { options.warlordQuest = options.betrayerQuest = options.diabloQuest = false; }
+        else if (questMode == "all")  { options.warlordQuest = true; options.betrayerQuest = true;
+                                        options.diabloQuest = (level == 16); }
+        else throw std::invalid_argument("`quests` must be one of: vanilla, none, all");
+        auto warlord = options.warlordQuest ? loadOpt(ofs + "warlord.dun") : std::nullopt;
+        auto warlord2 = options.warlordQuest ? loadOpt(ofs + "warlord2.dun") : std::nullopt;
+        auto vile1 = options.warlordQuest ? loadOpt(ofs + "vile1.dun") : std::nullopt;
+        options.warlord = warlord ? &*warlord : nullptr;
+        options.warlord2 = warlord2 ? &*warlord2 : nullptr;
+        options.vile1 = vile1 ? &*vile1 : nullptr;
+        std::array<std::optional<dhfc::DunTileLayer>, 7> diab;
+        if (options.diabloQuest) {
+            static const char* diabNames[7] = { "diab1.dun", "diab2a.dun", "diab2b.dun",
+                                                "diab3a.dun", "diab3b.dun", "diab4a.dun", "diab4b.dun" };
+            for (int i = 0; i < 7; ++i) {
+                diab[i] = loadOpt(ofs + diabNames[i]);
+                options.diab[i] = diab[i] ? &*diab[i] : nullptr;
+            }
+        }
+        grid = dhfc::generateHell(options);
+        break;
+    }
+    }
 
     std::filesystem::create_directories(outDir);
     const std::string dunPath = (std::filesystem::path(outDir)
@@ -463,35 +541,41 @@ mcp::ToolResult toolLevelGenerate(const mcp::json& params)
     for (int y = 0; y < grid.Height; ++y)
         rows.push_back(hexRow(grid, y));
 
-    size_t floorCount = 0, stairsUp = 0, stairsDown = 0, dirtCount = 0;
+    size_t floorCount = 0, dirtCount = 0, nonEmpty = 0, stairsUp = 0, stairsDown = 0;
     for (uint8_t v : grid.tiles) {
-        if (v == 13)
-            ++floorCount;
-        else if (v == 22)
-            ++dirtCount;
-        if (v == 64)
-            ++stairsUp;
-        if (v == 61 || v == 62 || v == 57 || v == 58 || v == 59 || v == 60)
-            ++stairsDown;
+        if (v == 0) continue;
+        ++nonEmpty;
+        if (v == static_cast<uint8_t>(floorId)) ++floorCount;
+        else if (v == static_cast<uint8_t>(dirtId)) ++dirtCount;
+        if (std::find(stairsUpIds.begin(), stairsUpIds.end(), static_cast<int>(v)) != stairsUpIds.end()) ++stairsUp;
+        if (std::find(stairsDownIds.begin(), stairsDownIds.end(), static_cast<int>(v)) != stairsDownIds.end()) ++stairsDown;
     }
+
+    const char* dtypeName = (dtype == dhfc::DungeonType::Cathedral) ? "Cathedral"
+                          : (dtype == dhfc::DungeonType::Catacombs) ? "Catacombs"
+                          : (dtype == dhfc::DungeonType::Caves) ? "Caves" : "Hell";
 
     mcp::ToolResult r;
     r.value = mcp::json{
         {"level", level},
         {"seed", seed},
         {"quests", questMode},
-        {"original_cathedral", originalCathedral},
-        {"tileset", "levels/l1data"},
-        {"palette", "levels/l1data/l1_" + std::to_string(paletteVariant) + ".pal"},
+        {"dungeon_type", dtypeName},
+        {"original_cathedral", dtype == dhfc::DungeonType::Cathedral ? params.value("original_cathedral", true) : false},
+        {"tileset", tileset},
+        {"palette", tileset + "/" + palPrefix + "_" + std::to_string(paletteVariant) + ".pal"},
+        {"micro_len", microLen},
+        {"blocks", blocks},
         {"width", grid.Width},
         {"height", grid.Height},
         {"dun_path", dunPath},
         {"floor_count", floorCount},
         {"dirt_count", dirtCount},
+        {"non_empty_count", nonEmpty},
         {"stairs_up_count", stairsUp},
         {"stairs_down_count", stairsDown},
         {"tiles", rows},
-        {"note", "Render with map.build: cel/til/min/sol from `tileset`, `palette`, dun_path=<dun_path>, micro_len=10, blocks=10."},
+        {"note", "Render with map.build: cel/til/min/sol from `tileset`, `palette`, dun_path=<dun_path>, micro_len/blocks per `dungeon_type` (L4=12, others=10)."},
     };
     return r;
 }
@@ -529,10 +613,12 @@ void registerLevelTools(ToolRegistry& reg)
 
     reg.registerTool(ToolDef{
         "level.generate",
-        "Natively generate a Diablo 1/Hellfire Cathedral (L1-L4) level from a "
-        "seed, using a faithful port of DevilutionX's drlg_l1 generator (same "
-        "Borland LCG, same RNG call order). Optionally places quest set pieces "
-        "(Butcher / Skeleton King / Ogden's Sign) extracted from the MPQ. Writes "
+        "Natively generate a Diablo 1/Hellfire dungeon level (1..16) from a seed, "
+        "using faithful ports of DevilutionX's generators: Cathedral (L1-L4, "
+        "drlg_l1), Catacombs (L5-L8, drlg_l2), Caves (L9-L12, drlg_l3), Hell "
+        "(L13-L16, drlg_l4) — same Borland LCG, same RNG call order. Optionally "
+        "places quest set pieces extracted from the MPQ (Butcher/Skeleton King/"
+        "Ogden's Sign, blood/bonestr/blind, anvil, warlord/vile1/diab*). Writes "
         "an ExportDun-compatible <level>-<seed>.dun that map.build can render via "
         "`dun_path`, and returns the 40x40 megatile grid as hex rows.",
         json{{"type", "object"},
@@ -540,14 +626,14 @@ void registerLevelTools(ToolRegistry& reg)
                  {"archive", json{{"type", "string"}, {"description", "primary MPQ path"}}},
                  {"archives", json{{"type", "array"}, {"items", json{{"type", "string"}}},
                                     {"description", "additional MPQ search paths"}}},
-                 {"level", json{{"type", "integer"}, {"description", "Cathedral level 1..4"}}},
+                 {"level", json{{"type", "integer"}, {"description", "game level 1..16 (1-4 Cathedral, 5-8 Catacombs, 9-12 Caves, 13-16 Hell)"}}},
                  {"seed", json{{"type", "integer"}, {"description", "DungeonSeeds[level] (uint32)"}}},
                  {"original_cathedral", json{{"type", "boolean"},
-                                              {"description", "true = Diablo original Cathedral (default), false = Hellfire"}}},
+                                              {"description", "true = Diablo original Cathedral (default, L1-L4 only), false = Hellfire"}}},
                  {"quests", json{{"type", "string"},
                                   {"description", "vanilla (level defaults) | none | all"}}},
                  {"palette_variant", json{{"type", "integer"},
-                                           {"description", "1..4 -> levels/l1data/l1_<n>.pal (default 2); the engine picks one randomly per level load"}}},
+                                           {"description", "1..4 -> levels/l<d>data/l<d>_<n>.pal (default 2); the engine picks one randomly per level load"}}},
                  {"out", json{{"type", "string"}, {"description", "output dir (default out/gen)"}}},
              }},
              {"required", json::array({"archive", "level", "seed"})}},

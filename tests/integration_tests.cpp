@@ -1793,6 +1793,23 @@ static void testLevelGenerate(const std::string& mpq) {
     CHECK(l1.value("level", 0) == 1, "level.generate level 1 ok");
     CHECK(l1.value("floor_count", 0) > 0, "level.generate level 1 has floor tiles");
 
+    // Exercise the other three dungeon types (Catacombs/Caves/Hell) — assets are
+    // present in the same MPQ. Each must produce a full 40x40 grid with an up
+    // stair, a reported dungeon_type, and be deterministic.
+    for (int lvl : { 5, 9, 13, 16 }) {
+        std::string tag = "level.generate (level " + std::to_string(lvl) + ")";
+        json g = call("level.generate",
+            json{{"archive", base}, {"level", lvl}, {"seed", 1383137027 + lvl}, {"out", outDir}});
+        CHECK(g.value("width", 0) == 40, tag + " width 40");
+        CHECK(g.value("height", 0) == 40, tag + " height 40");
+        CHECK(g.value("stairs_up_count", 0) > 0, tag + " placed stairs up");
+        CHECK(g.value("dungeon_type", std::string()) != "", tag + " reports dungeon_type");
+        CHECK(g.contains("tiles") && g["tiles"].size() == 40, tag + " returns 40 hex rows");
+        json g2 = call("level.generate",
+            json{{"archive", base}, {"level", lvl}, {"seed", 1383137027 + lvl}, {"out", outDir}});
+        CHECK(g["tiles"] == g2["tiles"], tag + " deterministic for same seed");
+    }
+
     printf("level.generate (%s): %s\n", base.c_str(), allOk ? "PASS" : "FAIL");
 }
 
