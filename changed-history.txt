@@ -600,3 +600,8 @@
 ## 2026-11-16 03:59:26
 - 发布 v0.1.0：脚本 `scripts/release.py --version v0.1.0` 建 annotated tag 并推送 origin/gitee，GitHub（release id 446325764）与 Gitee（id 1313451）各创建发行版并上传 `DiabloHFViewer-v0.1.0-win64.zip`(2,012,036 B) 与 `.sha256`；两端下载校验 sha256 一致（7aa3411b…cde9）；docs/PROJECT.md §12 记录里程碑
 - 涉及: docs/PROJECT.md, changed-history.txt
+
+
+## 2026-11-16 04:05:43
+- 调整推送策略为「默认只推 Gitee，GitHub 需显式声明」：远端改名 `origin`=Gitee（主，`git push` 默认目标）、`github`=GitHub（镜像，`git push github master` 才推），本地 master 的 upstream 改为 origin/master；`scripts/release.py` 改为遍历 `git remote` 按 URL 域名（gitee.com / github.com）定位平台，不再依赖远端名（tag 推送/Release 创建仍两端同时更新）；AGENTS.md 增补推送策略条款，README 新增「远程仓库与推送策略」章节并同步 README_EN / docs/RELEASE_PLAN.md / docs/PROJECT.md
+- 涉及: scripts/release.py, AGENTS.md, README.md, README_EN.md, docs/RELEASE_PLAN.md, docs/PROJECT.md, changed-history.txt

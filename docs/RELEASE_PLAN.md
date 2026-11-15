@@ -109,11 +109,11 @@
 ## P4 发布与版本（引流前置，可选进阶）
 
 - **P4-1** **已实现（2026-11-16）**：`scripts/release.py --version v0.1.0`
-  自动打 annotated tag（`vMAJOR.MINOR.PATCH`）、把 tag 推到 `origin`（GitHub）与
-  `gitee` 两个远端，并分别调用 GitHub REST（`/releases` + `uploads.github.com/.../assets`）
-  与 Gitee v5 API（`/releases` + `/releases/{id}/attach_files`）创建发行版、上传
-  `zip` 与 `.sha256`。release notes 默认取「上一 tag → HEAD」提交列表，末尾自动附
-  「不提供游戏资源」声明；同名资产重跑会先删后传，幂等。
+  自动打 annotated tag（`vMAJOR.MINOR.PATCH`）、把 tag 推到 Gitee 与 GitHub 两个远端
+  （按 URL 域名识别，不依赖远端名），并分别调用 GitHub REST（`/releases` +
+  `uploads.github.com/.../assets`）与 Gitee v5 API（`/releases` + `/releases/{id}/attach_files`）
+  创建发行版、上传 `zip` 与 `.sha256`。release notes 默认取「上一 tag → HEAD」提交列表，
+  末尾自动附「不提供游戏资源」声明；同名资产重跑会先删后传，幂等。
   依赖环境变量 `GITHUB_TOKEN`（repo / Contents:write）与 `GITEE_TOKEN`（projects），
   支持 `--dry-run` / `--skip-github` / `--skip-gitee` / `--no-package`。
   测试：`tests/release_pack_test.py`（dry-run 打包、结构/校验和/`--no-dict`/禁 MPQ 断言）。
@@ -148,7 +148,8 @@ python scripts/release.py --version v0.1.0                # tag + 双平台 rele
 
 实现要点：
 
-1. **远端解析**：`git remote get-url origin|gitee` → `owner/repo`，不硬编码仓库名；
+1. **远端解析**：遍历 `git remote` 取 URL，按域名（`github.com` / `gitee.com`）定位两端并解析
+   `owner/repo`；**不依赖远端名**，`origin` 指 Gitee 还是 GitHub 都不影响；
 2. **DLL 依赖**：自写 PE 导入表解析（`pe_imports`），只把真正 import 的 MinGW 运行时
    打进包（当前为 `libwinpthread-1.dll`），不靠字符串扫描（避免把 libgcc 里的提示串误判）；
 3. **合规**：打包前检查文件表，出现 `*.mpq` 立即报错；notes 末尾统一附免责声明；

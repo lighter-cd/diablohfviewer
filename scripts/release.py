@@ -6,8 +6,11 @@ Builds a Windows release zip (exe + MinGW runtime + web frontend + optional
 filename dictionary), writes a SHA-256 checksum, optionally tags the commit and
 publishes the archive as a binary asset on BOTH remotes:
 
-  * GitHub  (origin)  -> Releases, via the REST API
-  * Gitee   (gitee)   -> 发行版 (Releases), via the v5 API
+  * GitHub -> Releases, via the REST API
+  * Gitee  -> 发行版 (Releases), via the v5 API
+
+Remotes are located by URL host (github.com / gitee.com), never by name, so the
+default-push remote (`origin` = Gitee here) cannot be confused with the mirror.
 
 No game assets are ever packaged: the script refuses to include *.mpq archives
 and only picks the files listed in ``build_file_list()``.
@@ -155,6 +158,20 @@ def remote_repo(name: str) -> tuple[str, str, str] | None:
     if proc.returncode != 0:
         return None
     return parse_repo(proc.stdout.strip())
+
+
+def remote_for_host(host: str) -> tuple[str, tuple[str, str, str]] | None:
+    """Find the git remote whose host ends with ``host`` (e.g. github.com).
+
+    Remote *names* are irrelevant on purpose: ``origin`` is Gitee for this repo
+    while GitHub is called ``github``, and a fresh clone could name them
+    differently. The release therefore keys off the URL host.
+    """
+    for name in run(["git", "remote"]).split():
+        rr = remote_repo(name)
+        if rr and rr[0].lower().endswith(host):
+            return name, rr
+    return None
 
 
 def http_json(url: str, token: str | None, method: str = "GET", payload=None,
@@ -347,12 +364,18 @@ def ensure_tag(version: str, push: bool, create: bool = True) -> None:
     if not push:
         log("[git] --dry-run / --no-push: tags not pushed")
         return
-    for remote in ("origin", "gitee"):
-        if remote_repo(remote) is None:
-            log("[git] remote %r missing, skipped" % remote)
+    pushed = 0
+    for host in ("github.com", "gitee.com"):
+        found = remote_for_host(host)
+        if found is None:
+            log("[git] no remote for %s, skipped" % host)
             continue
-        git("push", remote, "refs/tags/%s" % version)
-        log("[git] pushed tag %s -> %s" % (version, remote))
+        name, _ = found
+        git("push", name, "refs/tags/%s" % version)
+        log("[git] pushed tag %s -> %s (%s)" % (version, name, host))
+        pushed += 1
+    if not pushed:
+        log("[git] warning: no GitHub/Gitee remote found; tag only exists locally")
 
 
 # --------------------------------------------------------------------------- #
@@ -381,14 +404,14 @@ def default_notes(version: str) -> str:
 # GitHub
 # --------------------------------------------------------------------------- #
 def github_publish(version: str, notes: str, assets: list[Path], token: str, dry: bool) -> str | None:
-    remote = remote_repo("origin")
-    if remote is None:
-        log("[github] remote 'origin' missing, skipped")
+    found = remote_for_host("github.com")
+    if found is None:
+        log("[github] no github.com remote configured, skipped")
         return None
-    _, owner, repo = remote
+    name, (_, owner, repo) = found
     api = "https://api.github.com/repos/%s/%s" % (owner, repo)
     if dry:
-        log("[github] would publish release %s with %s" % (version, [a.name for a in assets]))
+        log("[github] would publish release %s via remote %r with %s" % (version, name, [a.name for a in assets]))
         return None
 
     status, body = http_json("%s/releases/tags/%s" % (api, version), token)
@@ -476,14 +499,14 @@ def gitee_multipart(url: str, field: str, path: Path, token: str) -> tuple[int, 
 
 
 def gitee_publish(version: str, notes: str, assets: list[Path], token: str, dry: bool) -> str | None:
-    remote = remote_repo("gitee")
-    if remote is None:
-        log("[gitee] remote 'gitee' missing, skipped")
+    found = remote_for_host("gitee.com")
+    if found is None:
+        log("[gitee] no gitee.com remote configured, skipped")
         return None
-    _, owner, repo = remote
+    name, (_, owner, repo) = found
     api = "https://gitee.com/api/v5/repos/%s/%s" % (owner, repo)
     if dry:
-        log("[gitee] would publish release %s with %s" % (version, [a.name for a in assets]))
+        log("[gitee] would publish release %s via remote %r with %s" % (version, name, [a.name for a in assets]))
         return None
 
     status, rel = http_json(

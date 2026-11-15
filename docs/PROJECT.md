@@ -1101,9 +1101,9 @@ SOL 碰撞网格 A* 寻路（`scene.path`）、L2/L3/L4 预设场景。`scene.bu
 ## 12. 发布流程（GitHub + Gitee，2026-11-16，已完成）
 
 - [x] **双平台 Release 脚本**：新增 `scripts/release.py`（纯 Python 标准库），一条命令完成
-  「打包 → 打 annotated tag → 推送 tag 到 `origin`(GitHub) 与 `gitee` → 两边创建 Release →
-  上传 `zip` + `.sha256`」。详见 [`docs/RELEASE_PLAN.md`](RELEASE_PLAN.md) §发布脚本实现
-  与 README「发布 Release」章节。
+  「打包 → 打 annotated tag → 推送 tag 到 Gitee/GitHub → 两边创建 Release →
+  上传 `zip` + `.sha256`」（远端按 URL 域名识别，不依赖远端名）。详见
+  [`docs/RELEASE_PLAN.md`](RELEASE_PLAN.md) §发布脚本实现 与 README「发布 Release」章节。
 - **打包内容**：`mcp-server.exe` + `libwinpthread-1.dll`（按 PE 导入表自动识别，实际只有这一个
   非系统 DLL；其余为 KERNEL32/USER32/WS2_32/WININET/UCRT）+ `web/` +
   `mpq-info/dict/recovered.json`（可 `--no-dict`）+ `start.bat`（`--ws 18765` + 自动开浏览器）

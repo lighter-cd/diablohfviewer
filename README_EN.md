@@ -61,7 +61,7 @@ Bundled dependencies keep their own licenses, both compatible with MIT:
 
 Versioning is `vMAJOR.MINOR.PATCH` (e.g. `v0.1.0`). `scripts/release.py` (Python stdlib only,
 no `gh` CLI needed) builds a portable zip, tags the commit and publishes the archive as a binary
-asset on **both** remotes (`origin` = GitHub, `gitee` = Gitee).
+asset on **both** remotes — found by URL host (`gitee.com` / `github.com`), not by remote name.
 
 ```bash
 python scripts/release.py --version v0.1.0 --dry-run   # package + checksum, no network
@@ -73,6 +73,10 @@ Artifacts land in `dist/` (`DiabloHFViewer-<ver>-win64.zip` + `.sha256`). The zi
 `mcp-server.exe`, the MinGW `libwinpthread-1.dll`, `web/`, optional
 `mpq-info/dict/recovered.json`, `start.bat`, `LICENSE`, `README.md` and `VERSION.txt` — and the
 script refuses to package any `*.mpq`. Test: `python tests/release_pack_test.py`.
+
+> Day-to-day pushes go to Gitee only (`git push` → remote `origin`). GitHub is a mirror named
+> `github` and is updated only on explicit request (`git push github master`); a release is an
+> explicit action, so the script updates both platforms' tags and Releases.
 
 ## Front-end i18n
 

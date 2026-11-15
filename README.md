@@ -652,6 +652,31 @@ http://localhost:8000/level.html
   测试脚本 `tests/unit_tests.cpp`、`tests/integration_tests.cpp`；管线与已踩坑详见
   `docs/ARCHITECTURE.md` §9.2/§9.3、§10.5。
 
+## 远程仓库与推送策略
+
+本仓库有两个远端，**默认只推 Gitee；推 GitHub 必须显式声明**：
+
+| 远端名 | 平台 | 使用方式 |
+|--------|------|----------|
+| `origin` | Gitee（主） | 日常提交：`git commit` 后直接 `git push` |
+| `github` | GitHub（镜像） | 仅当明确要求同步时：`git push github master` |
+
+```bash
+git push                    # → origin = Gitee（默认，无需任何额外参数）
+git push github master      # → GitHub（显式声明才推）
+git push --dry-run          # 先看这次会推到哪
+```
+
+约定与原因：
+
+- 分支 `master` 的 upstream 指向 `origin/master`（Gitee），所以 `git push` 永远不会碰 GitHub；
+- 没有配置 `pushurl` 多推或 `remote.pushDefault`，避免一次推送意外触发双平台（两平台的
+  Release 会被各自触发，日常提交没必要）；
+- **版本发布是显式操作**：`scripts/release.py` 按 URL 域名（`gitee.com` / `github.com`）识别远端，
+  一次同时更新两端的 tag 与 Release，不受本策略影响；
+- 换机器或重新克隆时，把主远端命名为 `origin`（Gitee）、镜像命名为 `github` 即可；
+  脚本只认域名，名字变了也能用（可用 `git remote -v` 核对）。
+
 ## 发布 Release（GitHub + Gitee）
 
 版本号用 `vMAJOR.MINOR.PATCH`（如 `v0.1.0`）。打包 + 打 tag + 在两个远端各建一个
@@ -696,14 +721,15 @@ zip 内容（**绝不含任何游戏资源**）：
 
 要点：
 
-- 脚本从 `git remote get-url` 解析仓库（固定远端名：`origin` = GitHub，`gitee` = Gitee），
-  改仓库名或迁到 fork 都不用改代码；
+- 脚本按远端 **URL 域名**识别平台（`github.com` → GitHub，`gitee.com` → Gitee），
+  远端名叫什么无所谓（本仓库：`origin` = Gitee、`github` = GitHub），改仓库名或迁到 fork 都不用改代码；
 - 打包前扫描文件表，出现 `*.mpq` 直接报错退出；release notes 末尾自动附「不提供游戏资源」声明；
 - notes 默认取「上一个 tag → HEAD」的提交列表，可用 `--notes-file` 覆盖；
 - 同版本重跑是安全的：GitHub/Gitee 上已有的 release 会被复用，同名资产会先删后传；
 - 平台限制：GitHub 单资产 ≤ 2 GB、Gitee 发行版附件 ≤ 100 MB（本包约 2 MB）；
 - 不想用脚本时也可以网页手动操作：`git tag -a v0.1.0 -m ...` + `git push origin --tags`
-  + 两个平台的 Releases 页面「新建发行版 / Draft a new release」，上传 `dist/` 里的 zip。
+  + `git push github --tags`（两个平台各推一次），再在 Releases 页面「新建发行版 /
+  Draft a new release」上传 `dist/` 里的 zip。
 
 **测试**：`python tests/release_pack_test.py` —— 在临时目录跑一次 dry-run，校验 zip 结构、
 校验和、`--no-dict` 行为与「绝不打包 MPQ」规则（`build-mcp/mcp-server.exe` 缺失时自动 SKIP）。

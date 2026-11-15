@@ -28,7 +28,19 @@
    - `changed-history.txt` 自身的写入不重复记录；本轮只提问/只读、无任何改动则不写。
 
 ## 文件写入与版本管理（不可违反）
-  每当本轮产生任何改动，在写完 `changed-history.txt` 后，将所有的改动 添加 & 提交 & 推送 到 git 仓库，并附简单的内容描述。
+
+  每当本轮产生任何改动，在写完 `changed-history.txt` 后，将所有的改动 添加 & 提交 & **推送**，
+  并附简单的内容描述。
+
+  **推送策略（默认 Gitee，GitHub 需显式声明）**：
+  - `origin` = **Gitee（主）**，日常一律 `git push`（等价 `git push origin master`），
+    不要顺手推 GitHub；
+  - `github` = **GitHub（镜像）**，只有用户在当轮明确要求（如「也推 GitHub」「同步镜像」）时，
+    才执行 `git push github master`；
+  - **例外**：版本发布（`scripts/release.py` 打 tag + 建 Release）本身是显式操作，
+    脚本会按 URL 域名同时更新两端，这不违反本策略；
+  - 换机器/重新克隆时保持命名：主远端 `origin` 指向 Gitee，镜像 `github` 指向 GitHub
+    （脚本只认域名，但人工命令按名字写，命名统一最省心）。
 
 ## 单元测试
   - 所有源码中的各单元，包括cpp的类，c中的文件级别模块，可以被其他类和模块引用的内容，都必须配合完整的测试用例。
