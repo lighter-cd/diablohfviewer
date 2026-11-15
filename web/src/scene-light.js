@@ -113,18 +113,19 @@ export function buildLightMap(gridW, gridH, ambient, lights, softFalloff) {
     offsetX &= 7;
     offsetY &= 7;
 
-    let minX = 15;
-    if (px - 15 < 0) minX = px + 1;
-    let maxX = 15;
-    if (px + 15 > gridW) maxX = gridW - px;
-    let minY = 15;
-    if (py - 15 < 0) minY = py + 1;
-    let maxY = 15;
-    if (py + 15 > gridH) maxY = gridH - py;
-    minX = Math.max(0, minX);
-    minY = Math.max(0, minY);
-    maxX = Math.min(16, maxX);
-    maxY = Math.min(16, maxY);
+    // Distance from the light centre to each of the four grid edges, capped at
+    // the cone radius (15 cells). The four rotated quadrants below must be
+    // clipped against the edge they actually extend toward; DevilutionX's
+    // original min/max reuse works only because its light always sits >=15
+    // cells from every edge (16-cell dPiece border). On a small cropped room or
+    // near a random-map edge that assumption breaks and the old reuse clipped
+    // the wrong quadrant, leaving wedge-shaped pitch-black holes.
+    const dist = {
+      left: Math.min(15, px),
+      right: Math.min(15, gridW - 1 - px),
+      up: Math.min(15, py),
+      down: Math.min(15, gridH - 1 - py),
+    };
 
     if (softFalloff) {
       if (inBounds(px, py) && get(px, py) > falloffs[radius * 128 + 0])
@@ -139,8 +140,14 @@ export function buildLightMap(gridW, gridH, ambient, lights, softFalloff) {
     let coneOffX = offsetX, coneOffY = offsetY;
 
     for (let i = 0; i < 4; ++i) {
-      const yBound = (i > 0 && i < 3) ? maxY : minY;
-      const xBound = (i < 2) ? maxX : minX;
+      // Which world direction each loop axis walks in this rotated quadrant.
+      // Verified against a padded interior light cropped to the small grid:
+      //   i=0 -> x:right, y:down ; i=1 -> x:up,    y:right
+      //   i=2 -> x:left, y:up    ; i=3 -> x:down,  y:left
+      const xDir = ["right", "up", "left", "down"][i];
+      const yDir = ["down", "right", "up", "left"][i];
+      const xBound = Math.min(16, dist[xDir] + 1);
+      const yBound = Math.min(16, dist[yDir] + 1);
       for (let y = 0; y < yBound; ++y) {
         for (let x = 1; x < xBound; ++x) {
           const linearDistance =

@@ -255,6 +255,14 @@ lighting/门 修复用过的 PNG 解码对比）确保 SceneRenderer 与后端�
      **100% 一致**（484/484 格）；前端 `SceneRenderer`（unlit）与后端 `scene.build`
      逐像素 **100%**（`tests/regress_scene_tiles.mjs` 已改为按投影尺寸匹配 build PNG，
      规避多缓存变体误选）；三套 C++ 测试全绿、`node --check` 通过、i18n 1371 断言通过。
+   - **边界光照黑块修复（2026-11-15）**：`buildLightMap` 原样移植 DevilutionX 的 `minX/maxX/minY/maxY`
+     复用裁剪，仅在光源距每边 ≥15 格成立（其网格有 16 格边框，分支几乎不触发）。前端查看器裁剪固定房间
+     （12×12~22×22）与 80×80 随机地图边缘时，拖动火把靠近边界会裁剪错象限，在半径内留下**楔形全黑块**
+     （ambient=15 → `light_tables[15]` 全 0）。改为按光源到四边**真实距离**分象限裁剪
+     （`xDir=[right,up,left,down]`、`yDir=[down,right,up,left]`，`dist=min(15,到边距)`）；前后端
+     （`web/src/scene-light.js`、`src/decoders/level_light.cpp`）同步修改。验收 `tests/regress_scene_light.mjs`
+     对 5 种网格 × 6 光源位置逐格对比「加 padding 的内部光源」真值 0 差异 + 半径内零黑格，C++ `level.light`
+     同步加断言。
 4. **Phase 3 — 门开关本地切换（实时、零服务端往返）**：✅ **已完成**（2026-11-14）。
    - 后端 `scene.tiles` 缓存 key 升 **v7**，atlas 打包时额外收入门**开启**态 micro（L2 537/539→12/16；网格只存闭合态，开启态不在 `micro_grid` 里，必须打进 atlas 否则切换时门消失）。`layout.doors[]` 仍按 537/539↔12/16 发出关闭/开启 micro 对（Catacombs 门洞无 dSpecial 覆盖层，`open_special/closed_special=0`，开关是纯 micro 互换）。
    - 前端 `web/src/scene-render.js` 新增 `opts.microOverride`（`Map` 或 `{idx->microId}`），Pass1/Pass2 读取 micro 时优先用覆盖值，其余格保持 layout micro。

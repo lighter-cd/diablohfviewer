@@ -480,6 +480,12 @@ sidecar JSON（`grid_width/grid_height/micro_len/frame_count` + 四个每格标�
 `dirt_border`（默认 false，地牢裁到 `.dun` bbox；true 恢复 32 微格 Dirt 边框 + (16,16) 偏移）。
 `meta.light` 输出逐格级别；`light_lit_count` 为 level 0 格数；地牢 `dSpecial` 精灵同样
 按 `LightTables` 着色（`scrollrt.cpp` `ClxDrawLight`），`Meta.special_lit_levels` = 16。
+**四象限边界裁剪（2026-11-15 修复）**：原 DevilutionX `DoLighting` 用 `minX/maxX/minY/maxY`
+复用裁剪四个旋转象限，仅在光源距每边 ≥15 格时成立（其 dPiece 网格有 16 格边框，分支几乎不触发）。
+裁到 `.dun` bbox 的小房间（12×12~22×22）或随机地图边缘会把光源推到离边 <15 格，旧复用裁剪错象限、
+在光半径内留下楔形全黑块。现改为按光源到四边的真实距离分别裁每个象限
+（`xDir=[right,up,left,down]`、`yDir=[down,right,up,left]`），前端 `web/src/scene-light.js`
+同步修改；验收 `tests/regress_scene_light.mjs` 逐格对比加 padding 的内部光源真值 0 差异。
 
 **寻路（`level_path.cpp` + `scene.path`，2026-11-09）**：在 SOL `Solid` 网格上做 8 方向 A*：
 直行代价 100、斜行 101（照搬 `Source/engine/path.cpp`），斜向不额外限制转角（`CanStep`

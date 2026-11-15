@@ -43,6 +43,7 @@
 #include "tools/ui_render.h"   // stage 5: header-only RGBA raster helpers
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <exception>
 #include <fstream>
@@ -1758,6 +1759,34 @@ static void testLevelLight()
     auto ignored = decoders::buildLightMap(3, 3, 15, { { -1, -1, 15, 0, 0 } }, false);
     lvlChk(ignored.minLevel == 15 && ignored.maxLevel == 15,
            "buildLightMap ignores out-of-grid lights");
+
+    // Regression: quadrant clipping near a grid edge. The old DevilutionX
+    // min/max reuse assumed a light >=15 cells from every edge; on small rooms
+    // or near a random-map edge it clipped the wrong quadrant and left wedge-
+    // shaped pitch-black holes INSIDE the light radius. A light at any position
+    // (centre, quarter point, with subcell offset) must leave no level-15 cell
+    // within Euclidean distance 12 of the source.
+    auto noBlackWithin12 = [](int gw, int gh, int px, int py, int ox, int oy) {
+        auto m = decoders::buildLightMap(gw, gh, 15,
+            { { px, py, 15, static_cast<int8_t>(ox), static_cast<int8_t>(oy) } }, false);
+        for (int y = 0; y < gh; ++y)
+            for (int x = 0; x < gw; ++x)
+                if (m.levels[static_cast<size_t>(y) * gw + x] >= 15 &&
+                    std::hypot(x - px, y - py) <= 12.0)
+                    return false;
+        return true;
+    };
+    const int lightGrids[][2] = { { 12, 12 }, { 18, 18 }, { 22, 22 }, { 40, 40 }, { 80, 80 } };
+    bool edgeClean = true;
+    for (const auto& g : lightGrids) {
+        int gw = g[0], gh = g[1];
+        edgeClean &= noBlackWithin12(gw, gh, gw / 2, gh / 2, 0, 0);
+        edgeClean &= noBlackWithin12(gw, gh, gw / 4, gh / 4, 0, 0);
+        edgeClean &= noBlackWithin12(gw, gh, gw / 4, gh / 4, 5, 5);
+        edgeClean &= noBlackWithin12(gw, gh, gw - 1 - gw / 4, gh - 1 - gh / 4, 3, 2);
+    }
+    lvlChk(edgeClean, "buildLightMap clips each quadrant by real edge distance "
+                       "(no black wedges near grid borders)");
     printf("level.light: %s\n", allOk ? "PASS" : "FAIL");
 }
 

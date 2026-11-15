@@ -203,22 +203,19 @@ LightMapResult buildLightMap(int gridW, int gridH, uint8_t ambient,
         offsetX &= 7;
         offsetY &= 7;
 
-        int minX = 15;
-        if (px - 15 < 0)
-            minX = px + 1;
-        int maxX = 15;
-        if (px + 15 > gridW)
-            maxX = gridW - px;
-        int minY = 15;
-        if (py - 15 < 0)
-            minY = py + 1;
-        int maxY = 15;
-        if (py + 15 > gridH)
-            maxY = gridH - py;
-        minX = std::max(0, minX);
-        minY = std::max(0, minY);
-        maxX = std::min(16, maxX);
-        maxY = std::min(16, maxY);
+        // Distance from the light centre to each of the four grid edges, capped
+        // at the cone radius (15 cells). The original DevilutionX min/max reuse
+        // only works because its light always sits >=15 cells from every edge
+        // (16-cell dPiece border). On a small cropped room or near a map edge
+        // that assumption breaks, so clip each rotated quadrant against the
+        // edge it actually extends toward instead of reusing min/max.
+        enum { Left = 0, Right = 1, Up = 2, Down = 3 };
+        const int dist[4] = {
+            std::min(15, px),             // Left
+            std::min(15, gridW - 1 - px), // Right
+            std::min(15, py),             // Up
+            std::min(15, gridH - 1 - py), // Down
+        };
 
         if (softFalloff) {
             if (inBounds(px, py, gridW, gridH) && get(px, py) > falloffs[radius][0])
@@ -233,8 +230,13 @@ LightMapResult buildLightMap(int gridW, int gridH, uint8_t ambient,
         int coneOffX = offsetX, coneOffY = offsetY;
 
         for (int i = 0; i < 4; ++i) {
-            const int yBound = (i > 0 && i < 3) ? maxY : minY;
-            const int xBound = (i < 2) ? maxX : minX;
+            // Which edge each loop axis walks toward in this rotated quadrant
+            // (rotateX/rotateY with -i quarter turns). Verified cell-for-cell
+            // against a padded interior light cropped to the small grid.
+            static constexpr int xDir[4] = { Right, Up, Left, Down };
+            static constexpr int yDir[4] = { Down, Right, Up, Left };
+            const int xBound = std::min(16, dist[xDir[i]] + 1);
+            const int yBound = std::min(16, dist[yDir[i]] + 1);
             for (int y = 0; y < yBound; ++y) {
                 for (int x = 1; x < xBound; ++x) {
                     const int linearDistance =

@@ -231,7 +231,7 @@ g++ -I src -std=c++17 tests/unit_tests.cpp \
     -static-libgcc -static-libstdc++ \
     -o tests/unit_tests.exe && tests/unit_tests.exe
 ```
-覆盖：CLX 解码、CEL→CLX / CL2→CLX 往返、**CL2/CEL 畸形输入与错误 `width` 拒绝（不崩溃）**、**`testCelToClxPerFrameWidths`（逐帧宽度 CEL 解出不同帧宽、单宽/短数组/空数组干净拒绝）、`testInvWidthsTable`（179/61 帧宽表按名解析与大小写归一）**、**`spell_tables.h` 纯 join（TSV/CRLF、编号文件生成、AI→导弹、阶段派生）**、PCX 解码、调色板加载、base64 编解码往返、**`testDeflateRoundTrip`（`compressZlib`↔`decompressZlib` 回环 + 5 组代表数据 + length 3–258 × distance 全 30 码边界 15 万+ 组合，覆盖 RFC 1951 额外位）**、**PNG write round-trip（IDAT 用 `decompressZlib` 解压校验）**；以及**关卡/场景解码器**（`loadTil` / `loadMin` / `loadDun` / `loadSol` 解析、`buildMicroGrid` 0-based 微索引/kNoMicro 拼装、Square/Triangle 的 level CEL 重编码与 RGBA 帧解码、强制三角形解码、调色板 4 字节步长回归、`renderMap` 两遍绘制 + 不透明背景 + 0 透明像素 + 空格预填 + frame()==0 守卫、**dLight 光照表（Normal/Hell/Soft、falloff/cone、`buildLightMap` 环境光/点光源/越界光源）与 renderMap 逐格光照着色**、**8 方向 A* 寻路（开放网格/墙体/斜角/Solid 目标/maxSteps/边界）**、`buildTownScene` 4 sector/预填、`buildDungeonScene` Dirt 预填、`sceneProjection`、`encodePNG`）；以及 **`testDungeonGen` 动态地牢生成器**（LCG 逐步算术、`GenerateRnd`/state、DUN tile 层解析、按层任务默认值、同 seed 确定性/不同 seed 差异、楼梯/地板结构、缺失 set-piece 报错，并对 DevilutionX 的 14 个 Cathedral fixture（Diablo + Hellfire）做 40×40 全格 0 差异 oracle 校验；fixture 目录可用 `DHFC_DRLG_FIXTURES` 指定，缺失时 SKIP）。
+覆盖：CLX 解码、CEL→CLX / CL2→CLX 往返、**CL2/CEL 畸形输入与错误 `width` 拒绝（不崩溃）**、**`testCelToClxPerFrameWidths`（逐帧宽度 CEL 解出不同帧宽、单宽/短数组/空数组干净拒绝）、`testInvWidthsTable`（179/61 帧宽表按名解析与大小写归一）**、**`spell_tables.h` 纯 join（TSV/CRLF、编号文件生成、AI→导弹、阶段派生）**、PCX 解码、调色板加载、base64 编解码往返、**`testDeflateRoundTrip`（`compressZlib`↔`decompressZlib` 回环 + 5 组代表数据 + length 3–258 × distance 全 30 码边界 15 万+ 组合，覆盖 RFC 1951 额外位）**、**PNG write round-trip（IDAT 用 `decompressZlib` 解压校验）**；以及**关卡/场景解码器**（`loadTil` / `loadMin` / `loadDun` / `loadSol` 解析、`buildMicroGrid` 0-based 微索引/kNoMicro 拼装、Square/Triangle 的 level CEL 重编码与 RGBA 帧解码、强制三角形解码、调色板 4 字节步长回归、`renderMap` 两遍绘制 + 不透明背景 + 0 透明像素 + 空格预填 + frame()==0 守卫、**dLight 光照表（Normal/Hell/Soft、falloff/cone、`buildLightMap` 环境光/点光源/越界光源、按四边真实距离分象限裁剪的边界光照）与 renderMap 逐格光照着色**、**8 方向 A* 寻路（开放网格/墙体/斜角/Solid 目标/maxSteps/边界）**、`buildTownScene` 4 sector/预填、`buildDungeonScene` Dirt 预填、`sceneProjection`、`encodePNG`）；以及 **`testDungeonGen` 动态地牢生成器**（LCG 逐步算术、`GenerateRnd`/state、DUN tile 层解析、按层任务默认值、同 seed 确定性/不同 seed 差异、楼梯/地板结构、缺失 set-piece 报错，并对 DevilutionX 的 14 个 Cathedral fixture（Diablo + Hellfire）做 40×40 全格 0 差异 oracle 校验；fixture 目录可用 `DHFC_DRLG_FIXTURES` 指定，缺失时 SKIP）。
 源码路径：`src/decoders/*.cpp`、`src/decoders/inv_widths.h`、`src/tools/base64.h`、`src/tools/spell_tables.h`；测试脚本 `tests/unit_tests.cpp`。
 
 ### 2. Registry + JSON-RPC（纯逻辑，无需 MPQ）
@@ -317,6 +317,10 @@ key 都存在于两个语言表；动态 key 组（`enum.*` / `data.screen.*` / 
 条目齐全；以及 `web/src/i18n.js` 引擎在桩化浏览器环境下的 `initI18n` / `t` / `tOpt` 插值 /
 回退语言 / `applyI18n` DOM 翻译 / `setLang` 持久化与 `onLangChange` 回调。
 源码路径：`web/src/i18n.js`、`web/i18n/*.json`；测试脚本 `tests/i18n_config_test.mjs`。
+
+前端光照回归（同样无需 MPQ / 服务端）：`node tests/regress_scene_light.mjs`。校验
+`web/src/scene-light.js` 的 `buildLightMap` 在固定小房间与随机地图边缘（光源贴近四边/四角、
+含 subcell offset）不留楔形全黑块，并逐格匹配「加 padding 的内部光源」真值。
 
 ### 5. 阶段 0 文件名恢复（研究/代码生成，需要真实 MPQ + DevilutionX 源码）
 
