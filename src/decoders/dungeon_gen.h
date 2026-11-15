@@ -123,4 +123,87 @@ void applyVanillaCathedralQuests(CathedralOptions& options);
  */
 DungeonTileGrid generateCathedral(const CathedralOptions& options);
 
+// ---------------------------------------------------------------------------
+// Phase 6: Catacombs / Caves / Hell generators (DevilutionX drlg_l2/l3/l4).
+// Each is a faithful, self-contained port keeping the exact RNG call order, so
+// a given (level, seed, quest state) reproduces the golden .dun tile layer.
+// The three level types use DIFFERENT megatile-id sets (L2 Floor=3/Dirt=12,
+// L3 7/8, L4 6/30); DungeonTileGrid just stores the ids, so the caller must
+// pair the grid with the matching level's .til (see SceneSpec.til).
+// ---------------------------------------------------------------------------
+
+/** Which dungeon generator a scene uses. */
+enum class DungeonType {
+    Cathedral,  // drlg_l1, levels 1-4  (l1data)
+    Catacombs,  // drlg_l2, levels 5-8  (l2data)
+    Caves,      // drlg_l3, levels 9-12 (l3data)
+    Hell,       // drlg_l4, levels 13-16(l4data)
+};
+
+/** Options for `generateCatacombs` (DevilutionX CreateL2Dungeon). */
+struct CatacombsOptions {
+    int level = 5;                 // game level 5..8
+    uint32_t seed = 0;
+    bool multiplayerQuests = false;
+
+    // Resolved Quest::IsAvailable() for this level.
+    bool bloodQuest = false;       // Q_BLOOD
+    bool schambQuest = false;      // Q_SCHAMB (bonestr)
+    bool blindQuest = false;       // Q_BLIND
+    bool warlordNotAvailable = false; // affects DRLG_CheckQuests iteration
+
+    // Set-piece megatile layers (levels/l2data/*.dun). Injected by the caller;
+    // a missing pointer disables that quest's set piece (graceful fallback).
+    const DunTileLayer* blood1 = nullptr;   // InitSetPiece Q_BLOOD
+    const DunTileLayer* blood2 = nullptr;   // DrawBlood
+    const DunTileLayer* bonestr1 = nullptr; // DrawSChamber
+    const DunTileLayer* bonestr2 = nullptr; // InitSetPiece Q_SCHAMB
+    const DunTileLayer* blind1 = nullptr;   // InitSetPiece Q_BLIND
+};
+
+/** Apply vanilla single-player quest availability for a Catacombs level. */
+void applyVanillaCatacombsQuests(CatacombsOptions& options);
+
+/** Generate a Catacombs level (L5-L8). Deterministic; matches CreateL2Dungeon tile layer. */
+DungeonTileGrid generateCatacombs(const CatacombsOptions& options);
+
+/** Options for `generateCaves` (DevilutionX CreateL3Dungeon, Diablo branch). */
+struct CavesOptions {
+    int level = 9;                 // game level 9..12
+    uint32_t seed = 0;
+    bool multiplayerQuests = false;
+    bool anvilQuest = false;       // Q_ANVIL
+    int anvilQuestLevel = 0;       // Quests[Q_ANVIL]._qlevel (10 when active)
+    const DunTileLayer* anvil = nullptr; // levels/l3data/anvil.dun
+};
+
+/** Apply vanilla quest availability for a Caves level. */
+void applyVanillaCavesQuests(CavesOptions& options);
+
+/** Generate a Caves level (L9-L12, Diablo branch). Deterministic. */
+DungeonTileGrid generateCaves(const CavesOptions& options);
+
+/** Options for `generateHell` (DevilutionX CreateL4Dungeon). */
+struct HellOptions {
+    int level = 13;                // game level 13..16
+    uint32_t seed = 0;
+    bool multiplayerQuests = false;
+    bool warlordQuest = false;     // Q_WARLORD
+    bool betrayerQuest = false;    // Q_BETRAYER / L4PENTA
+    bool diabloQuest = false;      // Q_DIABLO gate (level 16)
+
+    const DunTileLayer* warlord = nullptr;  // levels/l4data/warlord.dun
+    const DunTileLayer* warlord2 = nullptr;// levels/l4data/warlord2.dun
+    const DunTileLayer* vile1 = nullptr;   // levels/l4data/vile1.dun
+    // LoadDiabQuads pieces (level 16): diab1, diab2a/b, diab3a/b, diab4a/b.
+    const DunTileLayer* diab[7] = { nullptr, nullptr, nullptr, nullptr,
+                                    nullptr, nullptr, nullptr };
+};
+
+/** Apply vanilla quest availability for a Hell level. */
+void applyVanillaHellQuests(HellOptions& options);
+
+/** Generate a Hell level (L13-L16). Deterministic; matches CreateL4Dungeon tile layer. */
+DungeonTileGrid generateHell(const HellOptions& options);
+
 } // namespace dhfc

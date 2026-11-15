@@ -226,6 +226,8 @@ g++ -I src -std=c++17 tests/unit_tests.cpp \
     src/decoders/level_decode.cpp src/decoders/level_cel.cpp src/decoders/level_render.cpp \
     src/decoders/level_scene.cpp src/decoders/level_light.cpp src/decoders/level_path.cpp \
     src/decoders/dungeon_gen.cpp src/decoders/dungeon_gen_l1.cpp \
+    src/decoders/dungeon_gen_gendung.cpp src/decoders/dungeon_gen_l2.cpp \
+    src/decoders/dungeon_gen_l3.cpp src/decoders/dungeon_gen_l4.cpp \
     -static-libgcc -static-libstdc++ \
     -o tests/unit_tests.exe && tests/unit_tests.exe
 ```
@@ -261,6 +263,8 @@ g++ -I 3rdparty/StormLib/src -I 3rdparty -I src -std=c++17 \
     src/decoders/level_decode.cpp src/decoders/level_cel.cpp src/decoders/level_render.cpp \
     src/decoders/level_scene.cpp src/decoders/level_light.cpp src/decoders/level_path.cpp \
     src/decoders/dungeon_gen.cpp src/decoders/dungeon_gen_l1.cpp \
+    src/decoders/dungeon_gen_gendung.cpp src/decoders/dungeon_gen_l2.cpp \
+    src/decoders/dungeon_gen_l3.cpp src/decoders/dungeon_gen_l4.cpp \
     src/mcp/jsonrpc.cpp \
     3rdparty/StormLib/build/libStormLib.a \
     -lws2_32 -lwininet -static-libgcc -static-libstdc++ \

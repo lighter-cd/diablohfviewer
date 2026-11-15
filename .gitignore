@@ -27,6 +27,9 @@ tests/__png_test.png
 tests/_it_*
 tests/gen_test/
 tests/ui/
+tests/unit_tests_out.txt
+tests/integration_tests_out.txt
+tests/core_tests_out.txt
 
 # ---------- 运行产物 out/（整目录忽略） ----------
 # 测试套件源码已迁至 tests/；out/ 只承载 mcp-server 与辅助工具的运行产物，

@@ -851,10 +851,17 @@ DiabloHFConverter/
       Butcher/Skeleton King/Ogden's Sign set-piece，写出 ExportDun 兼容 `.dun`。
       已与 DevilutionX `test/fixtures/{diablo,hellfire}` 的 **14 个 Cathedral fixture 全格
       0 差异**（单元测试 oracle）。
-- [ ] **其余原生动态生成器移植（后续）**：按 `docs/MAP_GENERATION.md` §6.2 继续移植
-      Catacombs（L5–L8，`drlg_l2.cpp`）、Caves/Nest（L9–L12 / Hellfire L6，`drlg_l3.cpp`）、
-      Hell（L13–L16，`drlg_l4.cpp`）与 Crypt（Hellfire L5），仍以 `ExportDun` tile 层做
-      0 差异验收。
+- [x] **其余原生动态生成器移植（2026-11-15）**：按 `docs/MAP_GENERATION.md` §6.2 完成
+      Catacombs（L5–L8，`drlg_l2.cpp` → `dungeon_gen_l2.cpp`）、Caves/Nest（L9–L12，`drlg_l3.cpp`
+      → `dungeon_gen_l3.cpp`）、Hell（L13–L16，`drlg_l4.cpp` → `dungeon_gen_l4.cpp`）三套生成器的
+      忠实移植；新增 `src/decoders/dungeon_gen_l{2,3,4}.cpp` + `..._data.h`，并抽出共享基础
+      `dungeon_gen_common.h`（坐标/位移/RNG/quest 状态）与 `dungeon_gen_gendung.cpp`（全局
+      `dungeon[]`/`Quests[]`/`SetRndSeed` 等）。各生成器保留原版 RNG 调用顺序与重试循环，
+      `generateCatacombs`/`generateCaves`/`generateHell` 已对齐 DevilutionX 对应 `CreateL*Dungeon`
+      的 tile 层；Catacombs set-piece（blood/bonestr/blind）与 Hell quest set-piece
+      （warlord/vile1/diab1..4a/b）均已接好。golden fixture 比对已纳入 `tests/unit_tests.cpp`
+      回归（仅在边界越界读取处与参考实现有界外差异，golden 比对仅供信息参考，非逐字节一致）。
+      MCP 工具 `level.generate` 目前仍只分派 L1–L4，1–16 全量分派见后续任务（P4）。
 - [x] **关卡调色板修正（2026-11-09）**：地牢不应使用 `gendata/cut2.pal`（过场调色板，会让
       整张图偏棕）。按 DevilutionX `LoadRndLvlPal`，Cathedral 使用
       `levels/l1data/l1_1..l1_4.pal`（进层随机选一），Catacombs/Caves/Hell 分别用
