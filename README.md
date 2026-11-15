@@ -652,6 +652,62 @@ http://localhost:8000/level.html
   测试脚本 `tests/unit_tests.cpp`、`tests/integration_tests.cpp`；管线与已踩坑详见
   `docs/ARCHITECTURE.md` §9.2/§9.3、§10.5。
 
+## 发布 Release（GitHub + Gitee）
+
+版本号用 `vMAJOR.MINOR.PATCH`（如 `v0.1.0`）。打包 + 打 tag + 在两个远端各建一个
+Release 并上传二进制，由一条脚本完成：`scripts/release.py`（纯 Python 标准库，无需 gh CLI）。
+
+```bash
+# 1) 预演：只打包 + 算校验和，不建 tag、不联网
+python scripts/release.py --version v0.1.0 --dry-run
+
+# 2) 设令牌（正式发布才需要）
+#    GitHub: classic PAT 勾 repo；或 fine-grained 勾 Contents: Read and write
+$env:GITHUB_TOKEN = "ghp_xxx"    # bash: export GITHUB_TOKEN=...
+#    Gitee: 设置 → 私人令牌，勾 projects
+$env:GITEE_TOKEN  = "xxx"        # bash: export GITEE_TOKEN=...
+
+# 3) 打 tag → 推送 tag 到 gitee/origin → 两边建 release 并上传 zip + .sha256
+python scripts/release.py --version v0.1.0
+
+# 只发一边 / 复用已打好的 zip / 自定义发布说明
+python scripts/release.py --version v0.1.0 --skip-gitee
+python scripts/release.py --version v0.1.0 --no-package
+python scripts/release.py --version v0.1.0 --notes-file notes.md
+```
+
+产出：
+
+```text
+dist/DiabloHFViewer-v0.1.0-win64.zip
+dist/DiabloHFViewer-v0.1.0-win64.zip.sha256
+```
+
+zip 内容（**绝不含任何游戏资源**）：
+
+| 路径 | 说明 |
+|------|------|
+| `mcp-server.exe` | 主程序，`start.bat` 以 `--ws 18765` 启动（需 Windows 10/11，UCRT 自带） |
+| `libwinpthread-1.dll` | MinGW 运行时；脚本按 PE 导入表自动识别并带上，其它系统 DLL 无需打包 |
+| `web/` | 前端静态页（exe 同级 `web/`，同一端口同时提供 HTTP + WS） |
+| `mpq-info/dict/recovered.json` | 文件名恢复字典（可加 `--no-dict` 排除；仓库本身对它是 gitignore 的） |
+| `start.bat` | 双击启动并自动打开 <http://localhost:18765/> |
+| `LICENSE` / `README.md` / `VERSION.txt` | 许可、说明、版本/commit/构建时间 |
+
+要点：
+
+- 脚本从 `git remote get-url` 解析仓库（固定远端名：`origin` = GitHub，`gitee` = Gitee），
+  改仓库名或迁到 fork 都不用改代码；
+- 打包前扫描文件表，出现 `*.mpq` 直接报错退出；release notes 末尾自动附「不提供游戏资源」声明；
+- notes 默认取「上一个 tag → HEAD」的提交列表，可用 `--notes-file` 覆盖；
+- 同版本重跑是安全的：GitHub/Gitee 上已有的 release 会被复用，同名资产会先删后传；
+- 平台限制：GitHub 单资产 ≤ 2 GB、Gitee 发行版附件 ≤ 100 MB（本包约 2 MB）；
+- 不想用脚本时也可以网页手动操作：`git tag -a v0.1.0 -m ...` + `git push origin --tags`
+  + 两个平台的 Releases 页面「新建发行版 / Draft a new release」，上传 `dist/` 里的 zip。
+
+**测试**：`python tests/release_pack_test.py` —— 在临时目录跑一次 dry-run，校验 zip 结构、
+校验和、`--no-dict` 行为与「绝不打包 MPQ」规则（`build-mcp/mcp-server.exe` 缺失时自动 SKIP）。
+
 ## 开发文档
 
 更详细的架构与阶段计划见 `docs/ARCHITECTURE.md` 与 `docs/PROJECT.md`；动态地牢生成规则见

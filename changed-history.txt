@@ -590,3 +590,8 @@
 ## 2026-11-16 03:16:04
 - 提交用户维护的 TODO 清单（技能释放器阶段清单扩为 Firebolt/Charged Bolt/Holy Bolt/Healing/Heal Other/Inferno，地图查看器三项标为已完成）；GitHub 远端改为 master 分支并删除原 main
 - 涉及: TODO, changed-history.txt
+
+
+## 2026-11-16 03:40:32
+- 新增双平台发布流程：`scripts/release.py`（纯 Python 标准库）一条命令完成「打包 → 打 vX.Y.Z annotated tag → 推送 tag 到 GitHub(origin)/Gitee(gitee) → 两边建 Release → 上传 zip 与 .sha256」；zip 含 exe + 按 PE 导入表自动识别的 MinGW 运行时 DLL + web/ + 可选 recovered.json + start.bat + LICENSE/README/VERSION，打包前拒绝任何 *.mpq，notes 自动附资源免责声明；新增 `tests/release_pack_test.py`（dry-run 35 项断言）并在 README / README_EN / docs/RELEASE_PLAN.md / docs/PROJECT.md 记录用法与平台限制，.gitignore 增加 dist/ 与 __pycache__/
+- 涉及: scripts/release.py, tests/release_pack_test.py, README.md, README_EN.md, docs/RELEASE_PLAN.md, docs/PROJECT.md, .gitignore, changed-history.txt

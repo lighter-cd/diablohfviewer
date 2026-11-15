@@ -71,15 +71,18 @@
 
 ## P2 一键构建 + 打包（Windows）
 
-- **P2-1** 新增 `build-release.ps1`（或适配 Git Bash 的 `build-release.sh`）：自动
-  `git submodule update --init` → `build-stormlib.sh` → cmake configure/build
-  `mcp-server`（Release, MinGW Makefiles）→ 产出 `mcp-server.exe`。
-- **P2-2** 把 `build-stormlib.sh:21` 硬编码的 `MINGW_BIN` 默认值改为可配置 / 自动探测
-  （避免写死 `/d/develop/mingw64/bin`）。
-- **P2-3** 新增 `package.ps1`：组装 `DiabloHFConverter-win-x64.zip`，含
-  `mcp-server.exe` + `web/` + `start.bat` + `README`（含免责声明）+ 资源声明文件。
-  **绝不打进任何 MPQ / 资源**。
-- **P2-4** `start.bat`：启动 `mcp-server.exe --ws 18765`，打印并自动打开
+- **P2-1** ~~新增 `build-release.ps1`~~ → **已由 `scripts/release.py` 覆盖**（2026-11-16）：
+  脚本负责打包/打 tag/ 发布，构建仍沿用 README 的 `build-stormlib.sh` + `cmake` 两步，避免在脚本里
+  重复构建逻辑（构建需先停掉正在运行的 `mcp-server.exe`，见 `AGENTS.md`）。
+- **P2-2** ~~把 `build-stormlib.sh:21` 硬编码的 `MINGW_BIN` 默认值改为可配置 / 自动探测~~
+  —— 打包侧已支持 `--dll-dir` / `MINGW_BIN` 环境变量与 PATH 自动探测，构建脚本仍保留原默认值。
+- **P2-3** **已实现**：`scripts/release.py` 组装
+  `dist/DiabloHFViewer-<version>-win64.zip`，含 `mcp-server.exe` + MinGW 运行时 DLL（按 PE
+  导入表自动识别，当前只有 `libwinpthread-1.dll`）+ `web/` + `start.bat` + `LICENSE` +
+  `README.md` + `VERSION.txt` + 可选 `mpq-info/dict/recovered.json`（`--no-dict` 关闭）。
+  **绝不打进任何 MPQ / 资源**：打包前扫描文件表，出现 `*.mpq` 直接报错。
+- **P2-4** **已实现**：`start.bat` 由脚本生成，内含 `cd /d "%~dp0"`、
+  `mcp-server.exe --ws 18765`，并在启动 2 秒后用 `explorer` 打开
   `http://localhost:18765/`。
 
 > **验收**：在干净机器上跑 `build-release.ps1` + `package.ps1` 得到可分发包。
@@ -92,6 +95,11 @@
   `dumpbin /dependents mcp-server.exe` 确认只依赖系统 DLL
   （KERNEL32 / USER32 / WS2_32 / WININET …）。`CMakeLists.txt:41` 已加
   `-static-libgcc -static-libstdc++`，StormLib 静态 `.a` 且 bundled，理论上零额外 DLL——**需实测确认**。
+
+  > **实测（2026-11-16）**：`objdump -p build-mcp/mcp-server.exe` 的导入表为
+  > `KERNEL32 / USER32 / WS2_32 / WININET / api-ms-win-crt-*`（UCRT，Windows 10+ 自带）
+  > 加上**一个** MinGW 运行时 `libwinpthread-1.dll`。因此发布包必须随包带上该 DLL
+  > （`scripts/release.py` 自动从 MinGW `bin/` 取），其余无需打包。
 - **P3-2** 用一份自有正版 MPQ 走通：开浏览器 → 选精灵 / 场景 / 界面 → 正常渲染。
 - **P3-3** 在 README 新增「预编译包」章节：下载解压 → 填入自己的 MPQ 目录 →
   双击 `start.bat` → 开浏览器。
@@ -100,11 +108,56 @@
 
 ## P4 发布与版本（引流前置，可选进阶）
 
-- **P4-1** `git tag` 打版本（如 `v0.1`），在 Gitee / GitHub Releases 上传 zip +
-  release notes（**再次注明不提供资源**）。
+- **P4-1** **已实现（2026-11-16）**：`scripts/release.py --version v0.1.0`
+  自动打 annotated tag（`vMAJOR.MINOR.PATCH`）、把 tag 推到 `origin`（GitHub）与
+  `gitee` 两个远端，并分别调用 GitHub REST（`/releases` + `uploads.github.com/.../assets`）
+  与 Gitee v5 API（`/releases` + `/releases/{id}/attach_files`）创建发行版、上传
+  `zip` 与 `.sha256`。release notes 默认取「上一 tag → HEAD」提交列表，末尾自动附
+  「不提供游戏资源」声明；同名资产重跑会先删后传，幂等。
+  依赖环境变量 `GITHUB_TOKEN`（repo / Contents:write）与 `GITEE_TOKEN`（projects），
+  支持 `--dry-run` / `--skip-github` / `--skip-gitee` / `--no-package`。
+  测试：`tests/release_pack_test.py`（dry-run 打包、结构/校验和/`--no-dict`/禁 MPQ 断言）。
 - **P4-2**（可选）Gitee CI / GitHub Actions 自动出 Windows artifact；MPQ 相关集成测试
   因版权不进 CI，仅跑非依赖 MPQ 的单元 / 核心测试。
 - **P4-3**（可选）随 release 发一段用自己的正版资源渲染的演示 GIF / 短视频，用于引流。
+
+---
+
+## 发布脚本实现（2026-11-16，已完成）
+
+`scripts/release.py`（纯 Python 标准库，Windows / Linux 通用，不依赖 `gh`）。
+
+```bash
+python scripts/release.py --version v0.1.0 --dry-run      # 只打包 + 校验和
+$env:GITHUB_TOKEN="ghp_xxx"; $env:GITEE_TOKEN="xxx"       # 正式发布所需
+python scripts/release.py --version v0.1.0                # tag + 双平台 release
+```
+
+| 参数 | 作用 |
+|------|------|
+| `--version vX.Y.Z` | 必填；同时作为 tag、release 名与 zip 文件名 |
+| `--dry-run` | 只打包 + 写 `.sha256`，不建 tag、不 push、不调 API |
+| `--notes-file` | 覆盖自动生成的 release notes（默认取上一 tag→HEAD 提交列表） |
+| `--out-dir` | 产物目录，默认 `dist/`（已 gitignore） |
+| `--exe` / `--dll-dir` | 指定 exe 与 MinGW `bin/`（默认 `build-mcp/mcp-server.exe`、`MINGW_BIN`、PATH 自动探测） |
+| `--no-dict` | 不打包 `mpq-info/dict/recovered.json` |
+| `--no-package` | 复用 `dist/` 里已有的 zip（只发布） |
+| `--no-push` | 建 tag 但不推远端 |
+| `--skip-github` / `--skip-gitee` | 只发单边 |
+| `--allow-dirty` | 允许工作区有未提交改动（常规发布**不应**使用） |
+
+实现要点：
+
+1. **远端解析**：`git remote get-url origin|gitee` → `owner/repo`，不硬编码仓库名；
+2. **DLL 依赖**：自写 PE 导入表解析（`pe_imports`），只把真正 import 的 MinGW 运行时
+   打进包（当前为 `libwinpthread-1.dll`），不靠字符串扫描（避免把 libgcc 里的提示串误判）；
+3. **合规**：打包前检查文件表，出现 `*.mpq` 立即报错；notes 末尾统一附免责声明；
+4. **幂等**：GitHub 先 `GET /releases/tags/{tag}` 复用，同名资产 422 时删除重传；
+   Gitee 建 release 失败则按 tag 查询复用；附件直接重传；
+5. **chunked 上传**：资产以整文件字节 POST（本包约 2 MB，远低于平台限制）。
+
+> 平台限制：GitHub 单个资产 ≤ 2 GB；Gitee 发行版附件 ≤ 100 MB。两平台均支持网页手动
+> 上传作为脚本的替代方案（`git tag` + push，再在 Releases 页面新建并上传 `dist/` 内容）。
 
 ---
 

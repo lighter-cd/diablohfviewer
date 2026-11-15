@@ -57,6 +57,23 @@ Bundled dependencies keep their own licenses, both compatible with MIT:
 > repository's [`.mailmap`](.mailmap) folds them into `lighter_cd <lighter_cd@hotmail.com>` for local
 > `git log` / `git shortlog` display only — history is not rewritten.
 
+## Release (maintainers)
+
+Versioning is `vMAJOR.MINOR.PATCH` (e.g. `v0.1.0`). `scripts/release.py` (Python stdlib only,
+no `gh` CLI needed) builds a portable zip, tags the commit and publishes the archive as a binary
+asset on **both** remotes (`origin` = GitHub, `gitee` = Gitee).
+
+```bash
+python scripts/release.py --version v0.1.0 --dry-run   # package + checksum, no network
+$env:GITHUB_TOKEN="ghp_xxx"; $env:GITEE_TOKEN="xxx"    # then the real run
+python scripts/release.py --version v0.1.0
+```
+
+Artifacts land in `dist/` (`DiabloHFViewer-<ver>-win64.zip` + `.sha256`). The zip contains
+`mcp-server.exe`, the MinGW `libwinpthread-1.dll`, `web/`, optional
+`mpq-info/dict/recovered.json`, `start.bat`, `LICENSE`, `README.md` and `VERSION.txt` — and the
+script refuses to package any `*.mpq`. Test: `python tests/release_pack_test.py`.
+
 ## Front-end i18n
 
 The viewer UI is bilingual: use the **Language / 语言** dropdown in the top-right of `index.html`

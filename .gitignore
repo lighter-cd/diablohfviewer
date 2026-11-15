@@ -75,3 +75,10 @@ out/gen_test/
 out/maps_dbg/
 out/maps_random/
 
+# ---------- 发布打包产物（scripts/release.py 输出的 zip / 校验和） ----------
+dist/
+
+# ---------- Python 工具（发布脚本 / 测试）产物 ----------
+__pycache__/
+*.pyc
+
