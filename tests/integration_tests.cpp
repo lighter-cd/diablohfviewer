@@ -1482,20 +1482,34 @@ static void testSceneTools(const std::string& mpq) {
             ++randomCount;
             const std::string rid = s.value("id", "");
             const int lvl = s.value("random_level", 0);
-            const int expectedLvl = rid == "random_l1" ? 1 :
-                                    rid == "random_l2" ? 5 :
-                                    rid == "random_l3" ? 9 :
-                                    rid == "random_l4" ? 13 : 0;
-            if (expectedLvl == 0 || lvl != expectedLvl ||
+            const std::string room = s.value("fixed_room", "\x01");
+            // id suffix == exact game dlvl; fixed_room is exposed for the UI.
+            int expectedLvl = 0;
+            const char* expectedRoom = "";
+            if (rid.rfind("random_l", 0) == 0 && rid.size() > 8) {
+                expectedLvl = std::atoi(rid.c_str() + 8);
+                if (rid == "random_l2") expectedRoom = "butcher";
+                else if (rid == "random_l3") expectedRoom = "skelking";
+                else if (rid == "random_l4") expectedRoom = "banner";
+                else if (rid == "random_l5") expectedRoom = "blood";
+                else if (rid == "random_l6") expectedRoom = "schamb";
+                else if (rid == "random_l7") expectedRoom = "blind";
+                else if (rid == "random_l10") expectedRoom = "anvil";
+                else if (rid == "random_l13") expectedRoom = "warlord";
+                else if (rid == "random_l15") expectedRoom = "betrayer";
+                else if (rid == "random_l16") expectedRoom = "diablo";
+            }
+            const bool hell = expectedLvl >= 13;
+            if (expectedLvl == 0 || lvl != expectedLvl || room != expectedRoom ||
                 s.value("grid_width", 0) != 80 || s.value("grid_height", 0) != 80 ||
-                s.value("micro_len", 0) != (rid == "random_l4" ? 12 : 10))
+                s.value("micro_len", 0) != (hell ? 12 : 10))
                 randomLevelsOk = false;
         }
     }
     CHECK(hasTristram, "scene.list contains tristram");
     CHECK(hasL2 && hasL4, "scene.list contains L2/L4 presets");
-    CHECK(randomCount == 4 && randomLevelsOk,
-          "scene.list exposes 4 randomizable levels (L1/L5/L9/L13, 4 tilesets, 80x80)");
+    CHECK(randomCount == 11 && randomLevelsOk,
+          "scene.list exposes 11 randomizable dlvls (L1/2/3/4/5/6/7/10/13/15/16, fixed_room, 80x80)");
 
     json args = json{{"id", "tristram"}, {"archive", archives[0]},
                      {"preview_max_width", 400}};
@@ -1728,21 +1742,35 @@ static void testSceneTools(const std::string& mpq) {
             CHECK(gr3.ok && gr.value["layout"]["micro_grid"] != gr3.value["layout"]["micro_grid"],
                   "scene.random different seed yields a different layout");
 
-            // P6: one random scene per dungeon type. Each must use the matching
-            // generator/tileset (regression vs the old all-Cathedral behaviour).
+            // P6: one random scene per fixed-room dlvl (11 total), spanning all
+            // four generators/tilesets. Each id suffix is the exact game dlvl
+            // and fixed_room is echoed back for the UI hint.
             struct RndCase {
-                const char* id; int level; const char* type; const char* msg;
+                const char* id; int level; const char* type; const char* room;
                 const char* til; const char* pal;
             };
             const RndCase cases[] = {
-                { "random_l2", 5,  "Catacombs",
-                  "scene.random random_l2 generates Catacombs L5 @ 80x80",
+                { "random_l1", 1,  "Cathedral", "",
+                  "levels/l1data/l1.til", "levels/l1data/l1_2.pal" },
+                { "random_l2", 2,  "Cathedral", "butcher",
+                  "levels/l1data/l1.til", "levels/l1data/l1_2.pal" },
+                { "random_l3", 3,  "Cathedral", "skelking",
+                  "levels/l1data/l1.til", "levels/l1data/l1_2.pal" },
+                { "random_l4", 4,  "Cathedral", "banner",
+                  "levels/l1data/l1.til", "levels/l1data/l1_2.pal" },
+                { "random_l5", 5,  "Catacombs", "blood",
                   "levels/l2data/l2.til", "levels/l2data/l2_2.pal" },
-                { "random_l3", 9,  "Caves",
-                  "scene.random random_l3 generates Caves L9 @ 80x80",
+                { "random_l6", 6,  "Catacombs", "schamb",
+                  "levels/l2data/l2.til", "levels/l2data/l2_2.pal" },
+                { "random_l7", 7,  "Catacombs", "blind",
+                  "levels/l2data/l2.til", "levels/l2data/l2_2.pal" },
+                { "random_l10", 10, "Caves", "anvil",
                   "levels/l3data/l3.til", "levels/l3data/l3_2.pal" },
-                { "random_l4", 13, "Hell",
-                  "scene.random random_l4 generates Hell L13 @ 80x80",
+                { "random_l13", 13, "Hell", "warlord",
+                  "levels/l4data/l4.til", "levels/l4data/l4_2.pal" },
+                { "random_l15", 15, "Hell", "betrayer",
+                  "levels/l4data/l4.til", "levels/l4data/l4_2.pal" },
+                { "random_l16", 16, "Hell", "diablo",
                   "levels/l4data/l4.til", "levels/l4data/l4_2.pal" },
             };
             for (const auto& c : cases) {
@@ -1759,13 +1787,15 @@ static void testSceneTools(const std::string& mpq) {
                 ToolResult r = reg.dispatch("scene.random", args);
                 CHECK(r.ok && r.value.value("random_level", 0) == c.level &&
                           r.value.value("dungeon_type", std::string()) == c.type &&
+                          r.value.value("fixed_room", std::string()) == c.room &&
                           r.value.value("grid_width", 0) == 80 &&
                           r.value.value("grid_height", 0) == 80 &&
                           r.value["layout"]["micro_grid"].size() == (size_t)(80 * 80),
-                      c.msg);
-                // Catacombs only: AddL2Objs -> SetDoorStateClosed must leave
+                      std::string("scene.random ") + c.id + " generates " + c.type +
+                          " L" + std::to_string(c.level) + " @ 80x80");
+                // Catacombs levels: AddL2Objs -> SetDoorStateClosed must leave
                 // closed leaf micros (537/539) plus the open-override markers.
-                if (std::string(c.id) == "random_l2" && r.ok) {
+                if (std::string(c.type) == "Catacombs" && r.ok) {
                     json doors = r.value["layout"].value("doors", json::array());
                     bool closedOk = !doors.empty();
                     for (auto& d : doors) {
@@ -1773,7 +1803,7 @@ static void testSceneTools(const std::string& mpq) {
                         if (closed != 537 && closed != 539) closedOk = false;
                     }
                     CHECK(closedOk,
-                          "random_l2 layout marks L2 doorways with closed leaves (537/539)");
+                          std::string(c.id) + " layout marks doorways with closed leaves (537/539)");
                 }
             }
         }

@@ -1043,9 +1043,12 @@ static void CreateL4Dungeon(uint32_t rseed, lvl_entry entry, const HellOptions& 
 /** Apply vanilla single-player quest availability for a Hell level. */
 void applyVanillaHellQuests(HellOptions& options)
 {
-    // Single-player Diablo: Warlord (Lazarus) on level 15, Diablo on level 16.
-    options.warlordQuest = (options.level == 15);
-    options.betrayerQuest = (options.level == 16);
+    // DevilutionX questdat.tsv / drlg_l4.cpp (single player):
+    //   Q_WARLORD  (Warlord of Blood)   qdlvl 13 -> warlord.dun set piece (L13)
+    //   Q_BETRAYER (Archbishop Lazarus) qdlvl 15 -> L4PENTA2 hell gate (L15)
+    //   Diablo's boss room (diab quads) is generated at dlvl 16.
+    options.warlordQuest = (options.level == 13);
+    options.betrayerQuest = (options.level == 15);
     options.diabloQuest = (options.level == 16);
 }
 
@@ -1063,9 +1066,13 @@ DungeonTileGrid generateHell(const HellOptions& options)
         gen::Quests[q].position_x = 0;
         gen::Quests[q].position_y = 0;
     }
-    gen::Quests[gen::Q_WARLORD]._qlevel = 15;
+    // Quests[]._qlevel mirrors DevilutionX questdat.tsv qdlvl so
+    // IsAvailable()/FirstRoom()/PlaceStairs() place the set piece + gate on the
+    // correct dlvl: Warlord 13, Betrayer 15. Diablo's quads are keyed on
+    // currlevel==16 directly and the gate quest is qdlvl 15.
+    gen::Quests[gen::Q_WARLORD]._qlevel = 13;
     gen::Quests[gen::Q_BETRAYER]._qlevel = 15;
-    gen::Quests[gen::Q_DIABLO]._qlevel = 16;
+    gen::Quests[gen::Q_DIABLO]._qlevel = 15;
     gen::Quests[gen::Q_WARLORD]._qactive = options.warlordQuest ? 1 : 0;
     gen::Quests[gen::Q_BETRAYER]._qactive = options.betrayerQuest ? 2 : 0;
     gen::Quests[gen::Q_DIABLO]._qactive = options.diabloQuest ? 2 : 0;

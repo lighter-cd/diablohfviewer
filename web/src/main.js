@@ -2002,9 +2002,26 @@ function isRandomScene(id) {
   return !!(c && c.randomizable);
 }
 
-function showSceneRandomControls(visible) {
+function showSceneRandomControls(visible, id) {
   const box = $("sceneRandomControls");
   if (box) box.hidden = !visible;
+  // Per-scene hint: the exact game dlvl and the vanilla fixed room its seed
+  // generation embeds (from scene.list fixed_room). Names live in i18n so both
+  // locales stay in sync; L1 has no quest room.
+  const hint = $("sceneFixedRoomHint");
+  if (hint) {
+    if (visible && id) {
+      const cat = sceneCatalog.find((s) => s.id === id);
+      const lvl = cat ? cat.random_level : 0;
+      const room = (cat && cat.fixed_room) || "none";
+      hint.textContent = t("scene.fixedRoomInfo", {
+        level: lvl, room: t(`scene.fixedRoom.${room}`),
+      });
+      hint.hidden = false;
+    } else {
+      hint.hidden = true;
+    }
+  }
   if (!visible) {
     sceneState.currentResultId = null;
     sceneState.recentResults = {};
@@ -2133,7 +2150,7 @@ async function loadScene() {
   sceneState.loading = true;
   showSceneLoading(t("scene.loading", { id }));
   const random = isRandomScene(id);
-  showSceneRandomControls(random);   // hide the random controls for fixed scenes
+  showSceneRandomControls(random, id);   // hide the random controls for fixed scenes
   try {
     if (random) {
       await loadRandomScene(id);

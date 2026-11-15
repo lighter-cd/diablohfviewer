@@ -378,6 +378,7 @@ mcp::ToolResult toolSceneList(const mcp::json&) {
             {"micro_len", s.microLen}, {"blocks", s.blocks},
             {"ambient_light", s.ambientLight}, {"light_style", s.lightStyle},
             {"randomizable", s.randomLevel > 0}, {"random_level", s.randomLevel},
+            {"fixed_room", s.fixedRoom},
         });
     }
     mcp::ToolResult r;
@@ -408,9 +409,12 @@ std::string buildCacheKey(const std::string& id,
                           const std::string& outDir) {
     std::string a;
     for (size_t i = 0; i < archives.size(); ++i) { if (i) a += ";"; a += archives[i]; }
-    // v8: random_l2/l3/l4 now use the Catacombs/Caves/Hell tilesets (distinct
+    // v9: random scene ids are now exact dlvls (random_l2=L2 Cathedral,
+    // random_l3=L3 Cathedral, random_l4=L4 Cathedral, plus L5/6/7/10/13/15/16);
+    // random_l2/l3/l4 changed generator/tileset, so stale v8 PNGs must go.
+    // v8: random_l2/l3/l4 used the Catacombs/Caves/Hell tilesets (distinct
     // floor/dirt megatiles, microLen/blocks, special table, palette), so stale
-    // v7 Cathedral-tileset PNGs must be invalidated. v7: the tile atlas now
+    // v7 Cathedral-tileset PNGs had to be invalidated. v7: the tile atlas now
     // also packs the OPEN-door micros (L2 537/539 -> 12/16) so the front-end
     // can swap a closed door leaf for the open doorway locally (Phase 3 door
     // toggle) without a server round-trip. v6: layout now
@@ -422,7 +426,7 @@ std::string buildCacheKey(const std::string& id,
     // v4 shaded dungeon dSpecial sprites by dLight (ClxDrawLight); v3 cropped
     // presets to the .dun bbox. Assembly inputs and switches are all in the key
     // so catalog changes / toggles invalidate cached PNGs automatically.
-    return "v8|" + id + "|" + a + "|" +
+    return "v9|" + id + "|" + a + "|" +
            std::to_string(spec.floorMegaTile) + "|" + spec.specialCel + "|" +
            std::to_string(static_cast<int>(spec.specialTable)) + "|" +
            (params.value("dirt_border", false) ? "B1" : "B0") + "|" +
@@ -1408,10 +1412,15 @@ mcp::ToolResult toolSceneRandom(const mcp::json& params) {
         else if (quests == "none")  { opt.warlordQuest = opt.betrayerQuest = opt.diabloQuest = false; }
         else                        { opt.warlordQuest = true; opt.betrayerQuest = true;
                                       opt.diabloQuest = (level == 16); }
+        // drlg_l4.cpp::InitSetPiece places vile1.dun only when
+        // currlevel==15 && UseMultiplayerQuests(). Enable full-quest mode on L15
+        // so the random scene actually embeds the Betrayer room.
+        if (quests != "none")
+            opt.multiplayerQuests = (level == 15);
         const std::string ofs = "levels/l4data/";
         auto warlord = opt.warlordQuest ? loadOpt(ofs + "warlord.dun") : std::nullopt;
         auto warlord2 = opt.warlordQuest ? loadOpt(ofs + "warlord2.dun") : std::nullopt;
-        auto vile1 = opt.warlordQuest ? loadOpt(ofs + "vile1.dun") : std::nullopt;
+        auto vile1 = opt.betrayerQuest ? loadOpt(ofs + "vile1.dun") : std::nullopt;
         opt.warlord = warlord ? &*warlord : nullptr;
         opt.warlord2 = warlord2 ? &*warlord2 : nullptr;
         opt.vile1 = vile1 ? &*vile1 : nullptr;
@@ -1454,6 +1463,7 @@ mcp::ToolResult toolSceneRandom(const mcp::json& params) {
     const std::string created = utcStamp(true);
     result["random"] = true;
     result["random_level"] = spec->randomLevel;
+    result["fixed_room"] = spec->fixedRoom;
     result["dungeon_type"] = dungeonType;
     result["seed"] = static_cast<uint64_t>(seed);
     result["quests"] = quests;
@@ -1463,7 +1473,8 @@ mcp::ToolResult toolSceneRandom(const mcp::json& params) {
     result["layout_url"] = "/scenes/" + stem + ".layout.json";
 
     mcp::json meta = mcp::json{
-        {"id", id}, {"level", spec->randomLevel}, {"dungeon_type", dungeonType},
+        {"id", id}, {"level", spec->randomLevel}, {"fixed_room", spec->fixedRoom},
+        {"dungeon_type", dungeonType},
         {"seed", static_cast<uint64_t>(seed)},
         {"quests", quests}, {"created", created}, {"result_id", stem},
         {"is_default", true}, {"layout_url", "/scenes/" + stem + ".layout.json"},
@@ -1576,25 +1587,32 @@ void registerSceneTools(ToolRegistry& reg) {
 
     reg.registerTool(ToolDef{
         "scene.random",
-        "Random dungeon map rendering for 4 seed-generated levels, one per "
-        "dungeon type: random_l1=L1 Cathedral (drlg_l1), random_l2=L5 Catacombs "
-        "(drlg_l2), random_l3=L9 Caves (drlg_l3), random_l4=L13 Hell (drlg_l4). "
-        "Listed by scene.list as randomizable:true. Each uses the matching native "
-        "DevilutionX generator (dhfc::generateCathedral/Catacombs/Caves/Hell) and "
-        "tileset, and emits the SAME front-end-renderable form as scene.tiles "
-        "(index atlas PNG + layout JSON). action=generate builds a fresh level "
-        "from a random (or explicit) seed, overwrites that level's default cache "
-        "and returns the full scene.tiles result inline (with dungeon_type); "
-        "action=save normalizes-naming a snapshot of the current result so it can "
-        "be switched via the recent-results list; action=list enumerates default "
-        "+ saved results. scene.clearCache deletes all default + saved results. "
+        "Random dungeon map rendering for 11 seed-generated levels, one per "
+        "dlvl that carries a vanilla fixed room (plus L1 baseline): "
+        "random_l1=L1 Cathedral, random_l2=L2 (Butcher rnd6.dun), "
+        "random_l3=L3 (Skeleton King skngdo.dun), random_l4=L4 (Ogden banner2.dun), "
+        "random_l5=L5 (Blood blood1.dun), random_l6=L6 (Chamber bonestr2.dun), "
+        "random_l7=L7 (Blind blind1.dun), random_l10=L10 (Anvil anvil.dun), "
+        "random_l13=L13 (Warlord warlord.dun), random_l15=L15 (Betrayer vile1.dun), "
+        "random_l16=L16 (Diablo diab quads). The id suffix is the exact game dlvl; "
+        "quest set pieces are embedded per DevilutionX questdat.tsv. "
+        "Listed by scene.list as randomizable:true (with fixed_room key). Each "
+        "uses the matching native DevilutionX generator "
+        "(dhfc::generateCathedral/Catacombs/Caves/Hell) and tileset, and emits the "
+        "SAME front-end-renderable form as scene.tiles (index atlas PNG + layout "
+        "JSON). action=generate builds a fresh level from a random (or explicit) "
+        "seed, overwrites that level's default cache and returns the full "
+        "scene.tiles result inline (with dungeon_type/fixed_room); action=save "
+        "normalizes-naming a snapshot of the current result so it can be switched "
+        "via the recent-results list; action=list enumerates default + saved "
+        "results. scene.clearCache deletes all default + saved results. "
         "Test script: tests/regress_scene_random.mjs.",
         json{{"type", "object"},
              {"properties", json{
                  {"action", json{{"type", "string"},
                                  {"description", "generate | save | list"}}},
                  {"id", json{{"type", "string"},
-                             {"description", "random scene id: random_l1..random_l4 (Cathedral/Catacombs/Caves/Hell)"}}},
+                             {"description", "random scene id: random_l1/L2/L3/L4/L5/L6/L7/L10/L13/L15/L16 (suffix = dlvl, embeds that dlvl's vanilla fixed room)"}}},
                  {"seed", json{{"type", "integer"},
                                {"description", "uint32 seed (generate); omit for a fresh random seed, echoed back"}}},
                  {"quests", json{{"type", "string"},

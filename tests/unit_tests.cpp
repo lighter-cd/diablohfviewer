@@ -1615,23 +1615,39 @@ static void testLevelScene()
     lvlChk(dims.first == 22 && dims.second == 22,
            "sceneGridDims reports cropped dungeon .dun bbox");
 
-    // Phase 5/P6: 4 seed-generated levels, one per dungeon type. No fixed .dun
-    // (generated in memory); each carries its type's tileset ids and reports
-    // an 80x80 micro grid for a full 40x40 megatile dungeon.
+    // Phase 5/P6: 11 seed-generated levels -- one per dlvl carrying a vanilla
+    // fixed room (plus L1 baseline). The id suffix is the exact game dlvl.
+    // No fixed .dun; each carries its type's tileset ids and reports an 80x80
+    // micro grid for a full 40x40 megatile dungeon.
     struct RSpec {
         const char* id; int level; const char* cel; const char* pal;
         int micro, blocks, dirt, floor;
         decoders::DungeonSpecialTable table; int lightStyle;
+        const char* fixedRoom;
     };
     const RSpec rspecs[] = {
         { "random_l1", 1,  "levels/l1data/l1.cel", "levels/l1data/l1_2.pal",
-          10, 10, 22, 13, decoders::DungeonSpecialTable::Cathedral, 0 },
-        { "random_l2", 5,  "levels/l2data/l2.cel", "levels/l2data/l2_2.pal",
-          10, 10, 12, 3, decoders::DungeonSpecialTable::Catacombs, 0 },
-        { "random_l3", 9,  "levels/l3data/l3.cel", "levels/l3data/l3_2.pal",
-          10, 10, 8, 7, decoders::DungeonSpecialTable::None, 0 },
-        { "random_l4", 13, "levels/l4data/l4.cel", "levels/l4data/l4_2.pal",
-          12, 16, 30, 6, decoders::DungeonSpecialTable::None, 1 },
+          10, 10, 22, 13, decoders::DungeonSpecialTable::Cathedral, 0, "" },
+        { "random_l2", 2,  "levels/l1data/l1.cel", "levels/l1data/l1_2.pal",
+          10, 10, 22, 13, decoders::DungeonSpecialTable::Cathedral, 0, "butcher" },
+        { "random_l3", 3,  "levels/l1data/l1.cel", "levels/l1data/l1_2.pal",
+          10, 10, 22, 13, decoders::DungeonSpecialTable::Cathedral, 0, "skelking" },
+        { "random_l4", 4,  "levels/l1data/l1.cel", "levels/l1data/l1_2.pal",
+          10, 10, 22, 13, decoders::DungeonSpecialTable::Cathedral, 0, "banner" },
+        { "random_l5", 5,  "levels/l2data/l2.cel", "levels/l2data/l2_2.pal",
+          10, 10, 12, 3, decoders::DungeonSpecialTable::Catacombs, 0, "blood" },
+        { "random_l6", 6,  "levels/l2data/l2.cel", "levels/l2data/l2_2.pal",
+          10, 10, 12, 3, decoders::DungeonSpecialTable::Catacombs, 0, "schamb" },
+        { "random_l7", 7,  "levels/l2data/l2.cel", "levels/l2data/l2_2.pal",
+          10, 10, 12, 3, decoders::DungeonSpecialTable::Catacombs, 0, "blind" },
+        { "random_l10", 10, "levels/l3data/l3.cel", "levels/l3data/l3_2.pal",
+          10, 10, 8, 7, decoders::DungeonSpecialTable::None, 0, "anvil" },
+        { "random_l13", 13, "levels/l4data/l4.cel", "levels/l4data/l4_2.pal",
+          12, 16, 30, 6, decoders::DungeonSpecialTable::None, 1, "warlord" },
+        { "random_l15", 15, "levels/l4data/l4.cel", "levels/l4data/l4_2.pal",
+          12, 16, 30, 6, decoders::DungeonSpecialTable::None, 1, "betrayer" },
+        { "random_l16", 16, "levels/l4data/l4.cel", "levels/l4data/l4_2.pal",
+          12, 16, 30, 6, decoders::DungeonSpecialTable::None, 1, "diablo" },
     };
     bool allRandom = true;
     for (const auto& r : rspecs) {
@@ -1644,11 +1660,12 @@ static void testLevelScene()
             rs->specialTable != r.table || rs->microLen != r.micro ||
             rs->blocks != r.blocks || rs->prefillMegaTile != r.dirt ||
             rs->floorMegaTile != r.floor || rs->lightStyle != r.lightStyle ||
+            rs->fixedRoom != r.fixedRoom ||
             rdims.first != 80 || rdims.second != 80)
             allRandom = false;
     }
     lvlChk(allRandom,
-           "sceneCatalog exposes 4 randomizable levels (L1/L5/L9/L13, 4 tilesets, 80x80)");
+           "sceneCatalog exposes 11 randomizable levels (L1/2/3/4/5/6/7/10/13/15/16, 4 tilesets, fixedRoom, 80x80)");
     lvlChk(town && town->randomLevel == 0 && l4 && l4->randomLevel == 0,
            "fixed scenes are not randomizable");
     printf("level.scene: %s\n", allOk ? "PASS" : "FAIL");
@@ -1974,6 +1991,41 @@ static void testDungeonGen()
             if (o.butcherQuest != expect[level][0] || o.poisonWaterQuest != expect[level][1]
                 || o.skeletonKingQuest != expect[level][2] || o.bannerQuest != expect[level][3]) {
                 printf("dungeon.gen vanilla quests L%d: FAIL\n", level);
+                ok = false;
+            }
+        }
+    }
+
+    // 4b) Vanilla quest availability per dlvl for Catacombs + Hell.
+    // Reference DevilutionX questdat.tsv (single-player qdlvl):
+    //   Blood 5, Chamber of Bone 6, Blind 7, Warlord 13, Betrayer 15,
+    //   Diablo boss room (diab quads) 16. One set piece per dlvl.
+    {
+        const int catLevels[] = { 5, 6, 7 };
+        const int catBlood[]  = { 1, 0, 0 };
+        const int catSchamb[] = { 0, 1, 0 };
+        const int catBlind[]  = { 0, 0, 1 };
+        for (int i = 0; i < 3; ++i) {
+            CatacombsOptions o;
+            o.level = catLevels[i];
+            applyVanillaCatacombsQuests(o);
+            if (o.bloodQuest != catBlood[i] || o.schambQuest != catSchamb[i]
+                || o.blindQuest != catBlind[i]) {
+                printf("dungeon.gen catacombs vanilla quests L%d: FAIL\n", catLevels[i]);
+                ok = false;
+            }
+        }
+        const int hellLevels[]   = { 13, 15, 16 };
+        const int hellWarlord[]  = { 1, 0, 0 };
+        const int hellBetrayer[] = { 0, 1, 0 };
+        const int hellDiablo[]   = { 0, 0, 1 };
+        for (int i = 0; i < 3; ++i) {
+            HellOptions o;
+            o.level = hellLevels[i];
+            applyVanillaHellQuests(o);
+            if (o.warlordQuest != hellWarlord[i] || o.betrayerQuest != hellBetrayer[i]
+                || o.diabloQuest != hellDiablo[i]) {
+                printf("dungeon.gen hell vanilla quests L%d: FAIL\n", hellLevels[i]);
                 ok = false;
             }
         }

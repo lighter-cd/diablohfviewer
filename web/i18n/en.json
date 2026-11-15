@@ -209,7 +209,21 @@
     "recentItem": "Seed {seed} · {time}",
     "recentEmpty": "(no results yet)",
     "saved": "Saved result: {name}",
-    "randomHint": "Random dungeons generate a full level from a seed (Cathedral L1–L4); Regenerate overwrites the default, Save Result stores the current layout as a switchable snapshot, Recent results switches between them; Clear map cache deletes all default and saved results.",
+    "randomHint": "Random dungeons generate a full level from a seed. The scene number is the exact game dlvl, and each one embeds that level's quest set piece per the reference questdat.tsv (L2 Butcher to L16 Diablo). Regenerate overwrites the default, Save Result stores the current layout as a switchable snapshot, Recent results switches between them; Clear map cache deletes all default and saved results.",
+    "fixedRoomInfo": "Level {level} · Expected fixed room: {room} (embedded automatically on generation)",
+    "fixedRoom": {
+      "none": "no quest room",
+      "butcher": "The Butcher (rnd6.dun)",
+      "skelking": "King Leoric / Skeleton King (skngdo.dun)",
+      "banner": "Ogden's Sign (banner2.dun)",
+      "blood": "Blood Stone / Valor (blood1.dun)",
+      "schamb": "Chamber of Bone (bonestr2.dun)",
+      "blind": "Halls of the Blind (blind1.dun)",
+      "anvil": "Anvil of Fury (anvil.dun)",
+      "warlord": "Warlord of Blood (warlord.dun)",
+      "betrayer": "Archbishop Lazarus / Betrayer (vile1.dun)",
+      "diablo": "Diablo (four diab quads)"
+    },
     "pngDecodeFailed": "Scene PNG decode failed",
     "httpError": "Scene image HTTP {status}",
     "option": "{title}  ({w}×{h})"
@@ -317,10 +331,17 @@
       "l2_blind": "Catacombs L2 · blind room",
       "l3_anvil": "Caves L3 · anvil room",
       "l4_diab1": "Hell L4 · diab1 room",
-      "random_l1": "Random Dungeon L1 · Cathedral",
-      "random_l2": "Random Dungeon L5 · Catacombs",
-      "random_l3": "Random Dungeon L9 · Caves",
-      "random_l4": "Random Dungeon L13 · Hell"
+      "random_l1": "Random Dungeon L1 · Cathedral (baseline)",
+      "random_l2": "Random Dungeon L2 · Cathedral · Butcher",
+      "random_l3": "Random Dungeon L3 · Cathedral · Skeleton King",
+      "random_l4": "Random Dungeon L4 · Cathedral · Ogden's Sign",
+      "random_l5": "Random Dungeon L5 · Catacombs · Blood Stone",
+      "random_l6": "Random Dungeon L6 · Catacombs · Chamber of Bone",
+      "random_l7": "Random Dungeon L7 · Catacombs · Halls of the Blind",
+      "random_l10": "Random Dungeon L10 · Caves · Anvil of Fury",
+      "random_l13": "Random Dungeon L13 · Hell · Warlord of Blood",
+      "random_l15": "Random Dungeon L15 · Hell · Betrayer",
+      "random_l16": "Random Dungeon L16 · Hell · Diablo"
     }
   }
 }

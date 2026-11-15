@@ -1397,15 +1397,18 @@ void applyVanillaCatacombsQuests(CatacombsOptions& options)
     options.bloodQuest = false;
     options.schambQuest = false;
     options.blindQuest = false;
+    // DevilutionX questdat.tsv (single-player qdlvl): Blood/Valor=5,
+    // Chamber of Bone (SL_BONECHAMB)=6, Blind=7. drlg_l2.cpp::InitSetPiece
+    // picks exactly one set piece per level by quest availability.
     switch (options.level) {
     case 5:
-        options.bloodQuest = true;
+        options.bloodQuest = true; // blood1.dun
+        break;
+    case 6:
+        options.schambQuest = true; // bonestr2.dun
         break;
     case 7:
-        options.schambQuest = true;
-        break;
-    case 8:
-        options.blindQuest = true;
+        options.blindQuest = true; // blind1.dun
         break;
     default:
         break;

@@ -904,6 +904,7 @@ DiabloHFConverter/
 | 场景渲染前端化 — Phase 5（随机地牢地图：4 个可随机层 `random_l1..random_l4` 按种子生成完整一层，后端 `scene.random` 出图集 + 布局文件、前端渲染；重新生成 / 保存结果 / 最近结果 / 缺省缓存 / 清缓存，见 `docs/DESIGN_SCENE_WEB_RENDER.md` §11） | ✅ |
 | 原生地牢生成器移植（2026-11-15：Catacombs `drlg_l2` / Caves `drlg_l3` / Hell `drlg_l4`，四类 tileset、megatile id 与任务 set-piece；`level.generate` 1–16 分段派发） | ✅ |
 | 随机地牢四类地牢化（2026-11-15：`random_l1..random_l4` → L1 大教堂 / L5 地下墓穴 / L9 洞穴 / L13 地狱，各带正确 tileset、`scene.random` 四路派发、缓存 key v8、L2 关门标记断言） | ✅ |
+| 随机场景扩展为 11 个精确 dlvl（2026-11-15：`random_l1/2/3/4/5/6/7/10/13/15/16`，覆盖屠夫 L2 / 骷髅王 L3 / Ogden 招牌 L4 / 血石·骸骨密室·盲眼 L5/6/7 / 铁砧 L10 / 血之领主 L13 / 背叛者 L15 / 迪亚波罗 L16；按 DevilutionX `questdat.tsv` 修正 Catacombs/Hell 任务映射，`scene.list`/`scene.random` 回显 `fixed_room`，UI 提示固定房间，缓存 key v9） | ✅ |
 | 单元 / 集成 / core 三套测试 + mcp-server 构建 | ✅ |
 
 ### 游戏场景如何组织（对照 DevilutionX，2026-11-09 澄清）

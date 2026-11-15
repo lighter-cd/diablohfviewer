@@ -209,7 +209,21 @@
     "recentItem": "种子 {seed} · {time}",
     "recentEmpty": "（暂无结果）",
     "saved": "已保存结果：{name}",
-    "randomHint": "随机地牢按种子即时生成完整一层（大教堂 L1–L4）；「重新生成」覆盖缺省结果，「保存结果」把当前布局存为可切换快照，「最近结果」可切换加载；「清除地图缓存」删除所有缺省与已保存结果。",
+    "randomHint": "随机地牢按种子即时生成完整一层：关卡号即游戏层号，每个场景都会按参考项目 questdat.tsv 嵌入该层的任务固定房间（L2 屠夫 → L16 迪亚波罗）。「重新生成」覆盖缺省结果，「保存结果」把当前布局存为可切换快照，「最近结果」可切换加载；「清除地图缓存」删除所有缺省与已保存结果。",
+    "fixedRoomInfo": "关卡 L{level} · 预期固定房间：{room}（按种子生成时自动嵌入）",
+    "fixedRoom": {
+      "none": "无任务房间",
+      "butcher": "屠夫（rnd6.dun）",
+      "skelking": "骷髅王 Leoric（skngdo.dun）",
+      "banner": "Ogden 招牌（banner2.dun）",
+      "blood": "血石 Valor（blood1.dun）",
+      "schamb": "骸骨密室（bonestr2.dun）",
+      "blind": "盲眼大厅（blind1.dun）",
+      "anvil": "愤怒铁砧（anvil.dun）",
+      "warlord": "血之领主（warlord.dun）",
+      "betrayer": "背叛者 Lazarus（vile1.dun）",
+      "diablo": "迪亚波罗（diab 四象限）"
+    },
     "pngDecodeFailed": "场景 PNG 解码失败",
     "httpError": "场景图 HTTP {status}",
     "option": "{title}  ({w}×{h})"
@@ -317,10 +331,17 @@
       "l2_blind": "地下墓穴 L2 · blind 房间",
       "l3_anvil": "洞穴 L3 · anvil 房间",
       "l4_diab1": "地狱 L4 · diab1 房间",
-      "random_l1": "随机地牢 L1 · 大教堂",
-      "random_l2": "随机地牢 L5 · 地下墓穴",
-      "random_l3": "随机地牢 L9 · 洞穴",
-      "random_l4": "随机地牢 L13 · 地狱"
+      "random_l1": "随机地牢 L1 · 大教堂（基准）",
+      "random_l2": "随机地牢 L2 · 大教堂 · 屠夫",
+      "random_l3": "随机地牢 L3 · 大教堂 · 骷髅王",
+      "random_l4": "随机地牢 L4 · 大教堂 · Ogden 招牌",
+      "random_l5": "随机地牢 L5 · 地下墓穴 · 血石",
+      "random_l6": "随机地牢 L6 · 地下墓穴 · 骸骨密室",
+      "random_l7": "随机地牢 L7 · 地下墓穴 · 盲眼大厅",
+      "random_l10": "随机地牢 L10 · 洞穴 · 愤怒铁砧",
+      "random_l13": "随机地牢 L13 · 地狱 · 血之领主",
+      "random_l15": "随机地牢 L15 · 地狱 · 背叛者",
+      "random_l16": "随机地牢 L16 · 地狱 · 迪亚波罗"
     }
   }
 }

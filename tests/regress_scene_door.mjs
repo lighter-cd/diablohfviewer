@@ -7,9 +7,11 @@
 //
 // Usage: node tests/regress_scene_door.mjs <sceneId>
 //        sceneId may be a fixed preset (l2_blind) or a random Catacombs scene
-//        (random_l2, produced by scene.random -> <id>_default.layout.json).
-//        Picks the newest matching layout and its same-stem atlas under
-//        out/scenes.
+//        (random_l5 / random_l6 / random_l7, produced by scene.random ->
+//        <id>_default.layout.json). Catacombs ids moved off random_l2 when the
+//        random catalog was expanded to exact dlvls: random_l2 is now Cathedral
+//        L2 / Butcher and has no L2 closed-door leaves. Picks the newest matching
+//        layout and its same-stem atlas under out/scenes.
 
 import fs from 'fs';
 import zlib from 'zlib';

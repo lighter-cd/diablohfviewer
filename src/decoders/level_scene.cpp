@@ -393,12 +393,16 @@ const std::vector<SceneSpec>& sceneCatalog()
             v.push_back(s);
         }
 
-        // Phase 5/P6: one seed-generated level per dungeon TYPE. These have NO
-        // fixed .dun: scene.random builds a full 40x40 megatile grid (-> 80x80
-        // micro grid) with the matching drlg_l1..l4 generator and injects it
-        // through loadSceneAssets' generatedDun override. Each spec carries the
-        // tileset / megatile ids / special table of its type (see DunScene
-        // above). Appended LAST so catalog[1] == l1_rnd2 stays valid.
+        // Phase 5/P6: seed-generated levels, one per dlvl that carries a
+        // vanilla fixed room (plus L1 as a clean Cathedral baseline). These
+        // have NO fixed .dun: scene.random builds a full 40x40 megatile grid
+        // (-> 80x80 micro grid) with the matching drlg_l1..l4 generator and
+        // injects it through loadSceneAssets' generatedDun override. The id
+        // suffix is the exact game dlvl; fixedRoom is an i18n key naming the
+        // embedded set piece so the UI can surface it. Appended LAST so
+        // catalog[1] == l1_rnd2 stays valid.
+        // Reference: DevilutionX questdat.tsv + drlg_l1.cpp::initSetPiece,
+        // drlg_l2.cpp::InitSetPiece, drlg_l3.cpp, drlg_l4.cpp::InitSetPiece.
         struct RandomScene {
             const char* id;
             const char* title;
@@ -409,21 +413,49 @@ const std::vector<SceneSpec>& sceneCatalog()
             const char* specialCel;
             DungeonSpecialTable specialTable;
             uint8_t ambient, lightStyle;
-            int level;             // representative game level of this type
+            int level;             // exact game dlvl generated
+            const char* fixedRoom; // i18n key; "" = no quest set piece
         };
         const RandomScene randomScenes[] = {
+            // Cathedral L1-L4 (l1data; special l1s.cel table).
             { "random_l1", "随机地牢 L1 · 大教堂（按种子生成）", "levels/l1data",
               "levels/l1data/l1_2.pal", 10, 10, 22, 13, "levels/l1data/l1s.cel",
-              DungeonSpecialTable::Cathedral, 15, 0, 1 },
-            { "random_l2", "随机地牢 L5 · 地下墓穴（按种子生成）", "levels/l2data",
+              DungeonSpecialTable::Cathedral, 15, 0, 1, "" },
+            { "random_l2", "随机地牢 L2 · 大教堂 · 屠夫（按种子生成）", "levels/l1data",
+              "levels/l1data/l1_2.pal", 10, 10, 22, 13, "levels/l1data/l1s.cel",
+              DungeonSpecialTable::Cathedral, 15, 0, 2, "butcher" },
+            { "random_l3", "随机地牢 L3 · 大教堂 · 骷髅王（按种子生成）", "levels/l1data",
+              "levels/l1data/l1_2.pal", 10, 10, 22, 13, "levels/l1data/l1s.cel",
+              DungeonSpecialTable::Cathedral, 15, 0, 3, "skelking" },
+            { "random_l4", "随机地牢 L4 · 大教堂 · Ogden 招牌（按种子生成）", "levels/l1data",
+              "levels/l1data/l1_2.pal", 10, 10, 22, 13, "levels/l1data/l1s.cel",
+              DungeonSpecialTable::Cathedral, 15, 0, 4, "banner" },
+            // Catacombs L5-L7 (l2data; special l2s.cel table). Quest dlvls from
+            // questdat.tsv: Blood=5, Chamber of Bone=6, Blind=7.
+            { "random_l5", "随机地牢 L5 · 地下墓穴 · 血石（按种子生成）", "levels/l2data",
               "levels/l2data/l2_2.pal", 10, 10, 12, 3, "levels/l2data/l2s.cel",
-              DungeonSpecialTable::Catacombs, 15, 0, 5 },
-            { "random_l3", "随机地牢 L9 · 洞穴（按种子生成）", "levels/l3data",
+              DungeonSpecialTable::Catacombs, 15, 0, 5, "blood" },
+            { "random_l6", "随机地牢 L6 · 地下墓穴 · 骸骨密室（按种子生成）", "levels/l2data",
+              "levels/l2data/l2_2.pal", 10, 10, 12, 3, "levels/l2data/l2s.cel",
+              DungeonSpecialTable::Catacombs, 15, 0, 6, "schamb" },
+            { "random_l7", "随机地牢 L7 · 地下墓穴 · 盲眼大厅（按种子生成）", "levels/l2data",
+              "levels/l2data/l2_2.pal", 10, 10, 12, 3, "levels/l2data/l2s.cel",
+              DungeonSpecialTable::Catacombs, 15, 0, 7, "blind" },
+            // Caves L10 (l3data; no special CEL table). Anvil of Fury = dlvl 10.
+            { "random_l10", "随机地牢 L10 · 洞穴 · 愤怒铁砧（按种子生成）", "levels/l3data",
               "levels/l3data/l3_2.pal", 10, 10, 8, 7, "",
-              DungeonSpecialTable::None, 15, 0, 9 },
-            { "random_l4", "随机地牢 L13 · 地狱（按种子生成）", "levels/l4data",
+              DungeonSpecialTable::None, 15, 0, 10, "anvil" },
+            // Hell L13/L15/L16 (l4data; no special table, hell light style).
+            // Warlord=13, Betrayer/Vile=15, Diablo boss room=16 (hell gate 15).
+            { "random_l13", "随机地牢 L13 · 地狱 · 血之领主（按种子生成）", "levels/l4data",
               "levels/l4data/l4_2.pal", 12, 16, 30, 6, "",
-              DungeonSpecialTable::None, 15, 1, 13 },
+              DungeonSpecialTable::None, 15, 1, 13, "warlord" },
+            { "random_l15", "随机地牢 L15 · 地狱 · 背叛者（按种子生成）", "levels/l4data",
+              "levels/l4data/l4_2.pal", 12, 16, 30, 6, "",
+              DungeonSpecialTable::None, 15, 1, 15, "betrayer" },
+            { "random_l16", "随机地牢 L16 · 地狱 · 迪亚波罗（按种子生成）", "levels/l4data",
+              "levels/l4data/l4_2.pal", 12, 16, 30, 6, "",
+              DungeonSpecialTable::None, 15, 1, 16, "diablo" },
         };
         for (const RandomScene& rs : randomScenes) {
             SceneSpec s;
@@ -451,6 +483,7 @@ const std::vector<SceneSpec>& sceneCatalog()
             s.gridW = 80;
             s.gridH = 80;
             s.randomLevel = rs.level;
+            s.fixedRoom = rs.fixedRoom;
             v.push_back(s);
         }
         return v;

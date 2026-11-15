@@ -120,12 +120,20 @@ for (const [group, ids] of Object.entries({
            "spellbook", "quest_log", "store_list", "store_grid", "dialog_small",
            "dialog_large", "dialog_large_dvl"],
   scene: ["tristram", "l1_rnd2", "l1_skngdo", "l2_blind", "l3_anvil", "l4_diab1",
-          "random_l1", "random_l2", "random_l3", "random_l4"],
+          "random_l1", "random_l2", "random_l3", "random_l4", "random_l5",
+          "random_l6", "random_l7", "random_l10", "random_l13", "random_l15",
+          "random_l16"],
 })) {
   for (const id of ids) {
     ok(en.has(`data.${group}.${id}`), `missing data.${group}.${id}`);
     ok(zh.has(`data.${group}.${id}`), `missing data.${group}.${id}`);
   }
+}
+// scene.fixedRoom.<key> is built dynamically in main.js (t(`scene.fixedRoom.${room}`)).
+for (const key of ["none", "butcher", "skelking", "banner", "blood", "schamb",
+                   "blind", "anvil", "warlord", "betrayer", "diablo"]) {
+  ok(en.has(`scene.fixedRoom.${key}`) && zh.has(`scene.fixedRoom.${key}`),
+     `missing scene.fixedRoom.${key}`);
 }
 for (const key of ["combat.stageCast", "combat.stageProjectile",
                    "combat.stageImpact", "combat.stageDebuff"]) {

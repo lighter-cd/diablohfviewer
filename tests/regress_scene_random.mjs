@@ -2,9 +2,12 @@
 //
 // End-to-end regression for Phase 5/P6 random dungeon maps (scene.random)
 // WITHOUT a browser. Drives the mcp-server WS bridge + its /scenes/ HTTP endpoint:
-//   1. scene.list exposes 4 randomizable levels, one per dungeon type
-//      (random_l1=L1 Cathedral, random_l2=L5 Catacombs, random_l3=L9 Caves,
-//      random_l4=L13 Hell), each 80x80
+//   1. scene.list exposes 11 randomizable levels, one per dlvl that carries a
+//      vanilla fixed room (plus L1 baseline): random_l1=L1 Cathedral,
+//      random_l2=L2 (Butcher), random_l3=L3 (Skeleton King), random_l4=L4
+//      (Ogden banner), random_l5/6/7=L5/6/7 Catacombs (Blood/Chamber/Blind),
+//      random_l10=L10 Caves (Anvil), random_l13/15/16=L13/15/16 Hell
+//      (Warlord/Betrayer/Diablo); all 80x80 (Hell micro_len=12)
 //   2. scene.random generate -> full scene.tiles-shaped result; atlas PNG valid;
 //      renderScene(layout, atlas, special) draws a real map (non-bg pixels)
 //   3. determinism (same seed -> identical micro_grid), different seed differs
@@ -156,23 +159,42 @@ async function main() {
   try {
     const list = await call('scene.list', {});
     const rand = (list.scenes || []).filter((s) => s.randomizable);
-    ok(rand.length === 4, 'scene.list exposes 4 randomizable levels');
-    const expected = { random_l1: 1, random_l2: 5, random_l3: 9, random_l4: 13 };
-    ok(rand.every((s) => expected[s.id] === s.random_level &&
-                        s.grid_width === 80 && s.grid_height === 80 &&
-                        s.micro_len === (s.id === 'random_l4' ? 12 : 10)),
-       'randomizable levels are L1/L5/L9/L13 (Cathedral/Catacombs/Caves/Hell) @ 80x80');
+    ok(rand.length === 11, 'scene.list exposes 11 randomizable dlvls');
 
-    // Generate + render every dungeon type; each must produce a real map with
-    // the matching generator and tileset (regression against all-Cathedral).
-    const types = { random_l1: 'Cathedral', random_l2: 'Catacombs',
-                    random_l3: 'Caves', random_l4: 'Hell' };
-    for (const id of Object.keys(types)) {
+    // id -> exact dlvl, generator/tileset, vanilla fixed-room i18n key.
+    // Suffix is the game dlvl; fixed_room is surfaced by the UI hint.
+    const expected = {
+      random_l1:  { level: 1,  type: 'Cathedral', room: '' },
+      random_l2:  { level: 2,  type: 'Cathedral', room: 'butcher' },
+      random_l3:  { level: 3,  type: 'Cathedral', room: 'skelking' },
+      random_l4:  { level: 4,  type: 'Cathedral', room: 'banner' },
+      random_l5:  { level: 5,  type: 'Catacombs', room: 'blood' },
+      random_l6:  { level: 6,  type: 'Catacombs', room: 'schamb' },
+      random_l7:  { level: 7,  type: 'Catacombs', room: 'blind' },
+      random_l10: { level: 10, type: 'Caves',     room: 'anvil' },
+      random_l13: { level: 13, type: 'Hell',      room: 'warlord' },
+      random_l15: { level: 15, type: 'Hell',      room: 'betrayer' },
+      random_l16: { level: 16, type: 'Hell',      room: 'diablo' },
+    };
+    ok(rand.every((s) => {
+      const e = expected[s.id];
+      return e && s.random_level === e.level && s.fixed_room === e.room &&
+             s.grid_width === 80 && s.grid_height === 80 &&
+             s.micro_len === (e.type === 'Hell' ? 12 : 10);
+    }), 'randomizable dlvls L1/2/3/4/5/6/7/10/13/15/16 carry correct fixed_room @ 80x80');
+
+    // Generate + render every fixed-room dlvl; each must produce a real map
+    // with the matching generator and tileset (regression against all-Cathedral).
+    const catacombIds = ['random_l5', 'random_l6', 'random_l7'];
+    let overrideChecked = false;
+    for (const id of Object.keys(expected)) {
+      const e = expected[id];
       const g = await call('scene.random',
         { action: 'generate', id, seed: 424242, archive: mpq });
-      ok(g.random === true && g.random_level === expected[id] &&
-         g.dungeon_type === types[id],
-         id + ' generates via ' + types[id] + ' (L' + expected[id] + ')');
+      ok(g.random === true && g.random_level === e.level &&
+         g.fixed_room === e.room && g.dungeon_type === e.type,
+         id + ' generates via ' + e.type + ' (L' + e.level +
+         ', room=' + (e.room || 'none') + ')');
       ok(g.grid_width === 80 && g.grid_height === 80 &&
          g.layout.micro_grid.length === 6400 && g.frame_count > 0,
          id + ' emits a full 80x80 micro_grid + atlas');
@@ -186,22 +208,29 @@ async function main() {
             rendered.data[i + 2] !== bg[2]) drawn++;
       }
       ok(drawn > 10000, id + ' renders substantial non-bg art (' + drawn + ' px)');
-      if (id === 'random_l2') {
+      // AddL2Objs -> SetDoorStateClosed on Catacombs (L5/L6/L7) leaves closed
+      // leaf micros (537/539). random_l2 is now Cathedral/Butcher, so the door
+      // checks belong to the Catacombs ids, not random_l2.
+      if (catacombIds.includes(id)) {
         const doors = g.layout.doors || [];
         ok(doors.length > 0 &&
            doors.every((d) => d.closed === 537 || d.closed === 539),
-           'random_l2 marks L2 doorways with closed leaves (537/539)');
-        // Front-end local toggle (same path as regress_scene_door.mjs).
-        const d = doors[0];
-        const idx = d.y * g.layout.grid_width + d.x;
-        const opened = renderScene(g.layout, atlas, special,
-          { microOverride: { [idx]: d.open } });
-        const closedAgain = renderScene(g.layout, atlas, special,
-          { microOverride: { [idx]: d.closed } });
-        ok(!buffersEqual(rendered.data, opened.data),
-           'random_l2 OPEN door override changes the rendered image');
-        ok(buffersEqual(rendered.data, closedAgain.data),
-           'random_l2 CLOSED door override == no-op');
+           id + ' marks L2 doorways with closed leaves (537/539)');
+        // Front-end local toggle (same path as regress_scene_door.mjs); one
+        // Catacombs scene is enough to cover the shared microOverride path.
+        if (!overrideChecked && doors.length > 0) {
+          const d = doors[0];
+          const idx = d.y * g.layout.grid_width + d.x;
+          const opened = renderScene(g.layout, atlas, special,
+            { microOverride: { [idx]: d.open } });
+          const closedAgain = renderScene(g.layout, atlas, special,
+            { microOverride: { [idx]: d.closed } });
+          ok(!buffersEqual(rendered.data, opened.data),
+             id + ' OPEN door override changes the rendered image');
+          ok(buffersEqual(rendered.data, closedAgain.data),
+             id + ' CLOSED door override == no-op');
+          overrideChecked = true;
+        }
       }
     }
 

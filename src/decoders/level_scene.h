@@ -70,12 +70,17 @@ struct SceneSpec {
     // Apply the deterministic Tristram FillTile patches from town.cpp (warp
     // stairs, clean fountain/well). Quest/Hellfire toggles are not simulated.
     bool tristramPatches = false;
-    // Phase 5/P6 (random dungeon maps): 0 = fixed preset scene. Non-zero selects
-    // a dynamically generated level by band: 1..4 Cathedral (l1data),
-    // 5..8 Catacombs (l2data), 9..12 Caves (l3data), 13..16 Hell (l4data).
-    // Such specs have no fixed `dun`; scene.random builds the DUN grid in
-    // memory from a seed and injects it via loadSceneAssets.
+    // Phase 5/P6 (random dungeon maps): 0 = fixed preset scene. Non-zero is the
+    // exact game dlvl (1..16) this scene generates; the generator is chosen by
+    // band: 1..4 Cathedral (l1data), 5..8 Catacombs (l2data), 9..12 Caves
+    // (l3data), 13..16 Hell (l4data). Such specs have no fixed `dun`;
+    // scene.random builds the DUN grid in memory from a seed and injects it via
+    // loadSceneAssets.
     int randomLevel = 0;
+    // Short i18n key identifying the vanilla fixed room embedded on this dlvl
+    // (e.g. "butcher", "diablo"). Empty = no quest set piece. Surfaced through
+    // scene.list / scene.random so the UI can display the expected room.
+    std::string fixedRoom;
 };
 
 struct SceneGrid {
