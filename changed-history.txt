@@ -570,3 +570,8 @@
 - 修复上一轮前端同步把 build-mcp/web 写成乱码、JS 报 Uncaught SyntaxError 导致所有按钮（含 mpq 配置）失灵：手工用 PowerShell Get-Content -Raw + WriteAllText 同步时按系统 GBK 读入无 BOM 的 UTF-8，中文变 mpq閰嶇疆 且模块整体不执行。现已整体重新同步 build-mcp/web（UTF-8 正确、node --check 全绿、token 20261116024126，服务端实测返回正确中文），并新增 Windows 等价脚本 sync-web.py（全程按字节复制 + 刷新 ?v= token，避免编码参与），在 README / AGENTS / docs 写明禁止用 PowerShell 手工同步。
 - 验收：build-mcp/web 无乱码与 U+FFFD、全部 JS node --check 通过；HTTP 实测 index.html/src/main.js 返回正确 UTF-8 且 token 已更新；浏览器普通刷新（或 Ctrl+F5）即可恢复，「mpq 配置」按钮事件已重新绑定。
 - 涉及: sync-web.py, README.md, AGENTS.md, docs/PROJECT.md, changed-history.txt
+
+
+## 2026-11-16 03:00:09
+- 为项目新增 MIT 许可证，实现“随意使用”授权：根目录新建 LICENSE（Copyright (c) 2026 lighter_cd，允许使用/复制/修改/分发/再许可/商业销售，仅需保留版权与许可声明）；README 与 README_EN 增加「许可证 / License」章节（授权范围、义务、第三方依赖 MIT、游戏素材排除）；docs/COMPLIANCE.md 新增 §7 界定 MIT 只覆盖代码与文本、不覆盖游戏资源与第三方依赖；docs/PROJECT.md 新增 §11 记录完成项
+- 涉及: LICENSE, README.md, README_EN.md, docs/COMPLIANCE.md, docs/PROJECT.md, changed-history.txt

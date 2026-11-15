@@ -36,6 +36,21 @@ All decoding, viewing, and reconstruction features depend on the legitimate MPQ 
 
 > For build, run, and test instructions, see the Chinese [`README.md`](README.md).
 
+## License
+
+This project's code is released under the **MIT License** (full text in [`LICENSE`](LICENSE)).
+
+In short: **anyone may use this code freely and for anything** — use, copy, modify, merge, publish, distribute, sublicense, and even sell it, with no prior permission and no fee. The only obligation is to keep the original copyright notice and this permission notice (ship a copy of `LICENSE` with the source or binary). The software is provided "as is", without warranty of any kind.
+
+Bundled dependencies keep their own licenses, both compatible with MIT:
+
+| Dependency | License |
+|------------|---------|
+| `3rdparty/StormLib/` (git submodule) | MIT (Copyright (c) 1999-2013 Ladislav Zezula) |
+| `3rdparty/nlohmann/json.hpp` | MIT (Copyright (c) 2013-2022 Niels Lohmann) |
+
+> ⚠️ **MIT covers this project's code only.** The Diablo 1 / Hellfire game assets (MPQs, sprites, palettes, audio, …) are *not* covered by this license and remain the property of their rights holders. This project does not provide, host, link to, or distribute any game assets; you must own your own legitimate copy (see the notice above and [`docs/COMPLIANCE.md`](docs/COMPLIANCE.md)).
+
 ## Front-end i18n
 
 The viewer UI is bilingual: use the **Language / 语言** dropdown in the top-right of `index.html`

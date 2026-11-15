@@ -656,3 +656,18 @@ http://localhost:8000/level.html
 
 更详细的架构与阶段计划见 `docs/ARCHITECTURE.md` 与 `docs/PROJECT.md`；动态地牢生成规则见
 `docs/MAP_GENERATION.md`；DiabloUI 界面布局转录、资源清单与调色板分工见 `docs/UI_LAYOUT.md`。
+
+## 许可证
+
+本项目代码以 **MIT 许可证** 发布，全文见根目录 [`LICENSE`](LICENSE)。
+
+也就是说：**任何人都可以免费、随意地使用本项目代码**——使用、复制、修改、合并、发布、分发、再许可、甚至商业销售都不需要事先取得许可，也无需付费；唯一的义务是保留原始的版权声明与本许可声明（在源码或二进制分发中附上 `LICENSE` 副本即可），并且本软件按“原样”提供、不附带任何担保。
+
+第三方依赖各自保留其原有许可证，均与本项目兼容：
+
+| 依赖 | 许可证 |
+|------|--------|
+| `3rdparty/StormLib/`（git submodule） | MIT（Copyright (c) 1999-2013 Ladislav Zezula） |
+| `3rdparty/nlohmann/json.hpp` | MIT（Copyright (c) 2013-2022 Niels Lohmann） |
+
+> ⚠️ **MIT 只覆盖本项目的代码。** Diablo 1 / Hellfire 的游戏本体资源（MPQ、精灵、调色板、音频等）不在本许可范围内，其版权归原权利人所有；本项目不提供、不托管、不分发任何游戏资源，使用者须自备官方正版文件（见上文「⚠️ 关于游戏资源的重要声明」与 [`docs/COMPLIANCE.md`](docs/COMPLIANCE.md)）。

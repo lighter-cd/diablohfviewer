@@ -1076,3 +1076,17 @@ SOL 碰撞网格 A* 寻路（`scene.path`）、L2/L3/L4 预设场景。`scene.bu
 - 解码逻辑必须兼容这些 MPQ 的精确格式；以 DevilutionX 的成功读取为正确性准绳。
 - 多语言包（`es/pl/ru.mpq`）主要用于文本本地化，非本项目核心，但可作为
   字符串来源参考。
+
+---
+
+## 11. 许可证（2026-11-16，已完成）
+
+- [x] **为项目添加 MIT 许可证**：根目录新增 [`LICENSE`](../LICENSE)
+  （`Copyright (c) 2026 lighter_cd`），明确本项目代码可被**任意使用**（使用/复制/修改/合并/
+  发布/分发/再许可/商业销售均无需事先许可），唯一义务是保留版权与许可声明，软件按「原样」提供。
+- **边界**：MIT **只覆盖代码与文本**（`src/`、`web/`、`docs/`、构建脚本等）；不含任何
+  Diablo 1 / Hellfire 游戏资源；第三方依赖保留各自许可——`3rdparty/StormLib/`（MIT，
+  Ladislav Zezula）、`3rdparty/nlohmann/json.hpp`（MIT，Niels Lohmann）。详见
+  [`docs/COMPLIANCE.md`](COMPLIANCE.md) §7。
+- **使用方视角**：README（中/英）新增「许可证 / License」章节，说明授权范围、义务与
+  游戏资源的排除条款，避免读者误以为 MIT 覆盖游戏素材。
